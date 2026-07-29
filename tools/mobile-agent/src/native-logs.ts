@@ -80,18 +80,42 @@ async function readIosLogs(
 }
 
 async function findIosProcessId(config: MobileAgentConfig, udid: string): Promise<number> {
-  const pattern = `${escapeRegex(config.iosDeviceSetPath)}/${escapeRegex(udid)}/.*/wave\\.app/wave$`;
-  const found = await runCommand('pgrep', ['-f', pattern], { timeoutMs: 5_000 });
-  const pids = found.stdout
-    .split(/\r?\n/)
-    .map((value) => Number.parseInt(value, 10))
-    .filter((value) => Number.isInteger(value) && value > 0);
+  const found = await runCommand('ps', ['-axo', 'pid=,command='], { timeoutMs: 5_000 });
+  if (!found.ok) {
+    throw new Error(found.stderr.trim() || found.error || 'Could not inspect iOS processes.');
+  }
+  const pids = findIosProcessIds(found.stdout, config.iosDeviceSetPath, udid);
   if (pids.length !== 1 || pids[0] === undefined) {
     throw new Error(
       `Expected one running Wave process on Radon simulator ${udid}, found ${pids.length}. Launch Wave and try again.`,
     );
   }
   return pids[0];
+}
+
+export function findIosProcessIds(
+  processList: string,
+  deviceSetPath: string,
+  udid: string,
+): number[] {
+  const processPrefix = `${deviceSetPath}/${udid}/`;
+  const executableMarker = '/wave.app/wave';
+  const processIds: number[] = [];
+
+  for (const line of processList.split(/\r?\n/)) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const [, rawProcessId, command] = match;
+    if (!rawProcessId || !command?.startsWith(processPrefix)) continue;
+    const executableIndex = command.indexOf(executableMarker);
+    if (executableIndex < 0) continue;
+    const executableEnd = executableIndex + executableMarker.length;
+    if (command.length > executableEnd && !/\s/.test(command[executableEnd] ?? '')) continue;
+    const processId = Number.parseInt(rawProcessId, 10);
+    if (Number.isInteger(processId) && processId > 0) processIds.push(processId);
+  }
+
+  return processIds;
 }
 
 async function readAndroidLogs(
@@ -223,8 +247,4 @@ function androidSeverity(priority: string): string {
       F: 'fatal',
     }[priority] ?? 'default'
   );
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
