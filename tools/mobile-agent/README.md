@@ -7,6 +7,54 @@ Metro/Hermes observability, and an opt-in development state bridge.
 
 It does not require a paid Radon MCP license and does not modify Radon itself.
 
+## Architecture and design decisions
+
+```text
+Codex / Claude Code
+        |
+        | MCP over stdio
+        v
+Wave mobile-agent plugin + Appium MCP core
+        |
+        +--> XCUITest --------> Radon's private iOS device set
+        +--> UiAutomator2 ----> Radon's ADB-visible Android emulator
+        +--> Hermes CDP ------> Metro console, network, reload, development state
+        +--> Native commands -> on-demand iOS and Android process logs
+```
+
+Radon remains responsible for starting Metro and managing its simulator or emulator. The
+mobile agent discovers and attaches to those existing resources; it does not replace,
+erase, boot, or silently switch them.
+
+The integration deliberately uses public platform and Appium interfaces rather than
+Radon's paid MCP implementation or its private extension internals. Expo MCP could discover
+the ordinary CoreSimulator set, but Radon manages iOS in an alternate device set. An
+`xcrun` shim was sufficient for basic `simctl` operations but not XCTest: `xcodebuild`
+could not resolve the Radon-private simulator as an eligible destination. XCUITest's
+official `appium:simulatorDevicesSetPath` capability is therefore a required architectural
+boundary, not a convenience.
+
+Other durable choices:
+
+- `appium-mcp` and its native drivers are installed only in this isolated tooling package
+  and pinned exactly. Do not install a mutable global Appium stack or import
+  `appium-mcp` internals; use its public `appium-mcp/core` plugin API.
+- Device IDs, Metro ports, runtime versions, process IDs, and app-container paths are
+  ephemeral. Discover them at runtime and require explicit selection when more than one
+  eligible target exists.
+- MCP uses stdio. Do not expose Appium or an automation listener on a LAN interface.
+- Native logs are queried on demand from Wave's current process with strict time/count
+  bounds. This follows PID changes naturally and avoids persistent `log stream` or
+  `logcat` child processes.
+- The automation package stays independent of the Expo application's dependency graph.
+  Mobile-agent maintenance must not upgrade Expo, React Native, or app dependencies.
+
+Current scope is Radon-managed iOS simulators and Android emulators for local development.
+Physical iOS automation, production monitoring, arbitrary application-state access, and
+replacement of end-to-end suites such as Maestro or Detox are outside this integration.
+Possible future extensions—not missing implementation phases—are React component-tree
+inspection, bounded video or screenshot-sequence capture, and deterministic action replay.
+
 ## Setup
 
 From the repository root:
