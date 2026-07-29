@@ -30,6 +30,8 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "cross-env": "^10.1.0",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "~57.0.0",
     "expo-mcp": "~0.2.1",
     "typescript": "~6.0.3"
   },
