@@ -80,8 +80,8 @@ Hermes logs, fetch metadata, the development state provider, and platform-native
 without creating an Appium session.
 It auto-selects the platform only when exactly one is ready. If multiple Wave Hermes
 targets are connected, pass `--target-id` using an ID reported by `mobile_doctor`.
-`smoke:production` creates an ignored all-platform production export and verifies
-that the development state bridge is absent from the Android, iOS, and web bundles.
+`smoke:production` creates ignored iOS and Android production exports and verifies
+that the development state bridge is absent from both native bundles.
 
 Native devices are auto-selected only when exactly one eligible device is visible.
 When Radon has multiple simulators running, select one explicitly without hardcoding it

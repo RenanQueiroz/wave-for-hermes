@@ -28,20 +28,34 @@ export async function runProductionBridgeSmoke(
   await rm(outputDirectory, { recursive: true, force: true });
 
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const exported = await runCommand(
-    npx,
-    ['expo', 'export', '--platform', 'all', '--output-dir', outputDirectory, '--clear'],
-    {
-      cwd: config.projectRoot,
-      timeoutMs: 5 * 60_000,
-      maxBuffer: 30 * 1024 * 1024,
-      env: { ...process.env, NODE_ENV: 'production' },
-    },
-  );
-  if (!exported.ok) {
-    throw new Error(
-      exported.stderr.trim() || exported.stdout.trim() || exported.error || 'Expo export failed.',
+  for (const platform of ['ios', 'android'] as const) {
+    const platformOutputDirectory = resolve(outputDirectory, platform);
+    const exported = await runCommand(
+      npx,
+      [
+        'expo',
+        'export',
+        '--platform',
+        platform,
+        '--output-dir',
+        platformOutputDirectory,
+        '--clear',
+      ],
+      {
+        cwd: config.projectRoot,
+        timeoutMs: 5 * 60_000,
+        maxBuffer: 30 * 1024 * 1024,
+        env: { ...process.env, NODE_ENV: 'production' },
+      },
     );
+    if (!exported.ok) {
+      throw new Error(
+        exported.stderr.trim() ||
+          exported.stdout.trim() ||
+          exported.error ||
+          `Expo ${platform} export failed.`,
+      );
+    }
   }
 
   const files = await listFiles(outputDirectory);

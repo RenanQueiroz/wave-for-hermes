@@ -1,56 +1,129 @@
-# Welcome to your Expo app 👋
+# Wave
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Wave is a focused mobile client for chatting with a user's
+[Hermes Agent](https://github.com/NousResearch/hermes-agent). It is a conversation surface, not an
+administration console.
 
-## Get started
+The core feature will be a low-latency live voice mode backed by the OpenAI Realtime API. The
+Realtime model can request typed tools; Wave validates those tool calls, forwards the corresponding
+request to the user's Hermes agent, and returns the result to the conversation.
 
-1. Install dependencies
+## Product scope
 
-   ```bash
-   npm install
-   ```
+Wave is intended to support:
 
-2. Start the app
+- text chat with a Hermes agent;
+- a natural, interruptible live voice conversation;
+- explicit tool calls that let the Realtime session ask Hermes to perform work;
+- iOS and Android, with shared behavior where the platforms allow it.
 
-   ```bash
-   npx expo start
-   ```
+Wave is not intended to manage Hermes configuration, providers, models, skills, or server
+administration. It must never ship a long-lived OpenAI API key in the app bundle.
 
-In the output, you'll find options to open the app in a
+The exact Hermes transport, authentication scheme, Realtime credential broker, and tool contract
+are still design work. The intended trust boundary is:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```text
+Wave ── short-lived credential request ──> trusted server-side broker
+  │                                             │
+  └──────── Realtime audio session <──────── OpenAI Realtime API
+                        │
+                        └── validated tool call ──> user's Hermes agent
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Current status
 
-### Other setup steps
+The repository is still at the application-foundation stage. It currently includes:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+- Expo SDK 57 with Expo Router and development-client support for iOS and Android;
+- [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
+- Uniwind and Tailwind CSS v4 for PanelUI themes and utility styling;
+- the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
+- repo-level Expo MCP configuration for Codex and Claude Code.
 
-## Learn more
+The visible screens are still starter UI. Product screens and the Hermes/Realtime vertical slice
+have not been implemented yet.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Local development
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Requirements:
 
-## Join the community
+- Node.js 22.13 or newer;
+- Xcode and an iOS Simulator for iOS development;
+- Android Studio and an Android emulator for Android development.
 
-Join our community of developers creating universal apps.
+Install dependencies and start Metro:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npm install
+npm start
+```
+
+The `start`, `ios`, and `android` scripts set `EXPO_UNSTABLE_MCP_SERVER=1` in a cross-platform way.
+They work on Windows, macOS, and Linux. Radon IDE can manage Metro and the simulator instead; after
+changing `metro.config.js`, `src/global.css`, or PanelUI dependencies, fully restart the Radon
+launch/Metro server so the Uniwind transform is reloaded.
+
+Wave does not support React Native Web. Web dependencies, scripts, configuration, and
+platform-specific implementations should not be added.
+
+Create and run a local development build when native dependencies change:
+
+```bash
+npx expo prebuild --clean
+npx expo run:ios
+# or
+npx expo run:android
+```
+
+Native identifiers are configured in `app.json`:
+
+- iOS bundle identifier: `com.renanqueiroz.wave`
+- Android application ID: `com.renanqueiroz.wave`
+
+## Checks
+
+Run these before handing off a change:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npx expo install --check
+npm run mobile:smoke:production
+```
+
+For device discovery, screenshots, accessibility trees, gestures, logs, and the local mobile MCP
+server, see [`tools/mobile-agent/README.md`](./tools/mobile-agent/README.md).
+
+## UI system
+
+PanelUI is installed in package mode so the app can receive upstream component fixes. Import
+components from `panelui-native`. The root provider and theme bridge live in
+`src/app/_layout.tsx`, while Uniwind is configured in `metro.config.js` and `src/global.css`.
+Use PanelUI's semantic tokens rather than hard-coded palette colors. For colors required by native
+props or non-PanelUI components, resolve the corresponding `--color-*` token with
+`useCSSVariable`.
+
+The [PanelUI CLI](https://www.panelui.dev/docs/cli) is optional. Use it only when a component needs
+to be copied into the repository for deliberate source-level customization; package and copied
+components can coexist.
+
+## Security baseline
+
+- Never commit credentials or print them in logs.
+- Never embed a standard OpenAI API key in the mobile app. Realtime client access must use
+  short-lived credentials created by a trusted server-side component.
+- Treat Realtime tool arguments and Hermes responses as untrusted input. Validate them at the
+  boundary.
+- Store user credentials with an appropriate platform-backed secure-storage solution when that
+  feature is implemented.
+- Keep Wave's Hermes access limited to chat and explicit conversational tools; do not quietly add
+  configuration or administrative capabilities.
+
+## Reference documentation
+
+- [Expo SDK 57 documentation](https://docs.expo.dev/versions/v57.0.0/)
+- [PanelUI installation](https://www.panelui.dev/docs/installation)
+- [PanelUI CLI](https://www.panelui.dev/docs/cli)
+- [PanelUI theming](https://www.panelui.dev/docs/theming)
+- [OpenAI Realtime API](https://platform.openai.com/docs/api-reference/realtime)

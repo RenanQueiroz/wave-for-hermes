@@ -1,14 +1,31 @@
-/**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
- */
+import { useThemeMode } from 'panelui-native';
+import { useCSSVariable } from 'uniwind';
 
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+  const { mode } = useThemeMode();
+  const fallback = Colors[mode];
+  const [text, background, backgroundElement, backgroundSelected, textSecondary, primary] =
+    useCSSVariable([
+      '--color-foreground',
+      '--color-background',
+      '--color-secondary',
+      '--color-accent',
+      '--color-muted-foreground',
+      '--color-primary',
+    ]);
 
-  return Colors[theme];
+  return {
+    text: resolveColor(text, fallback.text),
+    background: resolveColor(background, fallback.background),
+    backgroundElement: resolveColor(backgroundElement, fallback.backgroundElement),
+    backgroundSelected: resolveColor(backgroundSelected, fallback.backgroundSelected),
+    textSecondary: resolveColor(textSecondary, fallback.textSecondary),
+    primary: resolveColor(primary, fallback.text),
+  };
+}
+
+function resolveColor(value: string | number | undefined, fallback: string) {
+  return typeof value === 'string' ? value : fallback;
 }
