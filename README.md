@@ -20,8 +20,9 @@ Wave is intended to support:
 Wave is not intended to manage Hermes configuration, providers, models, skills, or server
 administration. It must never ship a long-lived OpenAI API key in the app bundle.
 
-The exact Hermes transport, authentication scheme, Realtime credential broker, and tool contract
-are still design work. The intended trust boundary is:
+The Hermes transport now targets the authenticated Sessions API exposed by Hermes's API Server.
+The Realtime credential broker and final voice tool contract remain design work. The intended trust
+boundary is:
 
 ```text
 Wave ── short-lived credential request ──> trusted server-side broker
@@ -33,16 +34,20 @@ Wave ── short-lived credential request ──> trusted server-side broker
 
 ## Current status
 
-The repository is still at the application-foundation stage. It currently includes:
+The repository is at the application-foundation and transport stage. It currently includes:
 
 - Expo SDK 57 with Expo Router and development-client support for iOS and Android;
 - [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
 - Uniwind and Tailwind CSS v4 for PanelUI themes and utility styling;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
-- repo-level Expo MCP configuration for Codex and Claude Code.
+- repo-level Expo MCP configuration for Codex and Claude Code;
+- a typed, bearer-authenticated Hermes Sessions API client with capability validation, streamed
+  SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests.
 
-The visible screens are still starter UI. Product screens and the Hermes/Realtime vertical slice
-have not been implemented yet.
+The visible screens are still starter UI. Secure credential storage, connection screens, text chat,
+and the Realtime voice slice have not been implemented yet. See
+[`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current client contract and
+the private deployment prerequisite.
 
 ## Local development
 
@@ -86,6 +91,7 @@ Native identifiers are configured in `app.json`:
 Run these before handing off a change:
 
 ```bash
+npm test
 npm run lint
 npx tsc --noEmit
 npx expo install --check
@@ -120,6 +126,30 @@ components can coexist.
 - Keep Wave's Hermes access limited to chat and explicit conversational tools; do not quietly add
   configuration or administrative capabilities.
 
+## Hermes transport
+
+The transport boundary is `src/services/hermes`. UI and feature code should use its `HermesClient`
+interface and normalized events instead of raw HTTP or SSE payloads. The client supports an
+optional profile or proxy prefix in the base URL, requires HTTPS unless an explicit local
+development exception is enabled, and never exposes raw tool arguments through its event types.
+
+Run its deterministic tests with:
+
+```bash
+npm test
+```
+
+Once a private API Server endpoint is available, the opt-in real integration probe is:
+
+```bash
+npm run test:hermes:integration
+```
+
+It requires `HERMES_API_URL` and `HERMES_API_KEY` in the process environment. Do not commit them,
+put the key in an `EXPO_PUBLIC_*` variable, or pass it as a command-line argument. Full setup and
+cancellation semantics are documented in
+[`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md).
+
 ## Reference documentation
 
 - [Expo SDK 57 documentation](https://docs.expo.dev/versions/v57.0.0/)
@@ -127,3 +157,4 @@ components can coexist.
 - [PanelUI CLI](https://www.panelui.dev/docs/cli)
 - [PanelUI theming](https://www.panelui.dev/docs/theming)
 - [OpenAI Realtime API](https://platform.openai.com/docs/api-reference/realtime)
+- [Hermes connectivity contract](./docs/hermes-connectivity.md)

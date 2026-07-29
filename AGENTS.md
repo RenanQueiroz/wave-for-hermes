@@ -73,6 +73,9 @@ documentation before implementing UI.
   client credentials suitable for a Realtime session.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
+- Hermes HTTP, SSE, capability, and error normalization lives under `src/services/hermes`. Feature
+  and UI code should depend on its `HermesClient` interface and normalized events, never raw
+  request or stream payloads.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
 - Do not silently broaden a chat tool into arbitrary administration access.
@@ -83,6 +86,7 @@ documentation before implementing UI.
 Run checks proportional to the change. The normal repository handoff is:
 
 ```bash
+npm test
 npm run lint
 npx tsc --noEmit
 npx expo install --check
