@@ -44,6 +44,8 @@ The repository is at the application-foundation and transport stage. It currentl
 - Expo SDK 57 with Expo Router and development-client support for iOS and Android;
 - [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
 - Uniwind and Tailwind CSS v4 for PanelUI themes and utility styling;
+- the Expo SDK 57-native [`react-native-webrtc` foundation](./docs/webrtc-foundation.md), including
+  an audio-only development proof validated on iOS and Android;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
 - a typed, bearer-authenticated Hermes Sessions API adapter with capability validation, streamed
@@ -93,6 +95,18 @@ Native identifiers are configured in `app.json`:
 
 - iOS bundle identifier: `com.renanqueiroz.wave`
 - Android application ID: `com.renanqueiroz.wave`
+
+### WebRTC development proof
+
+After installing `react-native-webrtc` or changing microphone permissions, rebuild the native
+development client; a JavaScript reload alone cannot add native code. In a development build, open
+**Explore** and select **Start proof** to verify microphone acquisition, a local peer negotiation,
+a remote audio track, a data-channel echo, and cleanup. Wave requests microphone access only and
+explicitly blocks the Android camera permission.
+
+The proof is a native foundation check, not the production OpenAI Realtime transport. See
+[`docs/webrtc-foundation.md`](./docs/webrtc-foundation.md) for the exact workflow, validation
+record, automation hooks, and remaining physical-device gates.
 
 ## Checks
 
@@ -167,3 +181,4 @@ a command-line argument. Full setup and cancellation semantics are documented in
 - [PanelUI theming](https://www.panelui.dev/docs/theming)
 - [OpenAI Realtime API](https://platform.openai.com/docs/api-reference/realtime)
 - [Hermes connectivity contract](./docs/hermes-connectivity.md)
+- [WebRTC foundation and validation](./docs/webrtc-foundation.md)

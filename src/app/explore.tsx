@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Collapsible } from '@/components/ui/collapsible';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { WebRtcProofCard } from '@/dev/webrtc-proof-card';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function TabTwoScreen() {
@@ -54,6 +55,8 @@ export default function TabTwoScreen() {
         </ThemedView>
 
         <ThemedView style={styles.sectionsWrapper}>
+          {__DEV__ ? <WebRtcProofCard /> : null}
+
           <Collapsible title="File-based routing">
             <ThemedText type="small">
               This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}

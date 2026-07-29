@@ -101,6 +101,26 @@ documentation before implementing UI.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Do not log access tokens, full authorization headers, or sensitive conversation payloads.
 
+## WebRTC foundation
+
+- `react-native-webrtc` is the accepted native foundation for the future OpenAI Realtime
+  transport. Keep the production peer connection, media tracks, data channels, timers, and cleanup
+  behind a focused `RealtimeTransport`/controller boundary; React components render snapshots and
+  do not own raw WebRTC objects.
+- Wave live voice is audio-only. Keep product-specific microphone configuration in `app.json` and
+  keep Android camera permission explicitly blocked unless the product contract deliberately
+  changes.
+- Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
+  SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
+  native edits or repository-owned config plugin.
+- The Explore-screen loopback proof under `src/dev` is development-only. It validates native
+  loading, microphone tracks, local negotiation, remote track delivery, data-channel echo, and
+  cleanup; it is not a production Realtime transport.
+- After changing WebRTC/native dependencies or permissions, run a clean prebuild and native build
+  on both affected platforms. Do not call voice production-ready until the physical-device,
+  routing, interruption, release-build, and real Realtime gates in
+  `docs/webrtc-foundation.md` pass.
+
 ## Verification
 
 Run checks proportional to the change. The normal repository handoff is:
@@ -115,7 +135,8 @@ npm run mobile:smoke:production
 
 For runtime work, also exercise the affected flow on every changed native platform. The mobile
 automation tooling is documented in `tools/mobile-agent/README.md`; keep its server, CLI, and MCP
-contracts in sync when modifying it.
+contracts in sync when modifying it. Native dependency or app-configuration changes also require
+`npx expo prebuild --clean`, affected native builds, and `npx expo-doctor`.
 
 ## Documentation is part of the change
 
