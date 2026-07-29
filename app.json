@@ -8,9 +8,11 @@
     "scheme": "wave",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.renanqueiroz.wave"
     },
     "android": {
+      "package": "com.renanqueiroz.wave",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

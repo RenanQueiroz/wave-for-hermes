@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "Radon IDE panel",
+            "type": "radon-ide",
+            "request": "launch",
+            "appRoot": "./",
+            "env": {
+                "EXPO_UNSTABLE_MCP_SERVER": "1"
+            },
+            "ios": {},
+            "android": {},
+            "usePrebuild": false
+        }
+    ]
+}
