@@ -33,6 +33,19 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - The generated `ios/` and `android/` directories are ignored. Make durable native changes through
   app configuration or config plugins unless the project explicitly changes that policy.
 
+## Runtime and workspace
+
+- Use Node.js 24 LTS and npm. The repository root remains the Expo application and npm workspace
+  root.
+- The Wave Companion belongs in `companion/`; runtime-neutral Wave protocol schemas belong in
+  `packages/contracts/`. Do not move the Expo app into another workspace.
+- Keep `packages/contracts` free of Node.js, React Native, Expo, OpenAI SDK, Fastify, and UI
+  dependencies so both the companion and Metro can consume it.
+- Use the official OpenAI JavaScript SDK only in the companion. Do not import it into the React
+  Native application.
+- Homelab owns deployment manifests, private networking, pinned production images, Nginx routing,
+  and secrets. This repository owns the companion implementation and its API contract.
+
 ## UI system
 
 PanelUI is the shared UI component system. Read https://www.panelui.dev/docs and its component
@@ -69,15 +82,22 @@ documentation before implementing UI.
 
 ## Realtime and Hermes boundaries
 
-- A standard OpenAI API key must remain server-side. The mobile app may only receive short-lived
-  client credentials suitable for a Realtime session.
+- The Wave Companion is the mobile application's only production backend. Mobile feature and UI
+  code should depend on a `WaveBackendClient` and normalized Wave contracts, never on Hermes
+  protocol types.
+- Standard OpenAI and Hermes API keys must remain in the companion. The mobile app may hold only a
+  revocable device-scoped companion credential and short-lived Realtime connection material.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
-- Hermes HTTP, SSE, capability, and error normalization lives under `src/services/hermes`. Feature
-  and UI code should depend on its `HermesClient` interface and normalized events, never raw
-  request or stream payloads.
+- Hermes HTTP, SSE, capability, and error normalization belongs in the companion's server-only
+  Hermes adapter. The existing implementation remains temporarily under `src/services/hermes`
+  only until the companion workspace is introduced; do not import it into new mobile feature or UI
+  code.
+- Do not retain a second production Hermes transport in the mobile bundle after the adapter moves.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
+- Bind the active Hermes session to trusted companion call state. Do not accept a model-controlled
+  Hermes session ID in `ask_hermes` arguments.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Do not log access tokens, full authorization headers, or sensitive conversation payloads.
 

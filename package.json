@@ -41,6 +41,9 @@
     "expo-mcp": "~0.2.1",
     "typescript": "~6.0.3"
   },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "start": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start",
     "android": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --android",

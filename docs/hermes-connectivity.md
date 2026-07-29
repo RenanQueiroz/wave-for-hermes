@@ -1,11 +1,12 @@
 # Hermes connectivity
 
-Wave talks to Hermes through the Hermes API Server over private HTTPS. It does not use the
+The Wave Companion talks to Hermes through the Hermes API Server. The mobile application talks only
+to the companion over private HTTPS; it does not receive the Hermes bearer key or use the
 dashboard's PTY or WebSocket protocol.
 
-## Current client boundary
+## Current server adapter
 
-The transport lives under `src/services/hermes` and currently provides:
+The Hermes adapter is temporarily staged under `src/services/hermes` and currently provides:
 
 - bearer-authenticated capability probing;
 - session creation and listing;
@@ -16,12 +17,14 @@ The transport lives under `src/services/hermes` and currently provides:
 - normalized configuration, authentication, network, timeout, server, and protocol errors;
 - redaction that prevents bearer keys and raw tool arguments from entering events or errors.
 
-Screens should depend on the `HermesClient` interface and normalized event types. They should not
-construct Hermes URLs, authorization headers, request bodies, or SSE frames.
+It uses standard `fetch`, `ReadableStream`, `AbortController`, and encoding APIs with no Expo or
+React Native imports. That keeps it suitable for relocation into the Node.js companion without a
+transport rewrite.
 
-Expo SDK 57 installs `expo/fetch` as the global `fetch` implementation on iOS and Android. Its
-documented `ReadableStream` support is sufficient for incremental SSE, so Wave does not carry a
-second event-source dependency.
+When the companion workspace is introduced, move the implementation, fixture, tests, and
+integration probe behind its server-only Hermes boundary. Do not import `HermesClient` into mobile
+features. The mobile application will instead use `WaveBackendClient` and Wave-owned normalized
+contracts from `packages/contracts`.
 
 ## Minimum server contract
 
@@ -53,10 +56,10 @@ session_messages
 sessions
 ```
 
-The source-derived fixture is
+The source-derived fixture is currently
 `src/services/hermes/__fixtures__/capabilities-v2026.7.20.json`. Replace it with a sanitized live
 response after the private endpoint is enabled and verify that the meaningful contract has not
-drifted.
+drifted. Its path will move with the adapter.
 
 ## Streaming and cancellation
 
@@ -80,21 +83,19 @@ That deployment should:
 
 1. enable the API server with a strong unique `API_SERVER_KEY`;
 2. bind port `8642` to the container's private Compose network, never directly to the LAN;
-3. route a dedicated prefix such as `/wave/` from the existing private Tailscale HTTPS service to
-   the API server, stripping that prefix upstream;
-4. keep dashboard traffic on port `9119`;
-5. disable proxy response/request buffering and retain long streaming timeouts;
-6. preserve bearer authentication on the API server and existing dashboard authentication;
-7. avoid CORS configuration unless a browser client is intentionally added.
+3. place the Wave Companion on the same explicit private network;
+4. let only the companion call the API Server in production;
+5. expose the companion through the existing private Nginx/Tailscale HTTPS edge without publishing
+   a direct host or LAN port;
+6. disable proxy response buffering and retain long streaming timeouts for the companion's Wave
+   event stream;
+7. preserve Hermes bearer authentication and existing dashboard authentication;
+8. avoid CORS configuration because Wave supports native iOS and Android only.
 
-Using `/wave/` avoids collisions with the dashboard's own `/api/*` routes. A resulting client base
-URL has this shape:
-
-```text
-https://<private-hermes-service>/wave
-```
-
-Wave then appends `/v1/capabilities`, `/api/sessions`, and the other advertised paths.
+Container-to-container Hermes traffic may use an explicit private-network HTTP exception such as
+`http://hermes:8642`; the companion's externally reachable Wave API still requires private HTTPS.
+An optional development-only Hermes edge may be used by the integration probe, but it is not the
+mobile production API and must not weaken dashboard or API authentication.
 
 ## Validation
 
@@ -104,8 +105,8 @@ Run deterministic transport tests:
 npm test
 ```
 
-After the private endpoint exists, put the key into the shell without committing it or placing it
-in a command argument, then run the integration probe:
+After a development endpoint exists, put the key into the shell without committing it or placing
+it in a command argument, then run the server-side integration probe:
 
 ```bash
 read -s HERMES_API_KEY
@@ -117,4 +118,5 @@ unset HERMES_API_KEY HERMES_API_URL
 
 The probe validates capabilities, creates a session unless `HERMES_INTEGRATION_SESSION_ID` is
 provided, and completes one streamed turn. It prints only the resulting session ID, never the key
-or response content.
+or response content. These variables belong only to the local integration process or deployed
+companion; they must never use the `EXPO_PUBLIC_*` prefix or enter mobile storage.
