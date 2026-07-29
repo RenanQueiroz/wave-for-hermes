@@ -29,14 +29,16 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "cross-env": "^10.1.0",
+    "expo-mcp": "~0.2.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "android": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --android",
+    "ios": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --ios",
+    "web": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --web",
     "lint": "expo lint"
   },
   "private": true
