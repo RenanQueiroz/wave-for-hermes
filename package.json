@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/ui": "~57.0.7",
     "@react-native-masked-view/masked-view": "0.3.2",
+    "@rnrepo/expo-config-plugin": "^0.3.5",
     "expo": "~57.0.8",
     "expo-constants": "~57.0.7",
     "expo-dev-client": "~57.0.9",
