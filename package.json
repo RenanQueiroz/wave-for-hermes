@@ -41,7 +41,18 @@
     "android": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --android",
     "ios": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --ios",
     "web": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "mobile:build": "npm --prefix tools/mobile-agent run build",
+    "mobile:check": "npm --prefix tools/mobile-agent run check",
+    "mobile:doctor": "npm --prefix tools/mobile-agent run doctor",
+    "mobile:install": "npm --prefix tools/mobile-agent install",
+    "mobile:mcp": "npm --prefix tools/mobile-agent run mcp",
+    "mobile:prepare:ios": "npm --prefix tools/mobile-agent run prepare:ios",
+    "mobile:prune:artifacts": "npm --prefix tools/mobile-agent run prune:artifacts --",
+    "mobile:smoke:android": "npm --prefix tools/mobile-agent run smoke:android --",
+    "mobile:smoke:observability": "npm --prefix tools/mobile-agent run smoke:observability --",
+    "mobile:smoke:ios": "npm --prefix tools/mobile-agent run smoke:ios --",
+    "mobile:smoke:production": "npm --prefix tools/mobile-agent run smoke:production --"
   },
   "private": true
 }

@@ -1,3 +1,7 @@
 [mcp_servers.expo]
 url = "https://mcp.expo.dev/mcp"
 auth = "oauth"
+
+[mcp_servers.wave-mobile-agent]
+command = "npm"
+args = ["--silent", "--prefix", "tools/mobile-agent", "run", "mcp"]

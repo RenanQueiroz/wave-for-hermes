@@ -3,6 +3,17 @@
     "expo": {
       "type": "http",
       "url": "https://mcp.expo.dev/mcp"
+    },
+    "wave-mobile-agent": {
+      "type": "stdio",
+      "command": "npm",
+      "args": [
+        "--silent",
+        "--prefix",
+        "tools/mobile-agent",
+        "run",
+        "mcp"
+      ]
     }
   }
 }

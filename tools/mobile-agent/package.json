@@ -1,0 +1,40 @@
+{
+  "name": "@wave/mobile-agent",
+  "version": "0.1.0",
+  "description": "Repository-local mobile automation for Radon-managed Expo development builds",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mobile-agent": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run build && npm test",
+    "doctor": "npm run build --silent && node --enable-source-maps dist/cli.js doctor",
+    "mcp": "npm run build --silent && node --enable-source-maps dist/server.js",
+    "prepare:ios": "npm run build --silent && node --enable-source-maps dist/cli.js prepare-ios",
+    "prune:artifacts": "npm run build --silent && node --enable-source-maps dist/cli.js prune-artifacts",
+    "smoke:android": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-android",
+    "smoke:observability": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-observability",
+    "smoke:ios": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-ios",
+    "smoke:production": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-production",
+    "test": "node --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@opentelemetry/api": "1.9.1",
+    "@xmldom/xmldom": "0.9.10",
+    "appium-mcp": "1.90.0",
+    "appium-xcuitest-driver": "12.1.0",
+    "ws": "8.21.1",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.0",
+    "@types/ws": "8.18.1",
+    "typescript": "6.0.3"
+  }
+}

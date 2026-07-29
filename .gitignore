@@ -44,3 +44,6 @@ example
 
 # local implementation plans
 /plans/
+
+# local mobile-agent artifacts
+/.mobile-agent/
