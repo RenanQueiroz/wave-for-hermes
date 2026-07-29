@@ -479,6 +479,22 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
     });
 
     registry.addTool({
+      name: 'mobile_reload',
+      description:
+        'Request a JavaScript reload through the existing Wave Hermes inspector connection. The collector reconnects automatically when the runtime target returns.',
+      parameters: z.object({}),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+      execute: async () =>
+        withToolErrors('RELOAD_FAILED', async () => {
+          return await this.observability.reloadApplication();
+        }),
+    });
+
+    registry.addTool({
       name: 'mobile_run_observability_probe',
       description:
         'Emit one fixed local console/fetch diagnostic through the existing Hermes connection. Accepts only a generated probe marker and cannot evaluate caller-provided JavaScript or contact a non-Metro URL.',

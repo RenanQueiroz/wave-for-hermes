@@ -273,6 +273,27 @@ export class ObservabilityCollector {
     }
   }
 
+  async reloadApplication(): Promise<{
+    ok: true;
+    applicationId: string;
+    targetId: string;
+    durationMs: number;
+    reconnecting: true;
+  }> {
+    await this.ensureConnected();
+    const targetId = this.target?.id;
+    if (!targetId) throw new Error('The Hermes inspector target ID is unavailable.');
+    const startedAt = Date.now();
+    await this.send('Page.reload');
+    return {
+      ok: true,
+      applicationId: 'com.renanqueiroz.wave',
+      targetId,
+      durationMs: Date.now() - startedAt,
+      reconnecting: true,
+    };
+  }
+
   clear(): void {
     this.logs.length = 0;
     this.requests.clear();

@@ -17,6 +17,7 @@
     "mcp": "npm run build --silent && node --enable-source-maps dist/server.js",
     "prepare:ios": "npm run build --silent && node --enable-source-maps dist/cli.js prepare-ios",
     "prune:artifacts": "npm run build --silent && node --enable-source-maps dist/cli.js prune-artifacts",
+    "reload": "npm run build --silent && node --enable-source-maps dist/cli.js reload",
     "smoke:android": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-android",
     "smoke:observability": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-observability",
     "smoke:ios": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-ios",

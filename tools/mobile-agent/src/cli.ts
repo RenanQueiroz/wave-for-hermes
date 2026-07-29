@@ -5,6 +5,7 @@ import { capabilitiesFor } from './capabilities.js';
 import { loadConfig } from './config.js';
 import { runDoctor } from './doctor.js';
 import { formatDoctor } from './format.js';
+import { ObservabilityCollector } from './observability.js';
 import { runAndroidSmoke } from './smoke/android.js';
 import { runIosSmoke } from './smoke/ios.js';
 import { runObservabilitySmoke } from './smoke/observability.js';
@@ -55,6 +56,18 @@ async function main(args = process.argv.slice(2)): Promise<number> {
     return 0;
   }
 
+  if (command === 'reload') {
+    const observability = new ObservabilityCollector(config);
+    try {
+      process.stdout.write(
+        `${JSON.stringify(await observability.reloadApplication(), null, 2)}\n`,
+      );
+      return 0;
+    } finally {
+      await observability.stop();
+    }
+  }
+
   if (command === 'smoke-ios') {
     const report = await runIosSmoke(config);
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -100,6 +113,7 @@ async function main(args = process.argv.slice(2)): Promise<number> {
       '  devices                            List discovered iOS and Android devices',
       '  capabilities --platform ios|android',
       '  prepare-ios                        Download/cache verified simulator WebDriverAgent',
+      '  reload                             Reload Wave JavaScript through Hermes CDP',
       '  smoke-observability [--platform ios|android] [--target-id id]',
       '  smoke-android                      Run the non-destructive Radon Android Appium smoke',
       '  smoke-ios                          Run the non-destructive Radon iOS Appium spike',

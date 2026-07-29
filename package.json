@@ -53,6 +53,7 @@
     "mobile:mcp": "npm --prefix tools/mobile-agent run mcp",
     "mobile:prepare:ios": "npm --prefix tools/mobile-agent run prepare:ios",
     "mobile:prune:artifacts": "npm --prefix tools/mobile-agent run prune:artifacts --",
+    "mobile:reload": "npm --prefix tools/mobile-agent run reload",
     "mobile:smoke:android": "npm --prefix tools/mobile-agent run smoke:android --",
     "mobile:smoke:observability": "npm --prefix tools/mobile-agent run smoke:observability --",
     "mobile:smoke:ios": "npm --prefix tools/mobile-agent run smoke:ios --",

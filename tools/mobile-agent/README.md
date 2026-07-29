@@ -38,8 +38,9 @@ automation itself requires macOS/Xcode.
 5. Inspect with `mobile_get_element_tree`; query with `mobile_find_elements`.
 6. Use `mobile_tap` for snapshot-safe native taps. Appium's built-in gesture, text,
    lifecycle, deep-link, screenshot, and key tools cover the remaining native actions.
-7. Query JavaScript logs, network activity, native logs, or registered development state.
-8. Delete the Appium session when finished. Disconnect cleanup also deletes any owned
+7. Call `mobile_reload` when Wave needs a JavaScript reload without restarting Radon.
+8. Query JavaScript logs, network activity, native logs, or registered development state.
+9. Delete the Appium session when finished. Disconnect cleanup also deletes any owned
    session.
 
 The MCP server adds these Wave-specific tools to Appium's standard tool set:
@@ -50,7 +51,7 @@ The MCP server adds these Wave-specific tools to Appium's standard tool set:
 - Artifacts: `mobile_prune_artifacts`
 - Observability: `mobile_observability_status`, `mobile_get_logs`,
   `mobile_get_network_requests`, `mobile_get_network_request`,
-  `mobile_get_native_logs`, `mobile_clear_observability`
+  `mobile_get_native_logs`, `mobile_clear_observability`, `mobile_reload`
 - Controlled diagnostics: `mobile_run_observability_probe`
 - Development state: `mobile_list_state_providers`, `mobile_read_state`
 
@@ -64,6 +65,7 @@ node dist/cli.js doctor --json
 node dist/cli.js devices
 node dist/cli.js capabilities --platform ios
 npm run prepare:ios
+npm run reload
 npm run prune:artifacts
 npm run prune:artifacts -- --confirm
 npm run smoke:android
@@ -78,6 +80,9 @@ npm run mcp
 selected Radon device without terminating the running app. `smoke:observability` verifies
 Hermes logs, fetch metadata, the development state provider, and platform-native logs
 without creating an Appium session.
+`reload` sends the React Native inspector's supported `Page.reload` command and exits
+after Metro accepts it; the long-running MCP collector reconnects when Wave's Hermes
+target returns.
 It auto-selects the platform only when exactly one is ready. If multiple Wave Hermes
 targets are connected, pass `--target-id` using an ID reported by `mobile_doctor`.
 `smoke:production` creates ignored iOS and Android production exports and verifies
