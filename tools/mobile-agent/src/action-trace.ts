@@ -10,6 +10,12 @@ import type { HierarchySnapshot } from './hierarchy.js';
 export interface ActionTraceContext {
   id: string;
   directory: string;
+  action: string;
+  platform: ResolvedDriver['platform'];
+  deviceId: string;
+  applicationId: string;
+  sessionId: string;
+  target: Record<string, unknown>;
   startedAt: string;
   beforeSnapshotId: string;
   beforeScreenshotPath?: string;
@@ -19,6 +25,12 @@ export interface ActionTraceContext {
 export interface ActionTraceResult {
   id: string;
   directory: string;
+  action: string;
+  platform: ResolvedDriver['platform'];
+  deviceId: string;
+  applicationId: string;
+  sessionId: string;
+  target: Record<string, unknown>;
   startedAt: string;
   completedAt: string;
   before: {
@@ -36,6 +48,10 @@ export async function beginActionTrace(
   config: MobileAgentConfig,
   resolved: ResolvedDriver,
   snapshot: HierarchySnapshot,
+  metadata: {
+    action: string;
+    target: Record<string, unknown>;
+  },
 ): Promise<ActionTraceContext> {
   const id = `${Date.now()}-${randomUUID()}`;
   const directory = join(config.artifactsDir, 'traces', id);
@@ -50,6 +66,12 @@ export async function beginActionTrace(
   return {
     id,
     directory,
+    action: metadata.action,
+    platform: resolved.platform,
+    deviceId: resolved.deviceId,
+    applicationId: resolved.applicationId,
+    sessionId: resolved.sessionId,
+    target: metadata.target,
     startedAt: new Date().toISOString(),
     beforeSnapshotId: snapshot.id,
     ...(beforeScreenshotPath ? { beforeScreenshotPath } : {}),
@@ -74,6 +96,12 @@ export async function completeActionTrace(
   const result: ActionTraceResult = {
     id: context.id,
     directory: context.directory,
+    action: context.action,
+    platform: context.platform,
+    deviceId: context.deviceId,
+    applicationId: context.applicationId,
+    sessionId: context.sessionId,
+    target: context.target,
     startedAt: context.startedAt,
     completedAt: new Date().toISOString(),
     before: {

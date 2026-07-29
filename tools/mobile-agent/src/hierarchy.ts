@@ -105,6 +105,10 @@ export class HierarchyStore {
   isLatest(snapshotId: string, sessionId: string): boolean {
     return this.latestBySession.get(sessionId) === snapshotId;
   }
+
+  invalidate(sessionId: string): void {
+    this.latestBySession.delete(sessionId);
+  }
 }
 
 export function parseHierarchy(

@@ -36,8 +36,8 @@ automation itself requires macOS/Xcode.
 4. Pass the complete capabilities object to `appium_session_management` with
    `action=create`.
 5. Inspect with `mobile_get_element_tree`; query with `mobile_find_elements`.
-6. Use `mobile_tap` for snapshot-safe native taps. Appium's built-in gesture, text,
-   lifecycle, deep-link, screenshot, and key tools cover the remaining native actions.
+6. Use the Wave action tools for snapshot-safe gestures, text, navigation, lifecycle,
+   and deep links. They all return the unified action envelope described below.
 7. Call `mobile_reload` when Wave needs a JavaScript reload without restarting Radon.
 8. Query JavaScript logs, network activity, native logs, or registered development state.
 9. Delete the Appium session when finished. Disconnect cleanup also deletes any owned
@@ -47,13 +47,45 @@ The MCP server adds these Wave-specific tools to Appium's standard tool set:
 
 - Environment: `mobile_doctor`, `mobile_list_devices`, `mobile_get_capabilities`,
   `mobile_prepare_ios_wda`
-- Native UI: `mobile_get_element_tree`, `mobile_find_elements`, `mobile_tap`
+- Native UI: `mobile_get_element_tree`, `mobile_find_elements`
+- Unified actions: `mobile_tap`, `mobile_long_press`, `mobile_type_text`,
+  `mobile_clear_text`, `mobile_swipe`, `mobile_scroll`, `mobile_drag`,
+  `mobile_press_key`, `mobile_app_lifecycle`, `mobile_open_deep_link`,
+  `mobile_reload`
 - Artifacts: `mobile_prune_artifacts`
 - Observability: `mobile_observability_status`, `mobile_get_logs`,
   `mobile_get_network_requests`, `mobile_get_network_request`,
   `mobile_get_native_logs`, `mobile_clear_observability`, `mobile_reload`
 - Controlled diagnostics: `mobile_run_observability_probe`
 - Development state: `mobile_list_state_providers`, `mobile_read_state`
+
+Appium's standard tools remain registered as a lower-level fallback. Prefer the Wave tools
+for normal agent work because they enforce current-snapshot checks where applicable and
+return one machine-readable contract:
+
+```json
+{
+  "ok": true,
+  "action": "tap",
+  "platform": "ios",
+  "deviceId": "<dynamic-device-id>",
+  "applicationId": "com.renanqueiroz.wave",
+  "sessionId": "<appium-session-id>",
+  "startedAt": "2026-07-29T20:00:00.000Z",
+  "completedAt": "2026-07-29T20:00:00.500Z",
+  "durationMs": 500,
+  "target": {},
+  "beforeSnapshotId": "<snapshot-id>",
+  "afterSnapshotId": "<snapshot-id>",
+  "result": {},
+  "trace": {},
+  "warnings": []
+}
+```
+
+Failed actions return `ok=false`, the attempted action and any identity/target already
+resolved, `durationMs`, and an `error` object with a stable `code`, `message`, and optional
+`recovery`. `sessionId`, snapshot IDs, and trace are omitted when they do not apply.
 
 ## CLI commands
 
@@ -65,7 +97,7 @@ node dist/cli.js doctor --json
 node dist/cli.js devices
 node dist/cli.js capabilities --platform ios
 npm run prepare:ios
-npm run reload
+npm run reload -- --platform ios
 npm run prune:artifacts
 npm run prune:artifacts -- --confirm
 npm run smoke:android
@@ -80,11 +112,12 @@ npm run mcp
 selected Radon device without terminating the running app. `smoke:observability` verifies
 Hermes logs, fetch metadata, the development state provider, and platform-native logs
 without creating an Appium session.
-`reload` sends the React Native inspector's supported `Page.reload` command and exits
-after Metro accepts it; the long-running MCP collector reconnects when Wave's Hermes
-target returns.
-It auto-selects the platform only when exactly one is ready. If multiple Wave Hermes
-targets are connected, pass `--target-id` using an ID reported by `mobile_doctor`.
+`reload` sends the React Native inspector's supported `Page.reload` command, prints the
+unified action envelope, and exits after Metro accepts it; the long-running MCP collector
+reconnects when Wave's Hermes target returns. It auto-selects the platform only when
+exactly one is ready; otherwise pass `--platform`. If multiple Wave Hermes targets are
+connected, set `MOBILE_AGENT_OBSERVABILITY_TARGET_ID` to an ID reported by
+`mobile_doctor`.
 `smoke:production` creates ignored iOS and Android production exports and verifies
 that the development state bridge is absent from both native bundles.
 
@@ -109,9 +142,19 @@ obtain the current dynamic identifiers.
 - iOS preparation downloads Appium's pinned prebuilt WebDriverAgent release and verifies
   its architecture-specific SHA-256 before extraction.
 - Capabilities preserve the installed development build and app data (`noReset`).
-- Snapshot actions reject stale IDs. Coordinate taps require an explicit opt-in.
-- Normalized taps capture local before/after screenshots and hierarchies by default.
-  Set `captureTrace=false` for an individual tap to opt out.
+- Snapshot-backed actions reject stale IDs. Locator-backed taps, long presses, and drags
+  require an explicit opt-in before falling back to snapshot coordinates.
+- Every attempted native action invalidates its previous hierarchy snapshot. Traced actions
+  return a fresh after-snapshot; untraced actions require a new tree before another
+  node-backed action.
+- Wave gesture actions capture local before/after screenshots and hierarchies by default.
+  Text entry, text clearing, lifecycle operations, and deep links default trace capture off
+  to avoid persisting credentials or sensitive app state. A caller may explicitly opt in.
+- Text action responses include character counts but never echo the supplied text. Deep-link
+  targets redact sensitive query parameters before entering responses or traces.
+- Wave lifecycle actions intentionally expose only activate, terminate, and temporary
+  backgrounding. They do not expose install, uninstall, app-data clearing, arbitrary W3C
+  action payloads, shell execution, or device switching.
 - Hermes buffers are bounded. Authorization, cookies, tokens, passwords, and common
   secret fields are redacted before storage.
 - Response bodies are off by default and limited to text/JSON under 64 KiB when

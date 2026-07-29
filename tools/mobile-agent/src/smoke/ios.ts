@@ -51,6 +51,8 @@ export async function runIosSmoke(config: MobileAgentConfig): Promise<IosSmokeRe
       'mobile_doctor',
       'mobile_get_element_tree',
       'mobile_find_elements',
+      'mobile_app_lifecycle',
+      'mobile_scroll',
       'mobile_tap',
       'appium_session_management',
       'appium_get_page_source',
@@ -89,12 +91,16 @@ export async function runIosSmoke(config: MobileAgentConfig): Promise<IosSmokeRe
       detail: created.text,
     });
 
-    const activated = await callToolText(connection.client, 'appium_app_lifecycle', {
+    const activated = await callToolText(connection.client, 'mobile_app_lifecycle', {
       action: 'activate',
-      id: 'com.renanqueiroz.wave',
       ...sessionArgs(sessionId),
     });
     assertToolSucceeded('activate-wave', activated);
+    assertActionEnvelope(
+      parseJsonObject(activated.text, 'activate action result'),
+      'activate',
+      sessionId,
+    );
     report.steps.push({
       name: 'activate-wave',
       ok: true,
@@ -179,6 +185,8 @@ export async function runIosSmoke(config: MobileAgentConfig): Promise<IosSmokeRe
     });
     assertToolSucceeded('safe-tap', tapped);
     const tapResult = parseJsonObject(tapped.text, 'normalized tap result');
+    assertActionEnvelope(tapResult, 'tap', sessionId);
+    const afterSnapshotId = readString(tapResult, 'afterSnapshotId');
     const trace = tapResult.trace;
     if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
       throw new Error('The normalized tap did not return its before/after action trace.');
@@ -194,6 +202,37 @@ export async function runIosSmoke(config: MobileAgentConfig): Promise<IosSmokeRe
       name: 'action-trace',
       ok: true,
       detail: `Captured before/after hierarchy and screenshots under ${report.traceDirectory}.`,
+    });
+
+    const scrolled = await callToolText(connection.client, 'mobile_scroll', {
+      direction: 'up',
+      distance: 0.1,
+      captureTrace: false,
+      ...sessionArgs(sessionId),
+    });
+    assertToolSucceeded('unified-scroll', scrolled);
+    assertActionEnvelope(
+      parseJsonObject(scrolled.text, 'scroll action result'),
+      'scroll',
+      sessionId,
+    );
+    report.steps.push({
+      name: 'unified-scroll',
+      ok: true,
+      detail: 'Verified bounded iOS W3C scrolling through the unified action envelope.',
+    });
+
+    const staleTap = await callToolText(connection.client, 'mobile_tap', {
+      snapshotId: afterSnapshotId,
+      nodeId,
+      captureTrace: false,
+      ...sessionArgs(sessionId),
+    });
+    assertStaleSnapshotRejected(staleTap, sessionId, afterSnapshotId);
+    report.steps.push({
+      name: 'stale-snapshot-guard',
+      ok: true,
+      detail: 'Verified that an untraced action invalidates the previous hierarchy snapshot.',
     });
 
     report.ok = true;
@@ -221,6 +260,68 @@ export async function runIosSmoke(config: MobileAgentConfig): Promise<IosSmokeRe
       });
     }
     await connection.close();
+  }
+}
+
+function assertStaleSnapshotRejected(
+  result: ToolTextResult,
+  sessionId: string | undefined,
+  snapshotId: string,
+): void {
+  if (!result.isError) {
+    throw new Error('Expected the previous hierarchy snapshot to be rejected as stale.');
+  }
+  const envelope = parseJsonObject(result.text, 'stale snapshot error');
+  const error = envelope.error;
+  const target = envelope.target;
+  if (
+    envelope.ok !== false ||
+    envelope.action !== 'tap' ||
+    envelope.platform !== 'ios' ||
+    typeof envelope.deviceId !== 'string' ||
+    envelope.applicationId !== 'com.renanqueiroz.wave' ||
+    (sessionId && envelope.sessionId !== sessionId) ||
+    typeof envelope.durationMs !== 'number' ||
+    !target ||
+    typeof target !== 'object' ||
+    Array.isArray(target) ||
+    (target as Record<string, unknown>).snapshotId !== snapshotId ||
+    !error ||
+    typeof error !== 'object' ||
+    Array.isArray(error) ||
+    (error as Record<string, unknown>).code !== 'STALE_SNAPSHOT'
+  ) {
+    throw new Error('Expected the stale action error code to be STALE_SNAPSHOT.');
+  }
+}
+
+function assertActionEnvelope(
+  value: Record<string, unknown>,
+  action: string,
+  sessionId: string | undefined,
+): void {
+  if (value.ok !== true || value.action !== action) {
+    throw new Error(`Expected a successful "${action}" unified action envelope.`);
+  }
+  if (value.platform !== 'ios') {
+    throw new Error(`Expected the "${action}" action to identify platform ios.`);
+  }
+  if (
+    typeof value.deviceId !== 'string' ||
+    value.applicationId !== 'com.renanqueiroz.wave' ||
+    typeof value.durationMs !== 'number' ||
+    !value.target ||
+    typeof value.target !== 'object' ||
+    Array.isArray(value.target) ||
+    !value.result ||
+    typeof value.result !== 'object' ||
+    Array.isArray(value.result) ||
+    !Array.isArray(value.warnings)
+  ) {
+    throw new Error(`The "${action}" result is missing unified action envelope fields.`);
+  }
+  if (sessionId && value.sessionId !== sessionId) {
+    throw new Error(`The "${action}" action returned an unexpected session ID.`);
   }
 }
 

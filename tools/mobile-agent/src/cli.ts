@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
+import { performDetachedAction, type MobileActionIdentity } from './actions.js';
 import { pruneActionTraces } from './artifacts.js';
 import { capabilitiesFor } from './capabilities.js';
-import { loadConfig } from './config.js';
+import { ANDROID_PACKAGE, IOS_BUNDLE_ID, loadConfig } from './config.js';
 import { runDoctor } from './doctor.js';
 import { formatDoctor } from './format.js';
 import { ObservabilityCollector } from './observability.js';
@@ -57,10 +58,37 @@ async function main(args = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === 'reload') {
+    const report = await runDoctor(config);
+    const platform =
+      readOptionalPlatform(args) ??
+      (report.readyPlatforms.length === 1 ? report.readyPlatforms[0] : undefined);
+    if (!platform) {
+      throw new Error(
+        'Reload target is ambiguous. Pass --platform ios or --platform android.',
+      );
+    }
+    const identity = reloadIdentity(report, platform);
     const observability = new ObservabilityCollector(config);
     try {
+      const target = { runtime: 'hermes' };
       process.stdout.write(
-        `${JSON.stringify(await observability.reloadApplication(), null, 2)}\n`,
+        `${JSON.stringify(
+          await performDetachedAction({
+            identity,
+            action: 'reload',
+            target,
+            operation: async () => {
+              const result = await observability.reloadApplication();
+              return {
+                targetId: result.targetId,
+                reconnecting: result.reconnecting,
+                method: 'hermes-cdp',
+              };
+            },
+          }),
+          null,
+          2,
+        )}\n`,
       );
       return 0;
     } finally {
@@ -113,7 +141,7 @@ async function main(args = process.argv.slice(2)): Promise<number> {
       '  devices                            List discovered iOS and Android devices',
       '  capabilities --platform ios|android',
       '  prepare-ios                        Download/cache verified simulator WebDriverAgent',
-      '  reload                             Reload Wave JavaScript through Hermes CDP',
+      '  reload [--platform ios|android]    Reload Wave JavaScript through Hermes CDP',
       '  smoke-observability [--platform ios|android] [--target-id id]',
       '  smoke-android                      Run the non-destructive Radon Android Appium smoke',
       '  smoke-ios                          Run the non-destructive Radon iOS Appium spike',
@@ -132,6 +160,25 @@ async function main(args = process.argv.slice(2)): Promise<number> {
     ].join('\n') + '\n',
   );
   return command === 'help' || command === '--help' || command === '-h' ? 0 : 2;
+}
+
+function reloadIdentity(
+  report: Awaited<ReturnType<typeof runDoctor>>,
+  platform: MobilePlatform,
+): MobileActionIdentity {
+  if (!report.readyPlatforms.includes(platform)) {
+    throw new Error(
+      `${platform} is not ready. Run mobile-agent doctor and resolve its diagnostics.`,
+    );
+  }
+  const deviceId =
+    platform === 'ios' ? report.ios.selected?.udid : report.android.selected?.serial;
+  if (!deviceId) throw new Error(`No selected ${platform} device is available.`);
+  return {
+    platform,
+    deviceId,
+    applicationId: platform === 'ios' ? IOS_BUNDLE_ID : ANDROID_PACKAGE,
+  };
 }
 
 function readPlatform(args: string[]): MobilePlatform {

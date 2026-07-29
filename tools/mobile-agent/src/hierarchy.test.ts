@@ -81,6 +81,9 @@ test('stores bounded snapshots and serializes filtered output', () => {
 
   assert.equal(store.isLatest(first.id, 'session'), false);
   assert.equal(store.isLatest(second.id, 'session'), true);
+  store.invalidate('session');
+  assert.equal(store.isLatest(second.id, 'session'), false);
+  assert.equal(store.get(second.id)?.id, second.id);
   const serialized = serializeHierarchy(second, { interactiveOnly: true, maxNodes: 1 });
   assert.equal(serialized.returnedNodeCount, 1);
   assert.equal(serialized.nodes.at(0)?.accessibilityId, 'Explore');
