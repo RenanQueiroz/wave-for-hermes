@@ -383,6 +383,7 @@ function ChatToolStep({
     <Task
       className={[
         'rounded-xl bg-muted px-3 py-2',
+        open ? 'gap-2' : 'gap-0',
         isLast ? 'rounded-es-md' : '',
         status === 'error'
           ? 'border border-destructive/30'
