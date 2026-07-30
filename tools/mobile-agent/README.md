@@ -74,7 +74,9 @@ contains repository-scoped definitions for both clients:
 Restart the client after installing dependencies. Claude Code asks for one-time approval
 of the shared project MCP; approve `wave-mobile-agent` when prompted. The config invokes
 `npm` with relative arguments and works on Windows, macOS, and Linux, although iOS
-automation itself requires macOS/Xcode.
+automation itself requires macOS/Xcode. On Android, the server discovers `adb` first and
+exports its SDK root before loading Appium, so a standard Android Studio installation does
+not require `ANDROID_HOME` to be exported into the editor process.
 
 ## Typical MCP workflow
 

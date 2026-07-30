@@ -2,8 +2,6 @@
 
 import { mkdir } from 'node:fs/promises';
 
-import { createAppiumMcpServer, verifyAppiumMcpNames } from 'appium-mcp/core';
-
 import { loadConfig } from './config.js';
 import {
   androidSdkRootFromAdbPath,
@@ -23,6 +21,12 @@ if (!process.env.ANDROID_HOME && !process.env.ANDROID_SDK_ROOT) {
   const sdkRoot = androidSdkRootFromAdbPath(android.adbPath);
   if (sdkRoot) process.env.ANDROID_HOME = sdkRoot;
 }
+
+// Appium resolves the Android SDK while its modules are loading, so discover and
+// export the SDK root before importing the core package.
+const { createAppiumMcpServer, verifyAppiumMcpNames } = await import(
+  'appium-mcp/core'
+);
 
 const plugins = [new WaveMobileAgentPlugin()];
 const verification = verifyAppiumMcpNames({ plugins });
