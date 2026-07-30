@@ -102,6 +102,9 @@ documentation before implementing UI.
 - Do not retain a second production Hermes transport in the mobile bundle after the adapter moves.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
+- Wave does not add a separate user-approval prompt before `ask_hermes`. Dispatch it automatically
+  only after strict schema validation, device/session authorization, and rate/concurrency checks;
+  Hermes's own tool safety policy remains authoritative.
 - Bind the active Hermes session to trusted companion call state. Do not accept a model-controlled
   Hermes session ID in `ask_hermes` arguments.
 - Do not silently broaden a chat tool into arbitrary administration access.

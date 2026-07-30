@@ -113,6 +113,19 @@ The companion defaults to `127.0.0.1:8787`. It requires HTTPS for Hermes unless
 configuration and boundary details are in [`docs/architecture.md`](./docs/architecture.md), and
 the pairing/operator workflow is in [`companion/README.md`](./companion/README.md).
 
+The repository also owns a production-only Companion container artifact:
+
+```bash
+docker build \
+  --file companion/Dockerfile \
+  --tag wave-companion:local \
+  .
+```
+
+The image contains only the compiled Companion, compiled shared contracts, and their production
+dependencies. Homelab owns its pinned image tag, private network, persistent authorization
+database, Nginx route, and runtime secrets.
+
 Create and run a local development build when native dependencies change. The current client
 requires `react-native-webrtc`, `expo-secure-store`, and `react-native-keyboard-controller`, so an
 older installed development client cannot run it:
@@ -216,6 +229,9 @@ components can coexist.
   short-lived credentials created by a trusted server-side component.
 - Treat Realtime tool arguments and Hermes responses as untrusted input. Validate them at the
   boundary.
+- Realtime may dispatch the narrow `ask_hermes({ instruction })` tool without an additional Wave
+  confirmation dialog after schema validation and companion authorization. This does not bypass
+  Hermes's own tool safety policy or broaden the tool into administration access.
 - Store only the revocable device-scoped companion credential and its small connection record in
   Expo SecureStore. Never expose that credential through UI, development state, logs, screenshots,
   or traces.

@@ -28,6 +28,34 @@ file to mode `0600`. An operator must apply equivalent permissions when pointing
 directory. Treat the database and its SQLite sidecar files as sensitive authorization state even
 though device credentials and pairing codes are stored only as SHA-256 verifiers.
 
+## Container artifact
+
+Build the production image from the repository root:
+
+```bash
+docker build \
+  --file companion/Dockerfile \
+  --build-arg WAVE_COMPANION_REVISION="$(git rev-parse HEAD)" \
+  --tag wave-companion:local \
+  .
+```
+
+The multi-stage build uses the digest-pinned official Node.js 24 slim image and installs only the
+Companion/contracts workspaces. The runtime stage runs as a non-root user and contains compiled
+server, admin, and Hermes integration entrypoints plus production dependencies. It does not contain
+the Expo app, mobile dependencies, development dependencies, repository history, or local
+credentials.
+
+Deployment must mount a private writable directory for `WAVE_DATABASE_PATH` and may keep the
+container root filesystem read-only. Generate pairing codes and manage devices inside a deployed
+container with:
+
+```bash
+node companion/dist/admin.js pair
+node companion/dist/admin.js devices
+node companion/dist/admin.js revoke <device-id>
+```
+
 ## Pair and revoke devices
 
 Generate a cryptographically random one-time pairing code:

@@ -127,6 +127,8 @@ unset HERMES_API_KEY HERMES_API_URL
 ```
 
 The probe validates capabilities, creates a session unless `HERMES_INTEGRATION_SESSION_ID` is
-provided, and completes one streamed turn. It prints only the resulting session ID, never the key
-or response content. These variables belong only to the local integration process or deployed
-companion; they must never use the `EXPO_PUBLIC_*` prefix or enter mobile storage.
+provided, completes and reloads one streamed turn, and cancels a second active stream. It prints
+only the resulting session ID and supported operations, never the key or response content. For a
+private container-to-container endpoint, set `HERMES_ALLOW_INSECURE_HTTP=1` in that server-side
+process only. These variables belong only to the local integration process or deployed companion;
+they must never use the `EXPO_PUBLIC_*` prefix or enter mobile storage.

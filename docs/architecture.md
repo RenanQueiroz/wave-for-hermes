@@ -33,8 +33,13 @@ connection profile in platform secure storage; future Realtime connection materi
 transient.
 
 Homelab owns deployment manifests, private networks, pinned production images, Nginx/Tailscale
-routing, and secrets. This repository owns companion behavior, its container artifact when one is
-introduced, and the Wave API contract.
+routing, and secrets. This repository owns companion behavior, its container artifact, and the Wave
+API contract.
+
+The production artifact is defined by `companion/Dockerfile`. Its multi-stage build installs only
+the Companion/contracts workspaces and copies only compiled server-side output plus production
+dependencies into the non-root runtime stage. Homelab pins the resulting source revision and owns
+the read-only runtime policy, private writable authorization database, health check, and ingress.
 
 ## Workspace boundaries
 
@@ -232,6 +237,9 @@ alongside their companion handlers and contract tests rather than inferred in mo
   behavior is deliberately decided.
 - The initial Realtime tool will be the strict
   `ask_hermes({ instruction: string })` operation. A model-controlled session ID is forbidden.
+- Wave does not add an extra approval dialog before that narrow tool. The companion dispatches it
+  automatically only after strict argument validation and trusted device/session authorization;
+  Hermes's own tool safety policy still applies.
 
 ## Verification
 
