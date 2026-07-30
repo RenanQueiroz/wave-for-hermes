@@ -52,9 +52,9 @@ the live-voice slice. It currently includes:
 - a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable device
   credentials, device/session authorization, bounded streamed chat, normalized errors, redacted
   logs, and graceful shutdown;
-- the official OpenAI JavaScript SDK in the Companion only, with unified WebRTC call setup, an
-  SDK-backed sideband connection, opaque Wave-owned call identifiers, bounded call state, and
-  cleanup;
+- the official OpenAI JavaScript SDK in the Companion only for unified WebRTC call setup and
+  lifecycle requests, plus the documented authenticated `ws` sideband connection, opaque
+  Wave-owned call identifiers, bounded call state, and cleanup;
 - runtime-neutral Wave pairing, session, history, cancellation, error, normalized turn-event,
   Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,

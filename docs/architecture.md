@@ -130,7 +130,8 @@ The companion lives in `companion/` and provides:
 - authenticated, rate-limited Realtime call setup and device-owned call termination;
 - a process-local Realtime registry that enforces one call per device/session, a bounded global
   maximum, trusted session binding, expiry, and shutdown cleanup;
-- the official server-only OpenAI SDK adapter for unified WebRTC setup and sideband control;
+- the official server-only OpenAI SDK adapter for unified WebRTC setup and lifecycle requests,
+  with the documented bearer-authenticated `ws` connection for sideband control;
 - strict `ask_hermes` validation, per-call tool serialization, timeout/cancellation, and structured
   results through the existing Hermes adapter;
 - normalized versioned error envelopes for unknown routes and internal failures;

@@ -10,7 +10,7 @@ import OpenAI, {
   APIError,
 } from 'openai';
 import type { RealtimeSessionCreateRequest } from 'openai/resources/realtime/realtime';
-import { OpenAIRealtimeWebSocket } from 'openai/realtime/websocket';
+import WebSocket from 'ws';
 import { z } from 'zod';
 
 import type { OpenAIRealtimeConfig } from '../config.ts';
@@ -24,7 +24,31 @@ import {
 
 const OPENAI_API_BASE_URL = 'https://api.openai.com/v1';
 const OPENAI_REALTIME_CALL_PATH = '/realtime/calls';
+const OPENAI_REALTIME_WEBSOCKET_URL =
+  'wss://api.openai.com/v1/realtime';
 const OPENAI_CALL_ID_PATTERN = /^rtc_[A-Za-z0-9_-]{1,256}$/;
+const MAX_SIDEBAND_EVENT_BYTES = 2 * 1024 * 1024;
+
+type SidebandSocketEvent = 'close' | 'error' | 'message' | 'open';
+type SidebandSocketListener = (...arguments_: unknown[]) => void;
+
+interface SidebandSocket {
+  readonly readyState: number;
+  close(code?: number, reason?: string): void;
+  off(event: SidebandSocketEvent, listener: SidebandSocketListener): void;
+  on(event: SidebandSocketEvent, listener: SidebandSocketListener): void;
+  send(data: string): void;
+}
+
+interface SidebandSocketFactoryInput {
+  headers: Record<string, string>;
+  timeoutMs: number;
+  url: URL;
+}
+
+type SidebandSocketFactory = (
+  input: SidebandSocketFactoryInput,
+) => SidebandSocket;
 
 const RealtimeFunctionCallSchema = z
   .object({
@@ -38,11 +62,13 @@ const RealtimeFunctionCallSchema = z
 export class OpenAIRealtimeProvider implements RealtimeProvider {
   private readonly client: OpenAI;
   private readonly config: OpenAIRealtimeConfig;
+  private readonly sidebandSocketFactory: SidebandSocketFactory;
 
   constructor(
     config: OpenAIRealtimeConfig,
     options: {
       client?: OpenAI;
+      sidebandSocketFactory?: SidebandSocketFactory;
     } = {},
   ) {
     this.config = config;
@@ -57,6 +83,8 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         project: null,
         timeout: config.requestTimeoutMs,
       });
+    this.sidebandSocketFactory =
+      options.sidebandSocketFactory ?? createSidebandSocket;
   }
 
   async createCall(input: {
@@ -120,11 +148,16 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
     let sideband: OpenAIRealtimeSideband | undefined;
     try {
+      const sidebandUrl = new URL(OPENAI_REALTIME_WEBSOCKET_URL);
+      sidebandUrl.searchParams.set('call_id', providerCallId);
       sideband = new OpenAIRealtimeSideband(
-        new OpenAIRealtimeWebSocket(
-          { callID: providerCallId },
-          this.client,
-        ),
+        this.sidebandSocketFactory({
+          headers: {
+            Authorization: `Bearer ${this.config.apiKey}`,
+          },
+          timeoutMs: this.config.sidebandConnectTimeoutMs,
+          url: sidebandUrl,
+        }),
       );
       await sideband.waitUntilOpen(
         this.config.sidebandConnectTimeoutMs,
@@ -171,50 +204,17 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     new Set<(error: RealtimeProviderError) => void>();
   private readonly functionCallListeners =
     new Set<(call: RealtimeFunctionCall) => void>();
-  private readonly realtime: OpenAIRealtimeWebSocket;
+  private readonly socket: SidebandSocket;
 
-  constructor(realtime: OpenAIRealtimeWebSocket) {
-    this.realtime = realtime;
-    realtime.on('response.done', (event) => {
-      for (const output of event.response.output ?? []) {
-        if (output.type !== 'function_call') {
-          continue;
-        }
-        const parsed = RealtimeFunctionCallSchema.safeParse(output);
-        if (!parsed.success) {
-          this.emitError(
-            new RealtimeProviderError(
-              'OpenAI Realtime sent an invalid function call.',
-              { kind: 'protocol' },
-            ),
-          );
-          this.close();
-          return;
-        }
-        for (const listener of this.functionCallListeners) {
-          listener({
-            arguments: parsed.data.arguments,
-            callId: parsed.data.call_id,
-            name: parsed.data.name,
-          });
-        }
-      }
+  constructor(socket: SidebandSocket) {
+    this.socket = socket;
+    socket.on('message', (data, isBinary) => {
+      this.handleMessage(data, isBinary === true);
     });
-    realtime.on('error', () => {
-      this.emitError(
-        new RealtimeProviderError(
-          'OpenAI Realtime reported a sideband error.',
-          {
-            kind: 'unavailable',
-            retryable: true,
-          },
-        ),
-      );
-    });
-    realtime.socket.addEventListener('close', () => {
+    socket.on('close', () => {
       this.markClosed();
     });
-    realtime.socket.addEventListener('error', () => {
+    socket.on('error', () => {
       this.emitError(
         new RealtimeProviderError(
           'Could not maintain the OpenAI Realtime sideband connection.',
@@ -229,10 +229,7 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
 
   close() {
     if (!this.closed) {
-      this.realtime.close({
-        code: 1000,
-        reason: 'Wave call ended',
-      });
+      this.socket.close(1000, 'Wave call ended');
       this.markClosed();
     }
   }
@@ -258,32 +255,43 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
   ) {
     if (
       this.closed ||
-      this.realtime.socket.readyState !== WebSocket.OPEN
+      this.socket.readyState !== WebSocket.OPEN
     ) {
       return false;
     }
     const output = JSON.stringify(
       WaveAskHermesToolResultSchema.parse(result),
     );
-    this.realtime.send({
-      item: {
-        call_id: callId,
-        output,
-        type: 'function_call_output',
-      },
-      type: 'conversation.item.create',
-    });
-    this.realtime.send({
-      type: 'response.create',
-    });
-    return true;
+    try {
+      this.socket.send(JSON.stringify({
+        item: {
+          call_id: callId,
+          output,
+          type: 'function_call_output',
+        },
+        type: 'conversation.item.create',
+      }));
+      this.socket.send(JSON.stringify({
+        type: 'response.create',
+      }));
+      return true;
+    } catch {
+      this.emitError(
+        new RealtimeProviderError(
+          'Could not send the Hermes result to OpenAI Realtime.',
+          { kind: 'unavailable', retryable: true },
+        ),
+      );
+      this.close();
+      return false;
+    }
   }
 
   async waitUntilOpen(timeoutMs: number, signal?: AbortSignal) {
-    if (this.realtime.socket.readyState === WebSocket.OPEN) {
+    if (this.socket.readyState === WebSocket.OPEN) {
       return;
     }
-    if (this.closed || this.realtime.socket.readyState === WebSocket.CLOSED) {
+    if (this.closed || this.socket.readyState === WebSocket.CLOSED) {
       throw new RealtimeProviderError(
         'OpenAI Realtime closed before the sideband connected.',
         {
@@ -294,7 +302,7 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const socket = this.realtime.socket;
+      const socket = this.socket;
       const onAbort = () => {
         cleanup();
         reject(
@@ -338,9 +346,9 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
       const cleanup = () => {
         clearTimeout(timeout);
         signal?.removeEventListener('abort', onAbort);
-        socket.removeEventListener('close', onClose);
-        socket.removeEventListener('error', onError);
-        socket.removeEventListener('open', onOpen);
+        socket.off('close', onClose);
+        socket.off('error', onError);
+        socket.off('open', onOpen);
       };
 
       if (signal?.aborted) {
@@ -348,10 +356,84 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
         return;
       }
       signal?.addEventListener('abort', onAbort, { once: true });
-      socket.addEventListener('close', onClose, { once: true });
-      socket.addEventListener('error', onError, { once: true });
-      socket.addEventListener('open', onOpen, { once: true });
+      socket.on('close', onClose);
+      socket.on('error', onError);
+      socket.on('open', onOpen);
     });
+  }
+
+  private handleMessage(data: unknown, isBinary: boolean) {
+    const text = readSidebandMessage(data, isBinary);
+    if (text === undefined) {
+      this.emitProtocolError(
+        'OpenAI Realtime sent an invalid sideband event.',
+      );
+      return;
+    }
+
+    let event: unknown;
+    try {
+      event = JSON.parse(text);
+    } catch {
+      this.emitProtocolError(
+        'OpenAI Realtime sent malformed sideband JSON.',
+      );
+      return;
+    }
+    if (!isRecord(event) || typeof event.type !== 'string') {
+      this.emitProtocolError(
+        'OpenAI Realtime sent an invalid sideband event.',
+      );
+      return;
+    }
+    if (event.type === 'error') {
+      this.emitError(
+        new RealtimeProviderError(
+          'OpenAI Realtime reported a sideband error.',
+          { kind: 'unavailable', retryable: true },
+        ),
+      );
+      return;
+    }
+    if (event.type !== 'response.done') {
+      return;
+    }
+    if (
+      !isRecord(event.response) ||
+      (event.response.output !== undefined &&
+        !Array.isArray(event.response.output))
+    ) {
+      this.emitProtocolError(
+        'OpenAI Realtime sent an invalid completed response.',
+      );
+      return;
+    }
+    for (const output of event.response.output ?? []) {
+      if (!isRecord(output) || output.type !== 'function_call') {
+        continue;
+      }
+      const parsed = RealtimeFunctionCallSchema.safeParse(output);
+      if (!parsed.success) {
+        this.emitProtocolError(
+          'OpenAI Realtime sent an invalid function call.',
+        );
+        return;
+      }
+      for (const listener of this.functionCallListeners) {
+        listener({
+          arguments: parsed.data.arguments,
+          callId: parsed.data.call_id,
+          name: parsed.data.name,
+        });
+      }
+    }
+  }
+
+  private emitProtocolError(message: string) {
+    this.emitError(
+      new RealtimeProviderError(message, { kind: 'protocol' }),
+    );
+    this.close();
   }
 
   private emitError(error: RealtimeProviderError) {
@@ -369,6 +451,64 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
       listener();
     }
   }
+}
+
+function createSidebandSocket(
+  input: SidebandSocketFactoryInput,
+): SidebandSocket {
+  return new WebSocket(input.url, {
+    handshakeTimeout: input.timeoutMs,
+    headers: input.headers,
+    maxPayload: MAX_SIDEBAND_EVENT_BYTES,
+    perMessageDeflate: false,
+  }) as unknown as SidebandSocket;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readSidebandMessage(
+  data: unknown,
+  isBinary: boolean,
+): string | undefined {
+  if (isBinary) {
+    return undefined;
+  }
+  if (typeof data === 'string') {
+    return Buffer.byteLength(data, 'utf8') <= MAX_SIDEBAND_EVENT_BYTES
+      ? data
+      : undefined;
+  }
+  if (Buffer.isBuffer(data)) {
+    return data.byteLength <= MAX_SIDEBAND_EVENT_BYTES
+      ? data.toString('utf8')
+      : undefined;
+  }
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength <= MAX_SIDEBAND_EVENT_BYTES
+      ? Buffer.from(data).toString('utf8')
+      : undefined;
+  }
+  if (ArrayBuffer.isView(data)) {
+    return data.byteLength <= MAX_SIDEBAND_EVENT_BYTES
+      ? Buffer.from(
+          data.buffer,
+          data.byteOffset,
+          data.byteLength,
+        ).toString('utf8')
+      : undefined;
+  }
+  if (Array.isArray(data) && data.every(Buffer.isBuffer)) {
+    const byteLength = data.reduce(
+      (total, chunk) => total + chunk.byteLength,
+      0,
+    );
+    return byteLength <= MAX_SIDEBAND_EVENT_BYTES
+      ? Buffer.concat(data).toString('utf8')
+      : undefined;
+  }
+  return undefined;
 }
 
 function createSessionConfig(

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
 import OpenAI from 'openai';
@@ -14,28 +15,15 @@ const config: OpenAIRealtimeConfig = {
   voice: 'marin',
 };
 
-test('uses the official SDK for unified call setup and call-id sideband control', async () => {
-  const originalWebSocket = globalThis.WebSocket;
+test('uses the official SDK for unified setup and authenticated sideband control', async () => {
   const sockets: FakeWebSocket[] = [];
+  let sidebandHeaders: Record<string, string> | undefined;
   const requests: {
     body: BodyInit | null | undefined;
     headers: Headers;
     url: string;
   }[] = [];
 
-  class CapturingWebSocket extends FakeWebSocket {
-    constructor(url: string | URL, protocols?: string | string[]) {
-      super(url, protocols);
-      sockets.push(this);
-    }
-  }
-  Object.defineProperty(globalThis, 'WebSocket', {
-    configurable: true,
-    value: CapturingWebSocket,
-    writable: true,
-  });
-
-  try {
     const client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: 'https://api.openai.com/v1',
@@ -68,7 +56,15 @@ test('uses the official SDK for unified call setup and call-id sideband control'
       logLevel: 'off',
       maxRetries: 0,
     });
-    const provider = new OpenAIRealtimeProvider(config, { client });
+    const provider = new OpenAIRealtimeProvider(config, {
+      client,
+      sidebandSocketFactory: ({ headers, url }) => {
+        sidebandHeaders = headers;
+        const socket = new FakeWebSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+    });
     const call = await provider.createCall({
       safetyIdentifier: 'a'.repeat(64),
       sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
@@ -126,6 +122,10 @@ test('uses the official SDK for unified call setup and call-id sideband control'
       'wss://api.openai.com/v1/realtime?call_id=rtc_test_call',
     );
     assert.equal(sockets[0]?.url.includes(config.apiKey), false);
+    assert.equal(
+      sidebandHeaders?.Authorization,
+      `Bearer ${config.apiKey}`,
+    );
 
     let receivedToolCall:
       | { arguments: string; callId: string; name: string }
@@ -187,50 +187,36 @@ test('uses the official SDK for unified call setup and call-id sideband control'
       ),
       true,
     );
-  } finally {
-    Object.defineProperty(globalThis, 'WebSocket', {
-      configurable: true,
-      value: originalWebSocket,
-      writable: true,
-    });
-  }
 });
 
-class FakeWebSocket extends EventTarget {
+class FakeWebSocket extends EventEmitter {
   static readonly CLOSED = 3;
   static readonly CLOSING = 2;
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
 
-  readonly protocols: string[];
   readonly sent: string[] = [];
   readonly url: string;
   readyState = FakeWebSocket.CONNECTING;
 
-  constructor(url: string | URL, protocols?: string | string[]) {
+  constructor(url: string | URL) {
     super();
     this.url = url.toString();
-    this.protocols =
-      typeof protocols === 'string' ? [protocols] : (protocols ?? []);
     queueMicrotask(() => {
       if (this.readyState === FakeWebSocket.CONNECTING) {
         this.readyState = FakeWebSocket.OPEN;
-        this.dispatchEvent(new Event('open'));
+        this.emit('open');
       }
     });
   }
 
   close() {
     this.readyState = FakeWebSocket.CLOSED;
-    this.dispatchEvent(new CloseEvent('close'));
+    this.emit('close');
   }
 
   emitMessage(value: unknown) {
-    this.dispatchEvent(
-      new MessageEvent('message', {
-        data: JSON.stringify(value),
-      }),
-    );
+    this.emit('message', Buffer.from(JSON.stringify(value)), false);
   }
 
   send(message: string) {
