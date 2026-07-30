@@ -6,10 +6,11 @@ convenience.
 
 ## Now: production voice behavior
 
-1. Validate barge-in on physical Android: speaking while the assistant is responding must stop
-   assistant audio promptly, preserve a coherent conversation, and allow the user to continue.
-   An active Hermes request must continue in the background; later `ask_hermes` calls wait in
-   bounded order rather than cancelling it or failing merely because it is in flight.
+1. Complete the physical Android background-work barge-in gate. Interruption and conversational
+   recovery passed when the user spoke while the assistant was voicing an already completed Hermes
+   result. Repeat while Hermes is still running: the request must continue in the background and
+   later `ask_hermes` calls must wait in bounded order rather than cancelling it or failing merely
+   because it is in flight.
 2. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
    when hardware is available.
 3. Validate speaker, receiver, Bluetooth, and wired-headset selection and route changes on physical

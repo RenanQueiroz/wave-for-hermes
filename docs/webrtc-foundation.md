@@ -138,21 +138,26 @@ The production path also passed on a physical Google Pixel 8 Pro on 2026-07-30:
 - the assistant response was clearly audible through the device;
 - the connection exposed one remote audio track;
 - a strict `ask_hermes` call completed and persisted the expected Hermes user/assistant turn;
+- speaking while the assistant voiced that Hermes result interrupted the response, preserved the
+  Realtime conversation, and produced a correct direct follow-up answer;
+- hangup immediately refreshed canonical Hermes history, including the real bounded Terminal input
+  and output behind a collapsed expandable task row;
 - microphone mute/unmute changed the live media state; and
 - explicit hangup returned to chat and removed the development state provider after cleanup.
 
-This physical Android proof demonstrates audible bidirectional audio for a normal turn. It does
-**not** establish simultaneous full-duplex behavior, barge-in, alternate audio routes, physical
-iOS behavior, or release readiness.
+This physical Android proof demonstrates audible bidirectional audio and barge-in after Hermes
+completed. Hermes finished before the interruption, so the proof does **not** yet establish that
+active Hermes work survives barge-in or that later `ask_hermes` calls wait in order. It also does
+not establish alternate audio routes, physical iOS behavior, or release readiness.
 
 ## Remaining production voice gates
 
 Before declaring voice production-ready, validate:
 
 - physical iOS microphone capture and assistant playback;
-- full-duplex barge-in and assistant-audio interruption on physical Android and iOS;
+- full-duplex barge-in and assistant-audio interruption on physical iOS;
 - preservation of active background Hermes work across barge-in, including ordered follow-up
-  `ask_hermes` requests;
+  `ask_hermes` requests, with the background-work portion repeated on physical Android;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
 - permission denial and later recovery;
