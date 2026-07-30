@@ -109,6 +109,68 @@ test('adds the credential only to authenticated operations', async () => {
   ]);
 });
 
+test('starts and ends a Realtime call through strict Wave-owned contracts', async () => {
+  const requests: Array<{
+    body: unknown;
+    path: string;
+  }> = [];
+  const fetch = async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    assert.equal(
+      new Headers(init?.headers).get('authorization'),
+      `Bearer ${credential}`,
+    );
+    requests.push({
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      path: url.pathname,
+    });
+    if (url.pathname.endsWith('/realtime/calls')) {
+      return jsonResponse(
+        {
+          apiVersion: 'v1',
+          call: {
+            expiresAt: '2026-07-30T05:30:00.000Z',
+            id: 'wave-call-1',
+            sdpAnswer: 'v=0\r\no=- 2 3 IN IP4 127.0.0.1\r\n',
+          },
+        },
+        201,
+      );
+    }
+    return jsonResponse({
+      apiVersion: 'v1',
+      callId: 'wave-call-1',
+      status: 'ended',
+    });
+  };
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test/root',
+    credential,
+    fetch,
+  });
+
+  const started = await client.startRealtimeCall(
+    'hermes-session-1',
+    'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+  );
+  assert.equal(started.call.id, 'wave-call-1');
+  const ended = await client.endRealtimeCall(started.call.id);
+  assert.equal(ended.status, 'ended');
+  assert.deepEqual(requests, [
+    {
+      body: {
+        sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+      },
+      path:
+        '/root/v1/sessions/hermes-session-1/realtime/calls',
+    },
+    {
+      body: undefined,
+      path: '/root/v1/realtime/calls/wave-call-1/end',
+    },
+  ]);
+});
+
 test('rejects invalid client inputs before a request can leave the app', async () => {
   let requestCount = 0;
   const client = new WaveBackendClient({
@@ -127,6 +189,16 @@ test('rejects invalid client inputs before a request can leave the app', async (
   );
   assert.throws(
     () => client.cancelTurn('session-1', 'turn/1'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'bad_request',
+  );
+  assert.throws(
+    () => client.startRealtimeCall('session-1', 'not-sdp'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'bad_request',
+  );
+  assert.throws(
+    () => client.endRealtimeCall('call/1'),
     (error: unknown) =>
       error instanceof WaveBackendError && error.kind === 'bad_request',
   );

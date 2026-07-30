@@ -21,6 +21,8 @@ import {
   normalizeHermesError,
   WaveHttpError,
 } from './http/errors.ts';
+import { OpenAIRealtimeProvider } from './realtime/openai-realtime-provider.ts';
+import { RealtimeCallRegistry } from './realtime/realtime-call-registry.ts';
 import { registerWaveApi } from './routes/wave-api.ts';
 
 export interface BuildCompanionServerOptions {
@@ -28,6 +30,7 @@ export interface BuildCompanionServerOptions {
   hermesClient?: HermesClient;
   logger?: FastifyServerOptions['logger'];
   now?: () => Date;
+  realtimeCallRegistry?: RealtimeCallRegistry;
   turnRegistry?: ActiveTurnRegistry;
 }
 
@@ -42,6 +45,22 @@ export function buildCompanionServer(
     options.hermesClient ?? new HttpHermesClient(config.hermes);
   const turnRegistry =
     options.turnRegistry ?? new ActiveTurnRegistry(config.maxActiveTurns);
+  const realtimeCallRegistry =
+    options.realtimeCallRegistry ??
+    (config.openAI
+      ? new RealtimeCallRegistry(
+          {
+            callTtlMs: config.realtimeCallTtlMs,
+            maxActiveCalls: config.maxActiveRealtimeCalls,
+            toolTimeoutMs: config.realtimeToolTimeoutMs,
+          },
+          {
+            deviceStore,
+            hermesClient,
+            provider: new OpenAIRealtimeProvider(config.openAI),
+          },
+        )
+      : undefined);
   const app = Fastify({
     bodyLimit: 65_536,
     logger: options.logger ?? false,
@@ -61,6 +80,7 @@ export function buildCompanionServer(
 
   app.addHook('preClose', async () => {
     turnRegistry.abortAll('server_shutdown');
+    await realtimeCallRegistry?.abortAll();
   });
 
   if (ownsDeviceStore) {
@@ -76,6 +96,7 @@ export function buildCompanionServer(
       {
         deviceStore,
         hermesClient,
+        realtimeCallRegistry,
         turnRegistry,
       },
       {

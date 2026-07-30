@@ -1,0 +1,235 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import OpenAI from 'openai';
+
+import type { OpenAIRealtimeConfig } from '../config.ts';
+import { OpenAIRealtimeProvider } from './openai-realtime-provider.ts';
+
+const config: OpenAIRealtimeConfig = {
+  apiKey: 'server-only-openai-key',
+  model: 'gpt-realtime-2.1',
+  requestTimeoutMs: 5_000,
+  sidebandConnectTimeoutMs: 1_000,
+  voice: 'marin',
+};
+
+test('uses the official SDK for unified call setup and call-id sideband control', async () => {
+  const originalWebSocket = globalThis.WebSocket;
+  const sockets: FakeWebSocket[] = [];
+  const requests: {
+    body: BodyInit | null | undefined;
+    headers: Headers;
+    url: string;
+  }[] = [];
+
+  class CapturingWebSocket extends FakeWebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols);
+      sockets.push(this);
+    }
+  }
+  Object.defineProperty(globalThis, 'WebSocket', {
+    configurable: true,
+    value: CapturingWebSocket,
+    writable: true,
+  });
+
+  try {
+    const client = new OpenAI({
+      apiKey: config.apiKey,
+      baseURL: 'https://api.openai.com/v1',
+      fetch: async (request, init) => {
+        const url =
+          request instanceof Request ? request.url : request.toString();
+        const headers = new Headers(init?.headers);
+        requests.push({
+          body: init?.body,
+          headers,
+          url,
+        });
+        if (url.endsWith('/realtime/calls')) {
+          return new Response(
+            'v=0\r\no=- 2 3 IN IP4 127.0.0.1\r\n',
+            {
+              headers: {
+                'content-type': 'application/sdp',
+                location: '/v1/realtime/calls/rtc_test_call',
+              },
+              status: 201,
+            },
+          );
+        }
+        if (url.endsWith('/realtime/calls/rtc_test_call/hangup')) {
+          return new Response(null, { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      },
+      logLevel: 'off',
+      maxRetries: 0,
+    });
+    const provider = new OpenAIRealtimeProvider(config, { client });
+    const call = await provider.createCall({
+      safetyIdentifier: `wave_device_${'a'.repeat(64)}`,
+      sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+    });
+
+    assert.equal(call.sdpAnswer.startsWith('v=0'), true);
+    assert.equal(requests.length, 1);
+    assert.equal(
+      requests[0]?.headers.get('authorization'),
+      `Bearer ${config.apiKey}`,
+    );
+    assert.equal(
+      requests[0]?.headers.get('openai-safety-identifier'),
+      `wave_device_${'a'.repeat(64)}`,
+    );
+    assert.ok(requests[0]?.body instanceof FormData);
+    const form = requests[0]?.body as FormData;
+    const sessionPart = form.get('session');
+    assert.ok(sessionPart instanceof Blob);
+    const session = JSON.parse(await sessionPart.text()) as {
+      model: string;
+      parallel_tool_calls: boolean;
+      tools: {
+        name: string;
+        parameters: {
+          additionalProperties: boolean;
+          required: string[];
+        };
+      }[];
+      tracing: unknown;
+      type: string;
+    };
+    assert.equal(session.type, 'realtime');
+    assert.equal(session.model, 'gpt-realtime-2.1');
+    assert.equal(session.parallel_tool_calls, false);
+    assert.equal(session.tools.length, 1);
+    assert.equal(session.tools[0]?.name, 'ask_hermes');
+    assert.equal(
+      session.tools[0]?.parameters.additionalProperties,
+      false,
+    );
+    assert.deepEqual(session.tools[0]?.parameters.required, [
+      'instruction',
+    ]);
+    assert.equal(session.tracing, null);
+    assert.equal(JSON.stringify(session).includes('sessionId'), false);
+
+    assert.equal(sockets.length, 1);
+    assert.equal(
+      sockets[0]?.url,
+      'wss://api.openai.com/v1/realtime?call_id=rtc_test_call',
+    );
+    assert.equal(sockets[0]?.url.includes(config.apiKey), false);
+
+    let receivedToolCall:
+      | { arguments: string; callId: string; name: string }
+      | undefined;
+    call.sideband.onFunctionCall((toolCall) => {
+      receivedToolCall = toolCall;
+    });
+    sockets[0]?.emitMessage({
+      response: {
+        output: [
+          {
+            arguments: '{"instruction":"Check Hermes"}',
+            call_id: 'tool-call-1',
+            name: 'ask_hermes',
+            type: 'function_call',
+          },
+        ],
+      },
+      type: 'response.done',
+    });
+    assert.deepEqual(receivedToolCall, {
+      arguments: '{"instruction":"Check Hermes"}',
+      callId: 'tool-call-1',
+      name: 'ask_hermes',
+    });
+
+    assert.equal(
+      call.sideband.sendFunctionResult('tool-call-1', {
+        answer: 'Hermes completed the request.',
+        ok: true,
+        truncated: false,
+      }),
+      true,
+    );
+    assert.deepEqual(
+      sockets[0]?.sent.map((message) => JSON.parse(message).type),
+      ['conversation.item.create', 'response.create'],
+    );
+    const outputEvent = JSON.parse(sockets[0]?.sent[0] ?? '{}') as {
+      item?: {
+        call_id?: string;
+        output?: string;
+        type?: string;
+      };
+    };
+    assert.equal(outputEvent.item?.type, 'function_call_output');
+    assert.equal(outputEvent.item?.call_id, 'tool-call-1');
+    assert.deepEqual(JSON.parse(outputEvent.item?.output ?? '{}'), {
+      answer: 'Hermes completed the request.',
+      ok: true,
+      truncated: false,
+    });
+
+    await call.end();
+    assert.equal(requests.length, 2);
+    assert.equal(
+      requests[1]?.url.endsWith(
+        '/realtime/calls/rtc_test_call/hangup',
+      ),
+      true,
+    );
+  } finally {
+    Object.defineProperty(globalThis, 'WebSocket', {
+      configurable: true,
+      value: originalWebSocket,
+      writable: true,
+    });
+  }
+});
+
+class FakeWebSocket extends EventTarget {
+  static readonly CLOSED = 3;
+  static readonly CLOSING = 2;
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+
+  readonly protocols: string[];
+  readonly sent: string[] = [];
+  readonly url: string;
+  readyState = FakeWebSocket.CONNECTING;
+
+  constructor(url: string | URL, protocols?: string | string[]) {
+    super();
+    this.url = url.toString();
+    this.protocols =
+      typeof protocols === 'string' ? [protocols] : (protocols ?? []);
+    queueMicrotask(() => {
+      if (this.readyState === FakeWebSocket.CONNECTING) {
+        this.readyState = FakeWebSocket.OPEN;
+        this.dispatchEvent(new Event('open'));
+      }
+    });
+  }
+
+  close() {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.dispatchEvent(new CloseEvent('close'));
+  }
+
+  emitMessage(value: unknown) {
+    this.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify(value),
+      }),
+    );
+  }
+
+  send(message: string) {
+    this.sent.push(message);
+  }
+}

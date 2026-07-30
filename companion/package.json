@@ -13,7 +13,7 @@
     "lint": "eslint src test scripts --max-warnings=0",
     "mobile-fixture": "npm run build --workspace @wave/contracts && node --experimental-strip-types scripts/mobile-fixture.ts",
     "start": "node dist/server.js",
-    "test": "npm run build --workspace @wave/contracts && node --experimental-strip-types --test src/auth/sqlite-device-store.test.ts src/chat/active-turns.test.ts src/hermes/hermes-sse.test.ts src/hermes/hermes-client.test.ts test/config.test.ts test/server.test.ts test/wave-api.test.ts",
+    "test": "npm run build --workspace @wave/contracts && node --experimental-strip-types --test src/auth/sqlite-device-store.test.ts src/chat/active-turns.test.ts src/hermes/hermes-sse.test.ts src/hermes/hermes-client.test.ts src/realtime/openai-realtime-provider.test.ts src/realtime/realtime-call-registry.test.ts test/config.test.ts test/realtime-api.test.ts test/server.test.ts test/wave-api.test.ts",
     "test:hermes": "node --experimental-strip-types --test src/hermes/hermes-sse.test.ts src/hermes/hermes-client.test.ts",
     "typecheck": "npm run build --workspace @wave/contracts && tsc -p tsconfig.json"
   },
@@ -21,6 +21,8 @@
     "@fastify/rate-limit": "^11.2.0",
     "@wave/contracts": "0.1.0",
     "fastify": "^5.10.0",
+    "openai": "^7.2.0",
+    "ws": "^8.21.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

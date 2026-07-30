@@ -26,9 +26,12 @@ const config: CompanionConfig = {
   hermesIdleTimeoutMs: 60_000,
   hermesTotalTimeoutMs: 600_000,
   host,
+  maxActiveRealtimeCalls: 2,
   maxActiveTurns: 4,
   pairingCodeTtlSeconds: 600,
   port,
+  realtimeCallTtlMs: 1_800_000,
+  realtimeToolTimeoutMs: 120_000,
 };
 const app = buildCompanionServer(config, {
   deviceStore: store,

@@ -16,9 +16,12 @@ const config: CompanionConfig = {
   hermesIdleTimeoutMs: 60_000,
   hermesTotalTimeoutMs: 600_000,
   host: '127.0.0.1',
+  maxActiveRealtimeCalls: 2,
   maxActiveTurns: 4,
   pairingCodeTtlSeconds: 600,
   port: 8787,
+  realtimeCallTtlMs: 1_800_000,
+  realtimeToolTimeoutMs: 120_000,
 };
 
 test('returns a strict, non-sensitive compatibility status', async () => {

@@ -6,6 +6,27 @@ const CompanionEnvironmentSchema = z.object({
   HERMES_ALLOW_INSECURE_HTTP: z.enum(['0', '1', 'false', 'true']).optional(),
   HERMES_API_KEY: z.string().trim().min(1),
   HERMES_API_URL: z.url(),
+  OPENAI_API_KEY: z.string().trim().min(1).optional(),
+  OPENAI_REALTIME_MODEL: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .default('gpt-realtime-2.1'),
+  OPENAI_REALTIME_VOICE: z
+    .enum([
+      'alloy',
+      'ash',
+      'ballad',
+      'cedar',
+      'coral',
+      'echo',
+      'marin',
+      'sage',
+      'shimmer',
+      'verse',
+    ])
+    .default('marin'),
   WAVE_DATABASE_PATH: z
     .string()
     .trim()
@@ -36,6 +57,18 @@ const CompanionEnvironmentSchema = z.object({
     .min(1)
     .max(32)
     .default(4),
+  WAVE_MAX_ACTIVE_REALTIME_CALLS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(16)
+    .default(2),
+  WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(120_000)
+    .default(15_000),
   WAVE_PAIRING_CODE_TTL_SECONDS: z.coerce
     .number()
     .int()
@@ -43,7 +76,43 @@ const CompanionEnvironmentSchema = z.object({
     .max(3_600)
     .default(600),
   WAVE_PORT: z.coerce.number().int().min(1).max(65_535).default(8787),
+  WAVE_REALTIME_CALL_TTL_MS: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .max(7_200_000)
+    .default(1_800_000),
+  WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(60_000)
+    .default(10_000),
+  WAVE_REALTIME_TOOL_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(10_000)
+    .max(600_000)
+    .default(120_000),
 });
+
+export interface OpenAIRealtimeConfig {
+  apiKey: string;
+  model: string;
+  requestTimeoutMs: number;
+  sidebandConnectTimeoutMs: number;
+  voice:
+    | 'alloy'
+    | 'ash'
+    | 'ballad'
+    | 'cedar'
+    | 'coral'
+    | 'echo'
+    | 'marin'
+    | 'sage'
+    | 'shimmer'
+    | 'verse';
+}
 
 export interface CompanionConfig {
   databasePath: string;
@@ -52,9 +121,13 @@ export interface CompanionConfig {
   hermesIdleTimeoutMs: number;
   hermesTotalTimeoutMs: number;
   host: string;
+  maxActiveRealtimeCalls: number;
   maxActiveTurns: number;
+  openAI?: OpenAIRealtimeConfig;
   pairingCodeTtlSeconds: number;
   port: number;
+  realtimeCallTtlMs: number;
+  realtimeToolTimeoutMs: number;
 }
 
 export interface CompanionStorageConfig {
@@ -119,6 +192,14 @@ export function loadCompanionConfig(
       'Invalid Wave Companion configuration: WAVE_HERMES_TOTAL_TIMEOUT_MS must exceed the first-event and idle timeouts.',
     );
   }
+  if (
+    parsed.data.WAVE_REALTIME_TOOL_TIMEOUT_MS >=
+    parsed.data.WAVE_REALTIME_CALL_TTL_MS
+  ) {
+    throw new CompanionConfigError(
+      'Invalid Wave Companion configuration: WAVE_REALTIME_CALL_TTL_MS must exceed the Realtime tool timeout.',
+    );
+  }
 
   return {
     databasePath: parsed.data.WAVE_DATABASE_PATH,
@@ -132,9 +213,25 @@ export function loadCompanionConfig(
     hermesIdleTimeoutMs: parsed.data.WAVE_HERMES_IDLE_TIMEOUT_MS,
     hermesTotalTimeoutMs: parsed.data.WAVE_HERMES_TOTAL_TIMEOUT_MS,
     host: parsed.data.WAVE_HOST,
+    maxActiveRealtimeCalls: parsed.data.WAVE_MAX_ACTIVE_REALTIME_CALLS,
     maxActiveTurns: parsed.data.WAVE_MAX_ACTIVE_TURNS,
+    ...(parsed.data.OPENAI_API_KEY
+      ? {
+          openAI: {
+            apiKey: parsed.data.OPENAI_API_KEY,
+            model: parsed.data.OPENAI_REALTIME_MODEL,
+            requestTimeoutMs:
+              parsed.data.WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS,
+            sidebandConnectTimeoutMs:
+              parsed.data.WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS,
+            voice: parsed.data.OPENAI_REALTIME_VOICE,
+          },
+        }
+      : {}),
     pairingCodeTtlSeconds: parsed.data.WAVE_PAIRING_CODE_TTL_SECONDS,
     port: parsed.data.WAVE_PORT,
+    realtimeCallTtlMs: parsed.data.WAVE_REALTIME_CALL_TTL_MS,
+    realtimeToolTimeoutMs: parsed.data.WAVE_REALTIME_TOOL_TIMEOUT_MS,
   };
 }
 

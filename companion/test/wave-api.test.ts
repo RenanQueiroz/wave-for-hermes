@@ -39,9 +39,12 @@ const config: CompanionConfig = {
   hermesIdleTimeoutMs: 30,
   hermesTotalTimeoutMs: 300,
   host: '127.0.0.1',
+  maxActiveRealtimeCalls: 2,
   maxActiveTurns: 4,
   pairingCodeTtlSeconds: 600,
   port: 8787,
+  realtimeCallTtlMs: 1_800_000,
+  realtimeToolTimeoutMs: 120_000,
 };
 
 class FakeHermesClient implements HermesClient {

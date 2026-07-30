@@ -4,13 +4,14 @@ Status: native foundation adopted and validated; production voice validation rem
 
 Validated: 2026-07-29
 
-Wave uses `react-native-webrtc` as the native media foundation for the future OpenAI Realtime
+Wave uses `react-native-webrtc` as the native media foundation for the OpenAI Realtime
 voice transport. The dependency is installed through `npx expo install`; the validated lockfile
 currently resolves `react-native-webrtc` `124.0.8`.
 
 This decision establishes that the library can be autolinked, configured, built, and exercised
-with Expo SDK 57 and React Native 0.86. It does not mean that the production Realtime transport or
-the complete voice experience has been implemented.
+with Expo SDK 57 and React Native 0.86. The Companion now implements unified Realtime SDP setup and
+sideband `ask_hermes` dispatch, but the mobile production transport/controller and complete voice
+experience have not been implemented.
 
 ## Native configuration
 
@@ -107,7 +108,8 @@ or production Realtime behavior.
 
 Before declaring voice production-ready, validate:
 
-- a real OpenAI Realtime SDP exchange through the Wave Companion;
+- the implemented Companion unified-call route against a real OpenAI Realtime project, including a
+  native SDP exchange and explicit call cleanup;
 - audible full-duplex capture and playback on physical iOS and Android devices;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
@@ -115,8 +117,8 @@ Before declaring voice production-ready, validate:
 - permission denial and later recovery;
 - release builds and realistic network transitions.
 
-These checks belong to the Realtime phase. The local proof should stay small and development-only
-until the production controller supersedes it.
+These checks belong to the mobile Realtime phase. The local proof should stay small and
+development-only until the production controller supersedes it.
 
 ## References
 

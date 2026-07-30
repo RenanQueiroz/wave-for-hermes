@@ -24,6 +24,7 @@ export interface DeviceStore {
   bindSession(deviceId: string, sessionId: string): void;
   close(): void;
   hasSession(deviceId: string, sessionId: string): boolean;
+  isDeviceActive(deviceId: string): boolean;
   issuePairingCode(expiresAt: Date): IssuedPairingCode;
   listDevices(): DeviceRecord[];
   listSessionIds(deviceId: string): string[];

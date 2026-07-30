@@ -13,11 +13,14 @@ import {
   WaveCreateSessionRequestSchema,
   WaveIdentifierSchema,
   WaveImportSessionsRequestSchema,
+  WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
+  WaveStartRealtimeCallRequestSchema,
+  WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
   type WaveErrorCode,
@@ -43,6 +46,7 @@ import {
   normalizeHermesError,
   WaveHttpError,
 } from '../http/errors.ts';
+import type { RealtimeCallRegistry } from '../realtime/realtime-call-registry.ts';
 
 const SERVICE_VERSION = '0.1.0';
 const SessionParamsSchema = z
@@ -53,10 +57,16 @@ const SessionParamsSchema = z
 const TurnParamsSchema = SessionParamsSchema.extend({
   turnId: WaveIdentifierSchema,
 }).strict();
+const RealtimeCallParamsSchema = z
+  .object({
+    callId: WaveIdentifierSchema,
+  })
+  .strict();
 
 interface WaveApiServices {
   deviceStore: DeviceStore;
   hermesClient: HermesClient;
+  realtimeCallRegistry?: RealtimeCallRegistry;
   turnRegistry: ActiveTurnRegistry;
 }
 
@@ -82,7 +92,7 @@ export function registerWaveApi(
         features: {
           chat: true,
           pairing: true,
-          realtime: false,
+          realtime: services.realtimeCallRegistry !== undefined,
         },
         hermes: {
           configured: true,
@@ -231,6 +241,58 @@ export function registerWaveApi(
   );
 
   app.post(
+    '/v1/sessions/:sessionId/realtime/calls',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
+        },
+      },
+      onRequest: authenticateDevice,
+    },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      const input = WaveStartRealtimeCallRequestSchema.parse(request.body);
+      const realtimeCallRegistry = requireRealtimeCallRegistry(
+        services.realtimeCallRegistry,
+      );
+      const call = await realtimeCallRegistry.start({
+        deviceId: device.id,
+        sdpOffer: input.sdpOffer,
+        sessionId,
+      });
+      return reply.code(201).send(
+        WaveStartRealtimeCallResponseSchema.parse({
+          ...responseMetadata(request),
+          call,
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/v1/realtime/calls/:callId/end',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { callId } = RealtimeCallParamsSchema.parse(request.params);
+      const realtimeCallRegistry = requireRealtimeCallRegistry(
+        services.realtimeCallRegistry,
+      );
+      await realtimeCallRegistry.end(device.id, callId);
+      return reply.send(
+        WaveEndRealtimeCallResponseSchema.parse({
+          ...responseMetadata(request),
+          callId,
+          status: 'ended',
+        }),
+      );
+    },
+  );
+
+  app.post(
     '/v1/sessions/:sessionId/turns',
     { onRequest: authenticateDevice },
     async (request, reply) => {
@@ -274,6 +336,21 @@ export function registerWaveApi(
       );
     },
   );
+}
+
+function requireRealtimeCallRegistry(
+  realtimeCallRegistry: RealtimeCallRegistry | undefined,
+) {
+  if (!realtimeCallRegistry) {
+    throw new WaveHttpError(
+      'OpenAI Realtime is not configured for this Wave Companion.',
+      {
+        code: 'upstream_unavailable',
+        statusCode: 503,
+      },
+    );
+  }
+  return realtimeCallRegistry;
 }
 
 async function streamTurn(

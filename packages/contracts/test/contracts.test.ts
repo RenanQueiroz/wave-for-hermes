@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { z } from 'zod';
+
 import {
   WAVE_API_VERSION,
   WaveAssistantDeltaEventSchema,
@@ -8,7 +10,12 @@ import {
   WaveDeviceCredentialSchema,
   WaveErrorResponseSchema,
   WaveEventEnvelopeSchema,
+  WaveAskHermesArgumentsSchema,
+  WaveAskHermesToolResultSchema,
+  WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
+  WaveStartRealtimeCallRequestSchema,
+  WaveStartRealtimeCallResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveTurnEventSchema,
   WaveStatusResponseSchema,
@@ -166,6 +173,106 @@ test('validates each normalized turn event variant strictly', () => {
       ...delta,
       type: 'hermes.run.started',
     }).success,
+    false,
+  );
+});
+
+test('validates bounded Realtime SDP call setup without exposing provider identifiers', () => {
+  const request = WaveStartRealtimeCallRequestSchema.parse({
+    sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+  });
+  assert.equal(request.sdpOffer.startsWith('v=0'), true);
+
+  const response = WaveStartRealtimeCallResponseSchema.parse({
+    apiVersion: WAVE_API_VERSION,
+    call: {
+      expiresAt: '2026-07-30T03:30:00.000Z',
+      id: 'wave-call-1',
+      sdpAnswer: 'v=0\r\no=- 2 3 IN IP4 127.0.0.1\r\n',
+    },
+  });
+  assert.equal(response.call.id, 'wave-call-1');
+  assert.equal(
+    WaveStartRealtimeCallResponseSchema.safeParse({
+      ...response,
+      call: {
+        ...response.call,
+        openAICallId: 'rtc_must_not_cross',
+      },
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveStartRealtimeCallRequestSchema.safeParse({
+      sdpOffer: 'not-sdp',
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveEndRealtimeCallResponseSchema.parse({
+      apiVersion: WAVE_API_VERSION,
+      callId: 'wave-call-1',
+      status: 'ended',
+    }).status,
+    'ended',
+  );
+});
+
+test('generates a strict ask_hermes JSON Schema from the dispatch schema', () => {
+  assert.deepEqual(WaveAskHermesArgumentsSchema.parse({
+    instruction: '  Check the deployment  ',
+  }), {
+    instruction: 'Check the deployment',
+  });
+  assert.equal(
+    WaveAskHermesArgumentsSchema.safeParse({
+      instruction: 'Do the work',
+      sessionId: 'model-selected-session',
+    }).success,
+    false,
+  );
+
+  const jsonSchema = z.toJSONSchema(WaveAskHermesArgumentsSchema);
+  assert.equal(jsonSchema.type, 'object');
+  assert.equal(jsonSchema.additionalProperties, false);
+  assert.deepEqual(jsonSchema.required, ['instruction']);
+  assert.equal(
+    typeof jsonSchema.properties?.instruction === 'object' &&
+      jsonSchema.properties.instruction !== null &&
+      jsonSchema.properties.instruction.maxLength,
+    8_000,
+  );
+});
+
+test('accepts only small structured ask_hermes results', () => {
+  assert.equal(
+    WaveAskHermesToolResultSchema.parse({
+      answer: 'Hermes completed the request.',
+      ok: true,
+      truncated: false,
+    }).ok,
+    true,
+  );
+  assert.equal(
+    WaveAskHermesToolResultSchema.safeParse({
+      answer: 'Hermes completed the request.',
+      ok: true,
+      rawToolOutput: {
+        authorization: 'must-not-cross',
+      },
+      truncated: false,
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveAskHermesToolResultSchema.parse({
+      error: {
+        code: 'invalid_arguments',
+        message: 'The tool arguments were invalid.',
+        retryable: false,
+      },
+      ok: false,
+    }).ok,
     false,
   );
 });

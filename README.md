@@ -39,7 +39,8 @@ Homelab repository.
 
 ## Current status
 
-The repository is at the authenticated text-chat vertical-slice stage. It currently includes:
+The repository has an authenticated text-chat vertical slice and the server-side foundation for
+the live-voice slice. It currently includes:
 
 - Expo SDK 57 with Expo Router and development-client support for iOS and Android;
 - [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
@@ -51,11 +52,15 @@ The repository is at the authenticated text-chat vertical-slice stage. It curren
 - a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable device
   credentials, device/session authorization, bounded streamed chat, normalized errors, redacted
   logs, and graceful shutdown;
-- runtime-neutral Wave pairing, session, history, cancellation, error, and normalized turn-event
-  schemas in `@wave/contracts`;
+- the official OpenAI JavaScript SDK in the Companion only, with unified WebRTC call setup, an
+  SDK-backed sideband connection, opaque Wave-owned call identifiers, bounded call state, and
+  cleanup;
+- runtime-neutral Wave pairing, session, history, cancellation, error, normalized turn-event,
+  Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
   strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
-  limits, safe normalized errors, and no direct Hermes transport;
+  limits, authenticated Realtime call start/end methods, safe normalized errors, and no direct
+  Hermes or OpenAI transport;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
@@ -71,8 +76,11 @@ The repository is at the authenticated text-chat vertical-slice stage. It curren
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
 The visible app begins with the real connection flow, then opens the user's authorized Hermes
-conversations and streams normalized text turns. The OpenAI Realtime voice slice has not been
-implemented yet.
+conversations and streams normalized text turns. The Companion can now create an OpenAI Realtime
+call from a mobile SDP offer and automatically dispatch a strictly validated
+`ask_hermes({ instruction })` call against the trusted active Hermes session. The production mobile
+`RealtimeTransport` controller, actual OpenAI peer connection, and live voice UI are the next
+slice; no user-visible voice flow is wired to these endpoints yet.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 validated private deployment.
@@ -115,6 +123,17 @@ The companion defaults to `127.0.0.1:8787`. It requires HTTPS for Hermes unless
 `HERMES_ALLOW_INSECURE_HTTP=1` explicitly permits a trusted private/local HTTP endpoint. Full
 configuration and boundary details are in [`docs/architecture.md`](./docs/architecture.md), and
 the pairing/operator workflow is in [`companion/README.md`](./companion/README.md).
+
+To enable the Realtime routes, provide the standard OpenAI key only to the Companion process:
+
+```bash
+read -s OPENAI_API_KEY
+export OPENAI_API_KEY
+npm run companion:start
+```
+
+Without `OPENAI_API_KEY`, text chat remains available, `GET /v1/status` reports
+`features.realtime: false`, and Realtime call creation returns a safe unavailable response.
 
 The repository also owns a production-only Companion container artifact:
 
@@ -229,8 +248,9 @@ components can coexist.
 ## Security baseline
 
 - Never commit credentials or print them in logs.
-- Never embed a standard OpenAI API key in the mobile app. Realtime client access must use
-  short-lived credentials created by a trusted server-side component.
+- Never embed a standard OpenAI API key in the mobile app. The Companion uses OpenAI's unified
+  WebRTC interface so the mobile app exchanges its SDP offer for an SDP answer and an opaque
+  Wave-owned call ID without receiving the provider key or provider call ID.
 - Treat Realtime tool arguments and Hermes responses as untrusted input. Validate them at the
   boundary.
 - Realtime may dispatch the narrow `ask_hermes({ instruction })` tool without an additional Wave
@@ -273,7 +293,9 @@ a command-line argument. Full setup and cancellation semantics are documented in
 - [PanelUI installation](https://www.panelui.dev/docs/installation)
 - [PanelUI CLI](https://www.panelui.dev/docs/cli)
 - [PanelUI theming](https://www.panelui.dev/docs/theming)
-- [OpenAI Realtime API](https://platform.openai.com/docs/api-reference/realtime)
+- [OpenAI Realtime API](https://developers.openai.com/api/docs/guides/realtime)
+- [Realtime WebRTC connection guide](https://developers.openai.com/api/docs/guides/realtime-webrtc)
+- [Realtime server-side controls](https://developers.openai.com/api/docs/guides/realtime-server-controls)
 - [Wave architecture and workspace boundaries](./docs/architecture.md)
 - [Hermes connectivity contract](./docs/hermes-connectivity.md)
 - [WebRTC foundation and validation](./docs/webrtc-foundation.md)

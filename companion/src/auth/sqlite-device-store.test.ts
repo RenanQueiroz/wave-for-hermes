@@ -46,6 +46,8 @@ test('authenticates, binds, lists, and revokes device access', () => {
   store.bindSession(redeemed.device.id, 'session-1');
   store.bindSession(redeemed.device.id, 'session-1');
   assert.equal(store.hasSession(redeemed.device.id, 'session-1'), true);
+  assert.equal(store.isDeviceActive(redeemed.device.id), true);
+  assert.equal(store.isDeviceActive('missing-device'), false);
   assert.deepEqual(store.listSessionIds(redeemed.device.id), ['session-1']);
 
   const listed = store.listDevices();
@@ -56,6 +58,7 @@ test('authenticates, binds, lists, and revokes device access', () => {
   assert.equal(store.revokeDevice(redeemed.device.id), true);
   assert.equal(store.revokeDevice(redeemed.device.id), false);
   assert.equal(store.authenticateDevice(redeemed.credential), undefined);
+  assert.equal(store.isDeviceActive(redeemed.device.id), false);
   store.close();
 });
 

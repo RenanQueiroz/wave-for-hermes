@@ -115,6 +115,21 @@ export class SqliteDeviceStore implements DeviceStore {
     return row?.found === 1;
   }
 
+  isDeviceActive(deviceId: string) {
+    const parsed = WaveIdentifierSchema.safeParse(deviceId);
+    if (!parsed.success) {
+      return false;
+    }
+    const row = this.database
+      .prepare(
+        `SELECT 1 AS found
+         FROM devices
+         WHERE id = ? AND revoked_at IS NULL`,
+      )
+      .get(parsed.data) as { found: number } | undefined;
+    return row?.found === 1;
+  }
+
   issuePairingCode(expiresAt: Date): IssuedPairingCode {
     const now = this.now();
     if (!Number.isFinite(expiresAt.getTime()) || expiresAt <= now) {

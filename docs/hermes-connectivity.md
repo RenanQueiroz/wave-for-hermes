@@ -24,7 +24,7 @@ application will instead use `WaveBackendClient` and Wave-owned normalized contr
 `packages/contracts`.
 
 The companion exposes a non-sensitive `GET /v1/status` plus authenticated Wave-owned compatibility,
-session, history, streamed-turn, and cancellation routes. The authenticated
+session, history, streamed-turn, cancellation, and Realtime call routes. The authenticated
 `GET /v1/compatibility` route performs a live Hermes capability probe. Mobile does not call Hermes
 routes directly: its contract-validating `WaveBackendClient` calls only the normalized Wave API,
 and pairing/bootstrap require the live compatibility probe before showing the connected route.
@@ -78,6 +78,25 @@ therefore aborts its fetch; the server observes the closed connection and cancel
 task. Ending Wave's downstream stream early also cancels the upstream response reader.
 `HermesClient.stopRun` is reserved for runs created through `/v1/runs`.
 
+## Realtime `ask_hermes` dispatch
+
+The Companion's Realtime registry reuses this same Hermes streaming adapter. A newly created
+Realtime call is bound to the authenticated device and the Hermes session from the Wave route; the
+model cannot provide or replace that session ID.
+
+When OpenAI requests `ask_hermes`, the Companion:
+
+1. accepts only the strict bounded `{ instruction }` schema;
+2. rechecks that the device is active and still authorized for the call's trusted session;
+3. permits only one active Hermes tool request for that call;
+4. streams the instruction through `HermesClient.streamChat`;
+5. returns only a bounded structured answer or safe error through the original Realtime tool call;
+6. aborts the Hermes stream when the tool times out or its Realtime call ends.
+
+Unknown tools, malformed JSON, unknown fields, model-selected session identifiers, duplicate tool
+IDs, and unauthorized calls never reach Hermes. Wave does not add another confirmation dialog for
+this narrow tool; Hermes's own tool safety behavior remains authoritative.
+
 ## Private production deployment
 
 The Homelab deployment now runs the pinned Hermes API Server and the production Companion with
@@ -100,6 +119,11 @@ these boundaries:
 The generated Hermes key stays in Homelab's ignored mode-`0600` `.env` and the two server
 environments. A mobile device receives only a separately revocable Wave credential after
 one-time pairing.
+
+The currently recorded Homelab validation covers pairing, authorization, text streaming,
+persisted history, and cancellation. OpenAI Realtime must be enabled with a server-only
+`OPENAI_API_KEY` and validated separately before the deployment can advertise the live voice
+feature.
 
 Container-to-container traffic uses the explicit private-network exception
 `http://hermes:8642`; the mobile Wave API remains private HTTPS at:
@@ -135,6 +159,10 @@ contract. `--live` additionally creates and revokes a temporary Wave device, exe
 authenticated compatibility through Nginx, creates a Hermes session, completes and reloads a
 streamed turn, and cancels a second active stream. It prints only the resulting session ID and
 supported operations, never the key, device credential, or response content.
+
+The current Homelab validator does not create a billable OpenAI Realtime call. A dedicated,
+explicit Realtime integration probe should be added with the live mobile transport instead of
+silently extending the baseline deployment check.
 
 For a separate development server, `npm run test:hermes:integration` remains available with
 server-only `HERMES_API_URL`, `HERMES_API_KEY`, and, for a trusted private HTTP endpoint,

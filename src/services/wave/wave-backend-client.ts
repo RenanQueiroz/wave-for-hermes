@@ -3,12 +3,15 @@ import {
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
   WaveErrorResponseSchema,
+  WaveEndRealtimeCallResponseSchema,
   WaveIdentifierSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
+  WaveStartRealtimeCallRequestSchema,
+  WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
   type WaveTurnEvent,
@@ -16,12 +19,14 @@ import {
   type WaveCompatibilityResponse,
   type WaveCreateSessionRequest,
   type WaveErrorCode,
+  type WaveEndRealtimeCallResponse,
   type WaveRedeemPairingRequest,
   type WaveRedeemPairingResponse,
   type WaveSessionHistoryResponse,
   type WaveSessionListResponse,
   type WaveSessionResponse,
   type WaveStatusResponse,
+  type WaveStartRealtimeCallResponse,
 } from '@wave/contracts';
 
 import {
@@ -30,6 +35,7 @@ import {
 } from './wave-sse.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_REALTIME_SETUP_TIMEOUT_MS = 35_000;
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 75_000;
 const DEFAULT_STREAM_TOTAL_TIMEOUT_MS = 11 * 60_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -51,6 +57,7 @@ export interface WaveBackendClientOptions {
   credential?: string;
   fetch?: WaveFetch;
   requestTimeoutMs?: number;
+  realtimeSetupTimeoutMs?: number;
   streamIdleTimeoutMs?: number;
   streamTotalTimeoutMs?: number;
 }
@@ -89,6 +96,7 @@ export class WaveBackendClient {
   private readonly credential?: string;
   private readonly fetch: WaveFetch;
   private readonly requestTimeoutMs: number;
+  private readonly realtimeSetupTimeoutMs: number;
   private readonly streamIdleTimeoutMs: number;
   private readonly streamTotalTimeoutMs: number;
 
@@ -100,6 +108,9 @@ export class WaveBackendClient {
     this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.realtimeSetupTimeoutMs =
+      options.realtimeSetupTimeoutMs ??
+      DEFAULT_REALTIME_SETUP_TIMEOUT_MS;
     this.streamIdleTimeoutMs =
       options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
     this.streamTotalTimeoutMs =
@@ -183,6 +194,26 @@ export class WaveBackendClient {
     return this.request(WaveStatusResponseSchema, '/v1/status', { signal });
   }
 
+  endRealtimeCall(
+    callId: string,
+    signal?: AbortSignal,
+  ): Promise<WaveEndRealtimeCallResponse> {
+    const validCallId = parseClientInput(
+      WaveIdentifierSchema,
+      callId,
+      'Enter a valid Wave Realtime call identifier.',
+    );
+    return this.request(
+      WaveEndRealtimeCallResponseSchema,
+      `/v1/realtime/calls/${encodeURIComponent(validCallId)}/end`,
+      {
+        authenticated: true,
+        method: 'POST',
+        signal,
+      },
+    );
+  }
+
   importSessions(signal?: AbortSignal): Promise<WaveSessionListResponse> {
     return this.request(
       WaveSessionListResponseSchema,
@@ -218,6 +249,34 @@ export class WaveBackendClient {
         body,
         method: 'POST',
         signal,
+      },
+    );
+  }
+
+  startRealtimeCall(
+    sessionId: string,
+    sdpOffer: string,
+    signal?: AbortSignal,
+  ): Promise<WaveStartRealtimeCallResponse> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    const body = parseClientInput(
+      WaveStartRealtimeCallRequestSchema,
+      { sdpOffer },
+      'Wave could not create a valid WebRTC offer.',
+    );
+    return this.request(
+      WaveStartRealtimeCallResponseSchema,
+      `/v1/sessions/${encodeURIComponent(validSessionId)}/realtime/calls`,
+      {
+        authenticated: true,
+        body,
+        method: 'POST',
+        signal,
+        timeoutMs: this.realtimeSetupTimeoutMs,
       },
     );
   }
@@ -392,6 +451,7 @@ export class WaveBackendClient {
       body?: unknown;
       method?: 'GET' | 'POST';
       signal?: AbortSignal;
+      timeoutMs?: number;
     },
   ): Promise<T> {
     const controller = new AbortController();
@@ -405,7 +465,7 @@ export class WaveBackendClient {
     const timeout = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, this.requestTimeoutMs);
+    }, options.timeoutMs ?? this.requestTimeoutMs);
 
     try {
       const headers: Record<string, string> = {

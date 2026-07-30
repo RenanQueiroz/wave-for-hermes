@@ -26,10 +26,34 @@ test('loads server-only Hermes and listener configuration', () => {
     hermesIdleTimeoutMs: 60_000,
     hermesTotalTimeoutMs: 600_000,
     host: '0.0.0.0',
+    maxActiveRealtimeCalls: 2,
     maxActiveTurns: 4,
     pairingCodeTtlSeconds: 600,
     port: 9000,
+    realtimeCallTtlMs: 1_800_000,
+    realtimeToolTimeoutMs: 120_000,
   });
+});
+
+test('enables only server-configured OpenAI Realtime with bounded defaults', () => {
+  const config = loadCompanionConfig({
+    HERMES_API_KEY: 'server-only-hermes-key',
+    HERMES_API_URL: 'https://hermes.example.test',
+    OPENAI_API_KEY: 'server-only-openai-key',
+    OPENAI_REALTIME_MODEL: 'gpt-realtime-2.1',
+    OPENAI_REALTIME_VOICE: 'cedar',
+  });
+
+  assert.deepEqual(config.openAI, {
+    apiKey: 'server-only-openai-key',
+    model: 'gpt-realtime-2.1',
+    requestTimeoutMs: 15_000,
+    sidebandConnectTimeoutMs: 10_000,
+    voice: 'cedar',
+  });
+  assert.equal(config.maxActiveRealtimeCalls, 2);
+  assert.equal(config.realtimeCallTtlMs, 1_800_000);
+  assert.equal(config.realtimeToolTimeoutMs, 120_000);
 });
 
 test('fails clearly without exposing configuration values', () => {
@@ -60,5 +84,20 @@ test('requires HTTPS unless private HTTP is explicitly enabled', () => {
     (error: unknown) =>
       error instanceof CompanionConfigError &&
       error.message.includes('requires HTTPS'),
+  );
+});
+
+test('requires the Realtime call lifetime to exceed tool execution', () => {
+  assert.throws(
+    () =>
+      loadCompanionConfig({
+        HERMES_API_KEY: 'server-only-key',
+        HERMES_API_URL: 'https://hermes.example.test',
+        WAVE_REALTIME_CALL_TTL_MS: '60000',
+        WAVE_REALTIME_TOOL_TIMEOUT_MS: '60000',
+      }),
+    (error: unknown) =>
+      error instanceof CompanionConfigError &&
+      error.message.includes('WAVE_REALTIME_CALL_TTL_MS'),
   );
 });
