@@ -88,12 +88,15 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     const providerCallId = parseProviderCallId(response.headers.get('location'));
     let sdpAnswer: string;
     try {
+      const responseContentType = response.headers
+        .get('content-type')
+        ?.split(';', 1)[0]
+        ?.trim()
+        .toLowerCase();
       if (
         response.status !== 201 ||
-        !response.headers
-          .get('content-type')
-          ?.toLowerCase()
-          .startsWith('application/sdp')
+        (responseContentType !== 'application/sdp' &&
+          responseContentType !== 'text/plain')
       ) {
         throw new RealtimeProviderError(
           'OpenAI Realtime returned an invalid call response.',

@@ -53,7 +53,7 @@ test('uses the official SDK for unified call setup and call-id sideband control'
             'v=0\r\no=- 2 3 IN IP4 127.0.0.1\r\n',
             {
               headers: {
-                'content-type': 'application/sdp',
+                'content-type': 'text/plain; charset=utf-8',
                 location: '/v1/realtime/calls/rtc_test_call',
               },
               status: 201,
