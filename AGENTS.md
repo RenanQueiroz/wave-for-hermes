@@ -93,6 +93,10 @@ documentation before implementing UI.
   revocable device-scoped companion credential and short-lived Realtime connection material.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
+- Use TanStack Query for finite companion state and a focused controller/reducer for active
+  streams. Mobile screens consume normalized state and never parse SSE directly.
+- Use Expo SDK 57's `expo/fetch` for response streaming. Keep stream framing, ordering, timeout,
+  cancellation, and size limits in `WaveBackendClient` and its service helpers.
 - Hermes HTTP, SSE, capability, and error normalization belongs in the companion's server-only
   adapter under `companion/src/hermes`; do not import it into mobile feature or UI code.
 - Do not retain a second production Hermes transport in the mobile bundle after the adapter moves.

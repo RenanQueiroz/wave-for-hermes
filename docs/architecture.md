@@ -64,16 +64,19 @@ dependencies.
 Run `npm run verify:boundaries` to check these rules against workspace manifests, source imports,
 the companion production dependency tree, and an existing production mobile export.
 
-## Current mobile connection boundary
+## Current mobile data boundary
 
-The mobile connection implementation lives under `src/features/connection`,
-`src/services/credentials`, and `src/services/wave`:
+The mobile implementation lives under `src/features/connection`, `src/features/sessions`,
+`src/features/chat`, `src/services/credentials`, `src/services/query`, `src/services/sessions`, and
+`src/services/wave`:
 
 - `WaveBackendClient` is the only mobile production HTTP boundary. It validates request inputs and
   every JSON response with `@wave/contracts`, preserves an intentional companion path prefix,
   rejects credentials/query/fragment components in configured URLs, rejects HTTP outside an
   explicit development exception, refuses redirects, bounds response size, and applies
-  cancellation-aware request timeouts.
+  cancellation-aware request timeouts. Its streaming path uses Expo SDK 57's native `expo/fetch`,
+  validates every SSE event, enforces session/turn identity and sequence order, and bounds connect,
+  idle, total, frame, and error-response sizes.
 - `SecureWaveCredentialStore` persists one versioned connection record through Expo SecureStore's
   asynchronous APIs with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The record contains the normalized
   companion URL, public device metadata, and the revocable device credential. UI and
@@ -85,10 +88,21 @@ The mobile connection implementation lives under `src/features/connection`,
   saving the credential, then requires an authenticated live compatibility check. A saved
   credential is rechecked at launch. Local disconnect deletes the secure record but deliberately
   does not revoke the server-side device.
-
-The current client covers finite JSON endpoints. Phase 5 will add a dedicated normalized SSE
-streaming boundary and controller rather than reading Hermes events or managing stream lifecycle in
-React components.
+- `WaveQueryProvider` owns finite server state for session lists and histories. Connection changes
+  cancel and remove the connection-scoped `wave` cache so one companion/device cannot reuse
+  another's data.
+- `ActiveSessionStore` persists only a versioned, non-secret connection/session identifier pair.
+  Hermes remains the durable message source and the sessions screen resumes only an authorized ID
+  returned by the current companion.
+- `useWaveChat` and its reducer own the single active stream, 50 ms assistant-delta batching,
+  cancellation races, safe error state, and post-stream history reconciliation. The reducer keeps
+  the composer busy until stream cleanup and reconciliation have settled, so a newly enabled send
+  cannot race the prior turn. React screens do not parse SSE or construct protocol messages.
+- The PanelUI session and chat routes render normalized conversation data only. Tool events become
+  name/status-only `Task` parts; raw arguments, output, upstream events, and credentials never enter
+  the mobile render model. `KeyboardProvider` is mounted once at the app root, and PanelUI's
+  `KeyboardAvoider` docks the complete composer row so its Input and Send/Stop controls move
+  together above the native keyboard.
 
 ## Current companion API
 

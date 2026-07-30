@@ -65,16 +65,19 @@ The operator commands need only `WAVE_DATABASE_PATH` and
 ### Development-only mobile fixture
 
 When a live private Hermes API is not available, run a local in-memory companion fixture to verify
-mobile pairing and connection restoration without inventing production credentials:
+mobile pairing, text streaming, cancellation wiring, and history restoration without inventing
+production credentials:
 
 ```bash
 npm run companion:mobile-fixture
 ```
 
-It prints one short-lived pairing code, uses a deterministic fake Hermes capability response, and
-loses every device/session when stopped. It binds to `127.0.0.1:8787` by default. To reach it from
-an Android emulator, bind the fixture to the host network and enter `http://10.0.2.2:8787` in a
-development build:
+It prints one short-lived pairing code, uses deterministic fake Hermes capability/session
+responses, provides a cancellation-only test prompt, streams assistant deltas around a sanitized
+tool lifecycle, and stores normalized history only in process memory. It loses every device/session
+when stopped. It binds to
+`127.0.0.1:8787` by default. To reach it from an Android emulator, bind the fixture to the host
+network and enter `http://10.0.2.2:8787` in a development build:
 
 ```bash
 WAVE_FIXTURE_HOST=0.0.0.0 npm run companion:mobile-fixture

@@ -12,6 +12,10 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
+        name="sessions/[sessionId]"
+        options={{ title: 'Hermes' }}
+      />
+      <Stack.Screen
         name="development"
         options={{ title: 'Development' }}
       />

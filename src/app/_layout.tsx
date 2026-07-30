@@ -9,12 +9,14 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { PanelUIProvider, useThemeMode } from 'panelui-native';
 import { useEffect, useMemo } from 'react';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Platform, type ColorValue } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { WaveConnectionProvider } from '@/features/connection/connection-provider';
+import { WaveQueryProvider } from '@/services/query/wave-query-provider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -74,8 +76,12 @@ function ThemedApp() {
 
 export default function RootLayout() {
   return (
-    <PanelUIProvider>
-      <ThemedApp />
-    </PanelUIProvider>
+    <KeyboardProvider>
+      <PanelUIProvider>
+        <WaveQueryProvider>
+          <ThemedApp />
+        </WaveQueryProvider>
+      </PanelUIProvider>
+    </KeyboardProvider>
   );
 }

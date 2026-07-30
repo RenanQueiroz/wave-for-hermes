@@ -10,7 +10,7 @@ import { ObservabilityCollector } from './observability.js';
 import { runAndroidSmoke } from './smoke/android.js';
 import { runIosSmoke } from './smoke/ios.js';
 import { runObservabilitySmoke } from './smoke/observability.js';
-import { runPairingSmoke } from './smoke/pairing.js';
+import { runChatSmoke, runPairingSmoke } from './smoke/pairing.js';
 import { runProductionBridgeSmoke } from './smoke/production.js';
 import type { MobilePlatform } from './types.js';
 import { ensureSimulatorWda, expectedWdaAppPath, hasPreparedWda } from './wda.js';
@@ -130,6 +130,16 @@ async function main(args = process.argv.slice(2)): Promise<number> {
     return report.ok && report.sessionDeleted ? 0 : 1;
   }
 
+  if (command === 'smoke-chat') {
+    const report = await runChatSmoke(config, {
+      baseUrl: requiredEnvironment('MOBILE_AGENT_PAIRING_URL'),
+      code: requiredEnvironment('MOBILE_AGENT_PAIRING_CODE'),
+      platform: readPlatform(args),
+    });
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return report.ok && report.sessionDeleted ? 0 : 1;
+  }
+
   if (command === 'smoke-production') {
     const report = await runProductionBridgeSmoke(config);
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -157,6 +167,7 @@ async function main(args = process.argv.slice(2)): Promise<number> {
       '  smoke-android                      Run the non-destructive Radon Android Appium smoke',
       '  smoke-ios                          Run the non-destructive Radon iOS Appium spike',
       '  smoke-pairing --platform ios|android  Pair, restart, restore, and locally disconnect',
+      '  smoke-chat --platform ios|android  Pair, stream fixture chat, restore, and disconnect',
       '  smoke-production                   Verify state bridge exclusion in production',
       '  prune-artifacts [--confirm]        Preview/apply action-trace retention',
       '',

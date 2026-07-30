@@ -1,5 +1,5 @@
-import { ConnectedScreen } from '@/features/connection/connected-screen';
+import { SessionsScreen } from '@/features/sessions/sessions-screen';
 
 export default function SessionsRoute() {
-  return <ConnectedScreen />;
+  return <SessionsScreen />;
 }

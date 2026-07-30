@@ -9,7 +9,9 @@ import {
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
+  WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
+  type WaveTurnEvent,
   type WaveCancelTurnResponse,
   type WaveCompatibilityResponse,
   type WaveCreateSessionRequest,
@@ -22,10 +24,17 @@ import {
   type WaveStatusResponse,
 } from '@wave/contracts';
 
+import {
+  parseWaveSseStream,
+  WaveSseProtocolError,
+} from './wave-sse.ts';
+
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 75_000;
+const DEFAULT_STREAM_TOTAL_TIMEOUT_MS = 11 * 60_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
-type WaveFetch = (
+export type WaveFetch = (
   input: string,
   init?: RequestInit,
 ) => Promise<Response>;
@@ -42,6 +51,8 @@ export interface WaveBackendClientOptions {
   credential?: string;
   fetch?: WaveFetch;
   requestTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
+  streamTotalTimeoutMs?: number;
 }
 
 export type WaveBackendFailureKind =
@@ -78,6 +89,8 @@ export class WaveBackendClient {
   private readonly credential?: string;
   private readonly fetch: WaveFetch;
   private readonly requestTimeoutMs: number;
+  private readonly streamIdleTimeoutMs: number;
+  private readonly streamTotalTimeoutMs: number;
 
   constructor(options: WaveBackendClientOptions) {
     this.baseUrl = normalizeWaveBaseUrl(options.baseUrl, {
@@ -87,6 +100,10 @@ export class WaveBackendClient {
     this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.streamIdleTimeoutMs =
+      options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
+    this.streamTotalTimeoutMs =
+      options.streamTotalTimeoutMs ?? DEFAULT_STREAM_TOTAL_TIMEOUT_MS;
   }
 
   cancelTurn(
@@ -203,6 +220,168 @@ export class WaveBackendClient {
         signal,
       },
     );
+  }
+
+  async *streamTurn(
+    sessionId: string,
+    input: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<WaveTurnEvent> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    const body = parseClientInput(
+      WaveStartTurnRequestSchema,
+      { input },
+      'Enter a valid message.',
+    );
+    if (!this.credential) {
+      throw new WaveBackendError(
+        'This Wave connection does not have a device credential.',
+        { kind: 'unauthorized' },
+      );
+    }
+
+    const controller = new AbortController();
+    let timeout: 'connect' | 'idle' | 'total' | undefined;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const abortForTimeout = (
+      kind: 'connect' | 'idle' | 'total',
+    ) => {
+      timeout = kind;
+      controller.abort();
+    };
+    const connectTimer = setTimeout(
+      () => abortForTimeout('connect'),
+      this.requestTimeoutMs,
+    );
+    const totalTimer = setTimeout(
+      () => abortForTimeout('total'),
+      this.streamTotalTimeoutMs,
+    );
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(
+        () => abortForTimeout('idle'),
+        this.streamIdleTimeoutMs,
+      );
+    };
+    const onAbort = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
+      const response = await this.fetch(
+        this.buildUrl(
+          `/v1/sessions/${encodeURIComponent(validSessionId)}/turns`,
+        ),
+        {
+          body: JSON.stringify(body),
+          headers: {
+            accept: 'text/event-stream',
+            authorization: `Bearer ${this.credential}`,
+            'content-type': 'application/json',
+          },
+          method: 'POST',
+          redirect: 'error',
+          signal: controller.signal,
+        },
+      );
+      clearTimeout(connectTimer);
+      if (!response.ok) {
+        const payload = await readResponseJson(response);
+        throw parseWaveResponseError(response.status, payload);
+      }
+      if (
+        !response.headers
+          .get('content-type')
+          ?.toLowerCase()
+          .startsWith('text/event-stream')
+      ) {
+        throw new WaveBackendError(
+          'Wave Companion returned an incompatible event stream.',
+          { kind: 'invalid_response' },
+        );
+      }
+      if (!response.body) {
+        throw new WaveBackendError(
+          'Wave Companion returned an incompatible event stream.',
+          { kind: 'invalid_response' },
+        );
+      }
+
+      let expectedSequence = 0;
+      let turnId: string | undefined;
+      let terminal = false;
+      resetIdleTimer();
+      for await (const event of parseWaveSseStream(response.body, {
+        onActivity: resetIdleTimer,
+      })) {
+        if (
+          terminal ||
+          event.sessionId !== validSessionId ||
+          event.sequence !== expectedSequence ||
+          (expectedSequence === 0 && event.type !== 'turn.started') ||
+          (turnId !== undefined && event.turnId !== turnId)
+        ) {
+          throw new WaveBackendError(
+            'Wave Companion returned an out-of-order event stream.',
+            { kind: 'invalid_response' },
+          );
+        }
+        turnId ??= event.turnId;
+        expectedSequence += 1;
+        terminal =
+          event.type === 'turn.completed' ||
+          event.type === 'turn.error';
+        yield event;
+      }
+      if (!terminal) {
+        throw new WaveBackendError(
+          'Wave Companion ended the event stream unexpectedly.',
+          { kind: 'invalid_response' },
+        );
+      }
+    } catch (error) {
+      if (error instanceof WaveBackendError) throw error;
+      if (error instanceof WaveSseProtocolError) {
+        throw new WaveBackendError(
+          'Wave Companion returned an incompatible event stream.',
+          { kind: 'invalid_response' },
+        );
+      }
+      if (controller.signal.aborted) {
+        if (signal?.aborted) {
+          throw new WaveBackendError('The Wave turn was cancelled.', {
+            kind: 'cancelled',
+          });
+        }
+        if (timeout) {
+          throw new WaveBackendError(
+            'The Wave turn did not respond before the timeout.',
+            {
+              kind: 'timeout',
+              retryable: true,
+            },
+          );
+        }
+      }
+      throw new WaveBackendError('Wave Companion is unavailable.', {
+        kind: 'network',
+        retryable: true,
+      });
+    } finally {
+      controller.abort();
+      clearTimeout(connectTimer);
+      clearTimeout(totalTimer);
+      if (idleTimer) clearTimeout(idleTimer);
+      signal?.removeEventListener('abort', onAbort);
+    }
   }
 
   private async request<T>(

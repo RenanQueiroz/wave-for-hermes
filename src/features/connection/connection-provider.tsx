@@ -1,4 +1,5 @@
 import type { WaveCompatibilityResponse } from '@wave/contracts';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   use,
@@ -21,9 +22,14 @@ import {
 } from '@/services/credentials/connection-record';
 import { SecureWaveCredentialStore } from '@/services/credentials/secure-credential-store';
 import {
+  ActiveSessionStore,
+  ActiveSessionStoreError,
+} from '@/services/sessions/active-session-store';
+import {
   WaveBackendClient,
   WaveBackendError,
 } from '@/services/wave/wave-backend-client';
+import { createMobileWaveBackendClient } from '@/services/wave/create-mobile-wave-backend-client';
 
 export interface PairWaveDeviceInput {
   baseUrl: string;
@@ -53,6 +59,7 @@ export type WaveConnectionState =
     };
 
 interface WaveConnectionContextValue {
+  client?: WaveBackendClient;
   disconnect(): Promise<void>;
   pair(input: PairWaveDeviceInput): Promise<void>;
   retry(): Promise<void>;
@@ -63,26 +70,28 @@ const WaveConnectionContext =
   createContext<WaveConnectionContextValue | null>(null);
 
 export function WaveConnectionProvider({ children }: PropsWithChildren) {
+  const queryClient = useQueryClient();
   const allowInsecureHttp = __DEV__;
   const store = useMemo<WaveCredentialStore>(
     () => new SecureWaveCredentialStore({ allowInsecureHttp }),
     [allowInsecureHttp],
   );
+  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const [state, setState] = useState<WaveConnectionState>({
     phase: 'loading',
   });
-  const clientRef = useRef<WaveBackendClient | undefined>(undefined);
+  const [client, setClient] = useState<WaveBackendClient | undefined>();
   const recordRef = useRef<WaveConnectionRecord | undefined>(undefined);
   const operationRef = useRef(0);
 
   const verify = useCallback(
     async (record: WaveConnectionRecord, operation: number) => {
-      const client = new WaveBackendClient({
+      const client = createMobileWaveBackendClient({
         allowInsecureHttp,
         baseUrl: record.baseUrl,
         credential: record.credential,
       });
-      clientRef.current = client;
+      setClient(client);
       recordRef.current = record;
       try {
         const compatibility = await client.getCompatibility();
@@ -124,7 +133,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       const record = await store.load();
       if (operation !== operationRef.current) return;
       if (!record) {
-        clientRef.current = undefined;
+        setClient(undefined);
         recordRef.current = undefined;
         setState({ phase: 'disconnected' });
         return;
@@ -132,7 +141,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       await verify(record, operation);
     } catch (error) {
       if (operation !== operationRef.current) return;
-      clientRef.current = undefined;
+      setClient(undefined);
       recordRef.current = undefined;
       setState({
         error: toConnectionError(error),
@@ -148,7 +157,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       (record) => {
         if (operation !== operationRef.current) return;
         if (!record) {
-          clientRef.current = undefined;
+          setClient(undefined);
           recordRef.current = undefined;
           setState({ phase: 'disconnected' });
           return;
@@ -157,7 +166,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       },
       (error: unknown) => {
         if (operation !== operationRef.current) return;
-        clientRef.current = undefined;
+        setClient(undefined);
         recordRef.current = undefined;
         setState({
           error: toConnectionError(error),
@@ -176,9 +185,11 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
   const pair = useCallback(
     async (input: PairWaveDeviceInput) => {
       const operation = ++operationRef.current;
+      await queryClient.cancelQueries({ queryKey: ['wave'] });
+      queryClient.removeQueries({ queryKey: ['wave'] });
       setState({ phase: 'pairing' });
       try {
-        const publicClient = new WaveBackendClient({
+        const publicClient = createMobileWaveBackendClient({
           allowInsecureHttp,
           baseUrl: input.baseUrl,
         });
@@ -203,6 +214,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
           },
           { allowInsecureHttp },
         );
+        await activeSessionStore.clear();
         await store.save(record);
         if (operation !== operationRef.current) return;
         await verify(record, operation);
@@ -214,7 +226,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         });
       }
     },
-    [allowInsecureHttp, store, verify],
+    [activeSessionStore, allowInsecureHttp, queryClient, store, verify],
   );
 
   const disconnect = useCallback(async () => {
@@ -222,9 +234,12 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     const currentRecord = recordRef.current;
     setState({ phase: 'loading' });
     try {
+      await queryClient.cancelQueries({ queryKey: ['wave'] });
+      queryClient.removeQueries({ queryKey: ['wave'] });
+      await activeSessionStore.clear();
       await store.clear();
       if (operation !== operationRef.current) return;
-      clientRef.current = undefined;
+      setClient(undefined);
       recordRef.current = undefined;
       setState({ phase: 'disconnected' });
     } catch (error) {
@@ -237,7 +252,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
           : {}),
       });
     }
-  }, [store]);
+  }, [activeSessionStore, queryClient, store]);
 
   const retry = useCallback(async () => {
     const record = recordRef.current;
@@ -274,12 +289,13 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<WaveConnectionContextValue>(
     () => ({
+      ...(state.phase === 'connected' && client ? { client } : {}),
       disconnect,
       pair,
       retry,
       state,
     }),
-    [disconnect, pair, retry, state],
+    [client, disconnect, pair, retry, state],
   );
 
   return (
@@ -300,7 +316,10 @@ export function useWaveConnection() {
 }
 
 function toConnectionError(error: unknown): ConnectionError {
-  if (error instanceof WaveCredentialStoreError) {
+  if (
+    error instanceof WaveCredentialStoreError ||
+    error instanceof ActiveSessionStoreError
+  ) {
     return {
       kind: 'secure_storage',
       message: error.message,

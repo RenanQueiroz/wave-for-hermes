@@ -39,8 +39,7 @@ Homelab repository.
 
 ## Current status
 
-The repository is at the authenticated mobile-connection and transport stage. It currently
-includes:
+The repository is at the authenticated text-chat vertical-slice stage. It currently includes:
 
 - Expo SDK 57 with Expo Router and development-client support for iOS and Android;
 - [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
@@ -54,18 +53,23 @@ includes:
   logs, and graceful shutdown;
 - runtime-neutral Wave pairing, session, history, cancellation, error, and normalized turn-event
   schemas in `@wave/contracts`;
-- a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded requests,
-  cancellation, response-size limits, safe normalized errors, and no direct Hermes transport;
+- a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
+  strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
+  limits, safe normalized errors, and no direct Hermes transport;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
+- TanStack Query-backed session/history state plus PanelUI conversation list and chat routes with
+  batched assistant deltas, lifecycle-safe prompt cancellation, sanitized tool tasks,
+  active-session restoration, and a keyboard-sticky native composer that keeps Send and Stop
+  controls reachable;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
-The visible app now begins with the real connection flow and shows a connected placeholder after a
-live compatibility check. The session list, chat UI, active SSE controller, and Realtime voice
-slice have not been implemented yet.
+The visible app begins with the real connection flow, then opens the user's authorized Hermes
+conversations and streams normalized text turns. The OpenAI Realtime voice slice has not been
+implemented yet.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 private deployment prerequisite.
@@ -110,8 +114,8 @@ configuration and boundary details are in [`docs/architecture.md`](./docs/archit
 the pairing/operator workflow is in [`companion/README.md`](./companion/README.md).
 
 Create and run a local development build when native dependencies change. The current client
-requires both `react-native-webrtc` and `expo-secure-store`, so an older installed development
-client cannot run it:
+requires `react-native-webrtc`, `expo-secure-store`, and `react-native-keyboard-controller`, so an
+older installed development client cannot run it:
 
 ```bash
 npx expo prebuild --clean
@@ -145,6 +149,12 @@ check. **Disconnect this device** removes only the phone's local credential; use
 `npm run companion:revoke -- <device-id>` when the credential must also be invalidated server-side.
 The full operator workflow is in [`companion/README.md`](./companion/README.md).
 
+After pairing, Wave lists only sessions authorized for that device. Start a new conversation or
+explicitly import existing Hermes sessions, then send text from the chat route. Hermes remains the
+durable history source; Wave stores only the active session identifier so it can resume that
+conversation after process restart. Raw tool arguments and output are never rendered by the mobile
+chat UI.
+
 For UI development before the private Hermes API is available, the companion also provides an
 explicitly development-only, in-memory fixture:
 
@@ -152,9 +162,10 @@ explicitly development-only, in-memory fixture:
 WAVE_FIXTURE_HOST=0.0.0.0 npm run companion:mobile-fixture
 ```
 
-An Android emulator can reach that listener at `http://10.0.2.2:8787`. See the companion README
-before using it; the fixture is not a production entrypoint and all of its state disappears when it
-stops.
+An Android emulator can reach that listener at `http://10.0.2.2:8787`. The fixture provides
+deterministic sessions, assistant deltas, sanitized tool lifecycle events, and history restoration.
+See the companion README before using it; the fixture is not a production entrypoint and all of its
+state disappears when it stops.
 
 ### WebRTC development proof
 

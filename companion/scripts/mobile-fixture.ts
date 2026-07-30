@@ -13,6 +13,7 @@ import type {
 
 const host = process.env.WAVE_FIXTURE_HOST?.trim() || '127.0.0.1';
 const port = parsePort(process.env.WAVE_FIXTURE_PORT);
+const cancellationPrompt = 'Cancel the Wave chat fixture';
 const store = new SqliteDeviceStore(':memory:');
 const hermes = createFixtureHermesClient();
 const config: CompanionConfig = {
@@ -74,6 +75,8 @@ function parsePort(value: string | undefined) {
 
 function createFixtureHermesClient(): HermesClient {
   const sessions: HermesSessionSummary[] = [];
+  const messages = new Map<string, HermesConversationMessage[]>();
+  let turnCount = 0;
   return {
     async createSession(
       input: HermesCreateSessionInput = {},
@@ -85,20 +88,13 @@ function createFixtureHermesClient(): HermesClient {
         title: input.title ?? 'Fixture conversation',
       };
       sessions.push(session);
+      messages.set(session.id, []);
       return session;
     },
     async getSessionMessages(
       sessionId: string,
     ): Promise<HermesConversationMessage[]> {
-      return [
-        {
-          content: 'Hello from the development-only Hermes fixture.',
-          id: 'fixture-message-1',
-          role: 'assistant',
-          sessionId,
-          timestamp: Math.floor(Date.now() / 1_000),
-        },
-      ];
+      return [...(messages.get(sessionId) ?? [])];
     },
     async listSessions(): Promise<HermesSessionSummary[]> {
       return sessions;
@@ -124,48 +120,150 @@ function createFixtureHermesClient(): HermesClient {
     async stopRun() {},
     async *streamChat(
       sessionId: string,
-      _input: HermesStreamChatInput,
+      input: HermesStreamChatInput,
     ): AsyncGenerator<HermesStreamEvent> {
+      turnCount += 1;
       const timestamp = Math.floor(Date.now() / 1_000);
+      const messageId = `fixture-assistant-${turnCount}`;
+      const response = 'Fixture response from Hermes.';
       const base = {
-        runId: 'fixture-run',
+        runId: `fixture-run-${turnCount}`,
         sequence: 0,
         sessionId,
         timestamp,
       };
       yield {
         ...base,
-        messageId: 'fixture-assistant',
+        messageId,
         type: 'message.started',
       };
+      if (input.input === cancellationPrompt) {
+        yield {
+          ...base,
+          delta: 'Waiting for cancellation…',
+          messageId,
+          sequence: 1,
+          type: 'assistant.delta',
+        };
+        await waitForFixtureCancellation(input.signal);
+        yield {
+          ...base,
+          completed: false,
+          sequence: 2,
+          type: 'run.completed',
+        };
+        yield {
+          ...base,
+          sequence: 3,
+          type: 'done',
+        };
+        return;
+      }
       yield {
         ...base,
-        delta: 'Fixture response',
-        messageId: 'fixture-assistant',
+        delta: 'Fixture response ',
+        messageId,
         sequence: 1,
         type: 'assistant.delta',
       };
       yield {
         ...base,
-        content: 'Fixture response',
-        interrupted: false,
-        messageId: 'fixture-assistant',
-        partial: false,
+        messageId,
         sequence: 2,
+        status: 'started',
+        toolName: 'fixture_lookup',
+        type: 'tool',
+      };
+      yield {
+        ...base,
+        messageId,
+        sequence: 3,
+        status: 'completed',
+        toolName: 'fixture_lookup',
+        type: 'tool',
+      };
+      yield {
+        ...base,
+        delta: 'from Hermes.',
+        messageId,
+        sequence: 4,
+        type: 'assistant.delta',
+      };
+      yield {
+        ...base,
+        content: response,
+        interrupted: false,
+        messageId,
+        partial: false,
+        sequence: 5,
         type: 'assistant.completed',
       };
       yield {
         ...base,
         completed: true,
-        messageId: 'fixture-assistant',
-        sequence: 3,
+        messageId,
+        sequence: 6,
         type: 'run.completed',
       };
+      const history = messages.get(sessionId) ?? [];
+      history.push(
+        {
+          content: input.input,
+          id: `fixture-user-${turnCount}`,
+          role: 'user',
+          sessionId,
+          timestamp,
+        },
+        {
+          content: 'Development fixture tool output is intentionally hidden.',
+          id: `fixture-tool-${turnCount}`,
+          role: 'tool',
+          sessionId,
+          timestamp,
+          toolName: 'fixture_lookup',
+        },
+        {
+          content: response,
+          id: messageId,
+          role: 'assistant',
+          sessionId,
+          timestamp,
+        },
+      );
+      messages.set(sessionId, history);
+      const session = sessions.find(
+        (candidate) => candidate.id === sessionId,
+      );
+      if (session) {
+        session.lastActive = timestamp;
+        session.messageCount = history.length;
+        session.preview = response;
+        session.toolCallCount =
+          (session.toolCallCount ?? 0) + 1;
+      }
       yield {
         ...base,
-        sequence: 4,
+        sequence: 7,
         type: 'done',
       };
     },
   };
+}
+
+function waitForFixtureCancellation(signal: AbortSignal | undefined) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('The fixture turn was cancelled.'));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error('The fixture turn was cancelled.'));
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, 60_000);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
