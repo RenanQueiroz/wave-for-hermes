@@ -65,18 +65,8 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     signal?: AbortSignal;
   }): Promise<RealtimeProviderCall> {
     const form = new FormData();
-    form.set(
-      'sdp',
-      new Blob([input.sdpOffer], { type: 'application/sdp' }),
-      'offer.sdp',
-    );
-    form.set(
-      'session',
-      new Blob([JSON.stringify(createSessionConfig(this.config))], {
-        type: 'application/json',
-      }),
-      'session.json',
-    );
+    form.set('sdp', input.sdpOffer);
+    form.set('session', JSON.stringify(createSessionConfig(this.config)));
 
     let response: Response;
     try {

@@ -86,9 +86,13 @@ test('uses the official SDK for unified call setup and call-id sideband control'
     );
     assert.ok(requests[0]?.body instanceof FormData);
     const form = requests[0]?.body as FormData;
+    assert.equal(
+      form.get('sdp'),
+      'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+    );
     const sessionPart = form.get('session');
-    assert.ok(sessionPart instanceof Blob);
-    const session = JSON.parse(await sessionPart.text()) as {
+    assert.equal(typeof sessionPart, 'string');
+    const session = JSON.parse(sessionPart as string) as {
       model: string;
       parallel_tool_calls: boolean;
       tools: {
