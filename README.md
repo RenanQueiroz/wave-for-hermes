@@ -48,15 +48,18 @@ The repository is at the application-foundation and transport stage. It currentl
   an audio-only development proof validated on iOS and Android;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
-- a Node.js 24/Fastify Wave Companion workspace with strict server-only configuration, a versioned
-  status endpoint, normalized errors, redacted logs, and graceful shutdown;
-- runtime-neutral Wave status, error, and event-envelope schemas in `@wave/contracts`;
+- a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable device
+  credentials, device/session authorization, bounded streamed chat, normalized errors, redacted
+  logs, and graceful shutdown;
+- runtime-neutral Wave pairing, session, history, cancellation, error, and normalized turn-event
+  schemas in `@wave/contracts`;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
-The visible screens are still starter UI. Companion authentication, secure device credential
-storage, connection screens, text chat, and the Realtime voice slice have not been implemented yet.
+The visible screens are still starter UI. The companion authentication and text-chat API are
+implemented and tested, but mobile secure credential storage, connection screens, the
+`WaveBackendClient`, chat UI, and the Realtime voice slice have not been implemented yet.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 private deployment prerequisite.
@@ -85,7 +88,7 @@ launch/Metro server so the Uniwind transform is reloaded.
 Wave does not support React Native Web. Web dependencies, scripts, configuration, and
 platform-specific implementations should not be added.
 
-The root is also the npm workspace root. Build and run the current companion foundation separately:
+The root is also the npm workspace root. Build and run the companion separately:
 
 ```bash
 export HERMES_API_URL=https://<private-hermes-api>
@@ -97,7 +100,8 @@ npm run companion:start
 
 The companion defaults to `127.0.0.1:8787`. It requires HTTPS for Hermes unless
 `HERMES_ALLOW_INSECURE_HTTP=1` explicitly permits a trusted private/local HTTP endpoint. Full
-configuration and boundary details are in [`docs/architecture.md`](./docs/architecture.md).
+configuration and boundary details are in [`docs/architecture.md`](./docs/architecture.md), and
+the pairing/operator workflow is in [`companion/README.md`](./companion/README.md).
 
 Create and run a local development build when native dependencies change:
 

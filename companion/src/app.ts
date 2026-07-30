@@ -1,87 +1,181 @@
+import rateLimit from '@fastify/rate-limit';
 import {
   WAVE_API_VERSION,
-  WAVE_COMPANION_SERVICE,
   WaveErrorResponseSchema,
-  WaveStatusResponseSchema,
   type WaveErrorResponse,
-  type WaveStatusResponse,
 } from '@wave/contracts';
-import Fastify, { type FastifyServerOptions } from 'fastify';
+import Fastify, {
+  type FastifyReply,
+  type FastifyServerOptions,
+} from 'fastify';
+import { ZodError } from 'zod';
 
+import type { DeviceStore } from './auth/device-store.ts';
+import { SqliteDeviceStore } from './auth/sqlite-device-store.ts';
+import { ActiveTurnRegistry } from './chat/active-turns.ts';
 import type { CompanionConfig } from './config.ts';
 import { HttpHermesClient } from './hermes/hermes-client.ts';
-
-const SERVICE_VERSION = '0.1.0';
+import { HermesClientError } from './hermes/hermes-errors.ts';
+import type { HermesClient } from './hermes/hermes-types.ts';
+import {
+  normalizeHermesError,
+  WaveHttpError,
+} from './http/errors.ts';
+import { registerWaveApi } from './routes/wave-api.ts';
 
 export interface BuildCompanionServerOptions {
+  deviceStore?: DeviceStore;
+  hermesClient?: HermesClient;
   logger?: FastifyServerOptions['logger'];
   now?: () => Date;
+  turnRegistry?: ActiveTurnRegistry;
 }
 
 export function buildCompanionServer(
   config: CompanionConfig,
   options: BuildCompanionServerOptions = {},
 ) {
-  const now = options.now ?? (() => new Date());
-  const hermesClient = new HttpHermesClient(config.hermes);
+  const ownsDeviceStore = options.deviceStore === undefined;
+  const deviceStore =
+    options.deviceStore ?? new SqliteDeviceStore(config.databasePath);
+  const hermesClient =
+    options.hermesClient ?? new HttpHermesClient(config.hermes);
+  const turnRegistry =
+    options.turnRegistry ?? new ActiveTurnRegistry(config.maxActiveTurns);
   const app = Fastify({
+    bodyLimit: 65_536,
     logger: options.logger ?? false,
+    requestTimeout: 15_000,
   });
 
-  app.get('/v1/status', async (request, reply) => {
-    const response: WaveStatusResponse = {
-      apiVersion: WAVE_API_VERSION,
-      features: {
-        chat: false,
-        pairing: false,
-        realtime: false,
-      },
-      hermes: {
-        configured: Boolean(hermesClient),
-      },
-      requestId: request.id,
-      serverTime: now().toISOString(),
-      service: WAVE_COMPANION_SERVICE,
-      serviceVersion: SERVICE_VERSION,
-      status: 'ok',
-    };
+  app.register(rateLimit, {
+    global: true,
+    max: 120,
+    timeWindow: '1 minute',
+  });
 
-    return reply
-      .header('cache-control', 'no-store')
-      .send(WaveStatusResponseSchema.parse(response));
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('cache-control', 'no-store');
+    return payload;
+  });
+
+  app.addHook('preClose', async () => {
+    turnRegistry.abortAll('server_shutdown');
+  });
+
+  if (ownsDeviceStore) {
+    app.addHook('onClose', async () => {
+      deviceStore.close();
+    });
+  }
+
+  app.after(() => {
+    registerWaveApi(
+      app,
+      config,
+      {
+        deviceStore,
+        hermesClient,
+        turnRegistry,
+      },
+      {
+        ...(options.now ? { now: options.now } : {}),
+      },
+    );
   });
 
   app.setNotFoundHandler((request, reply) => {
-    const response: WaveErrorResponse = {
-      apiVersion: WAVE_API_VERSION,
-      error: {
+    return sendWaveError(
+      request.id,
+      reply,
+      new WaveHttpError('The requested Wave endpoint does not exist.', {
         code: 'not_found',
-        correlationId: request.id,
-        message: 'The requested Wave endpoint does not exist.',
-        retryable: false,
-      },
-    };
-
-    return reply.code(404).send(WaveErrorResponseSchema.parse(response));
+        statusCode: 404,
+      }),
+    );
   });
 
-  app.setErrorHandler((_error, request, reply) => {
-    request.log.error(
-      { requestId: request.id },
-      'Wave Companion request failed',
-    );
-    const response: WaveErrorResponse = {
-      apiVersion: WAVE_API_VERSION,
-      error: {
-        code: 'internal',
-        correlationId: request.id,
-        message: 'Wave Companion could not complete the request.',
-        retryable: false,
-      },
-    };
-
-    return reply.code(500).send(WaveErrorResponseSchema.parse(response));
+  app.setErrorHandler((error, request, reply) => {
+    const normalized = normalizeRequestError(error);
+    if (normalized.code === 'internal') {
+      request.log.error(
+        { requestId: request.id },
+        'Wave Companion request failed',
+      );
+    }
+    return sendWaveError(request.id, reply, normalized);
   });
 
   return app;
+}
+
+function normalizeRequestError(error: unknown) {
+  if (error instanceof WaveHttpError) {
+    return error;
+  }
+  if (error instanceof HermesClientError) {
+    return normalizeHermesError(error);
+  }
+  if (error instanceof ZodError) {
+    return new WaveHttpError('The Wave request is invalid.', {
+      code: 'bad_request',
+      statusCode: 400,
+    });
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    error.statusCode === 429
+  ) {
+    return new WaveHttpError('The Wave request rate limit was exceeded.', {
+      code: 'rate_limited',
+      retryable: true,
+      statusCode: 429,
+    });
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    (error.statusCode === 400 ||
+      error.statusCode === 413 ||
+      error.statusCode === 415)
+  ) {
+    return new WaveHttpError(
+      error.statusCode === 413
+        ? 'The Wave request body is too large.'
+        : 'The Wave request is invalid.',
+      {
+        code: 'bad_request',
+        statusCode: error.statusCode,
+      },
+    );
+  }
+  return new WaveHttpError('Wave Companion could not complete the request.', {
+    code: 'internal',
+    statusCode: 500,
+  });
+}
+
+function sendWaveError(
+  requestId: string,
+  reply: FastifyReply,
+  error: WaveHttpError,
+) {
+  const response: WaveErrorResponse = {
+    apiVersion: WAVE_API_VERSION,
+    error: {
+      code: error.code,
+      correlationId: requestId,
+      message: error.message,
+      retryable: error.retryable,
+    },
+  };
+  if (error.statusCode === 401) {
+    reply.header('www-authenticate', 'Bearer');
+  }
+  return reply
+    .code(error.statusCode)
+    .send(WaveErrorResponseSchema.parse(response));
 }

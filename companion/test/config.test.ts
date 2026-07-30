@@ -16,12 +16,18 @@ test('loads server-only Hermes and listener configuration', () => {
   });
 
   assert.deepEqual(config, {
+    databasePath: './data/wave-companion.sqlite',
     hermes: {
       allowInsecureHttp: true,
       baseUrl: 'http://hermes:8642',
       bearerToken: 'server-only-key',
     },
+    hermesFirstEventTimeoutMs: 30_000,
+    hermesIdleTimeoutMs: 60_000,
+    hermesTotalTimeoutMs: 600_000,
     host: '0.0.0.0',
+    maxActiveTurns: 4,
+    pairingCodeTtlSeconds: 600,
     port: 9000,
   });
 });

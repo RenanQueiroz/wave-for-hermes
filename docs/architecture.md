@@ -63,22 +63,25 @@ dependencies.
 Run `npm run verify:boundaries` to check these rules against workspace manifests, source imports,
 the companion production dependency tree, and an existing production mobile export.
 
-## Current companion foundation
+## Current companion API
 
-The initial companion lives in `companion/` and provides:
+The companion lives in `companion/` and provides:
 
 - a separately buildable Node.js 24 TypeScript entrypoint;
-- Fastify with authorization and cookie log redaction;
+- Fastify with authorization and credential/cookie log redaction;
 - strict server-only configuration validation;
 - graceful `SIGINT` and `SIGTERM` shutdown;
-- `GET /v1/status`, validated against the shared Wave status schema;
+- a public, non-sensitive `GET /v1/status`;
+- one-time operator-generated pairing codes and revocable device credentials;
+- device-scoped session authorization;
+- live compatibility, session, history, streamed-turn, and cancellation routes;
+- request-size, rate, active-turn, first-event, idle, and total-time bounds;
 - normalized versioned error envelopes for unknown routes and internal failures;
 - the tested Hermes HTTP/SSE adapter under `companion/src/hermes`.
 
-`GET /v1/status` is currently a non-sensitive foundation endpoint. Its feature flags are all
-`false` because pairing, chat, and Realtime routes are not implemented. `hermes.configured: true`
-means the companion accepted Hermes configuration at startup; it is not yet a live capability
-probe.
+`GET /v1/status` reports `pairing: true`, `chat: true`, and `realtime: false`.
+`hermes.configured: true` means the companion accepted Hermes configuration at startup. An
+authenticated `GET /v1/compatibility` performs the live capability probe.
 
 Start the built companion with server-only environment variables:
 
@@ -97,6 +100,12 @@ Optional variables:
 | `WAVE_HOST` | `127.0.0.1` | Listener address |
 | `WAVE_PORT` | `8787` | Listener port |
 | `WAVE_LOG_LEVEL` | `info` | Fastify/Pino log level |
+| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device and session authorization database |
+| `WAVE_PAIRING_CODE_TTL_SECONDS` | `600` | One-time pairing-code lifetime |
+| `WAVE_MAX_ACTIVE_TURNS` | `4` | Process-wide active turn limit |
+| `WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS` | `30000` | Time allowed to receive the first Hermes event |
+| `WAVE_HERMES_IDLE_TIMEOUT_MS` | `60000` | Time allowed between Hermes events |
+| `WAVE_HERMES_TOTAL_TIMEOUT_MS` | `600000` | Maximum total turn duration |
 | `HERMES_ALLOW_INSECURE_HTTP` | `false` | Allows an explicit private/local HTTP Hermes URL |
 
 `HERMES_API_URL` must not contain credentials, a query, or a fragment. HTTP is rejected unless
@@ -106,6 +115,50 @@ reachable companion remains private-HTTPS-only in production.
 For source-watch development, use `npm run companion:dev`. This still requires valid Hermes
 configuration and does not load secrets from mobile `EXPO_PUBLIC_*` variables.
 
+### Device authorization
+
+An operator runs `npm run companion:pair` against the companion's persistent
+`WAVE_DATABASE_PATH`. The command emits a random 80-bit code that expires after ten minutes by
+default. Redeeming the code exactly once creates a random 256-bit device credential. Only SHA-256
+verifiers are stored in SQLite; plaintext credentials are never recoverable from the database.
+
+The storage implementation is behind the `DeviceStore` interface. The current single-process
+implementation uses Node.js 24's built-in `node:sqlite`, strict tables, foreign keys, WAL,
+synchronous durability, and an atomic transaction for code redemption. A newly created database
+directory is owner-only and the database file is mode `0600`. Deployment must mount the database
+on persistent private storage and preserve equivalent permissions for the directory and SQLite
+sidecar files.
+
+`npm run companion:devices` lists device lifecycle metadata, and
+`npm run companion:revoke -- <device-id>` revokes subsequent access. Revocation does not terminate
+an already-running request from a separate operator process; the total turn timeout bounds that
+window.
+
+Each device can access only sessions explicitly bound to it. Creating a session binds it
+automatically. `POST /v1/sessions/import` is an explicit bootstrap operation that binds the first
+200 existing Hermes sessions to that device. Unauthorized session access returns the same `404`
+shape as a missing session.
+
+### HTTP and stream policy
+
+Public routes are limited to status and one-time pairing redemption. All other routes require an
+exact bearer device credential. The server exposes no generic upstream proxy and accepts no
+client-selected Hermes model, provider, endpoint, header, run ID, or administrative operation.
+
+Request bodies are limited to 64 KiB. The process applies a 120-request-per-minute client-IP limit
+and a five-attempt-per-minute pairing limit. The in-memory counters are intentionally
+single-instance; multi-replica deployment requires a shared limiter and a coordinated storage
+decision first.
+
+One device can run one turn at a time, one session can have one active turn, and the process-wide
+maximum defaults to four. Wave starts a normalized SSE stream before contacting Hermes, then
+enforces first-event, idle, and total timers. An authenticated cancellation request, mobile
+disconnect, timeout, upstream error, or downstream consumer exit aborts or cancels the Hermes
+stream. Events contain only Wave-owned identifiers, assistant text, and sanitized tool lifecycle
+status.
+
+See [`companion/README.md`](../companion/README.md) for the endpoint table and operator workflow.
+
 ## Shared protocol
 
 `@wave/contracts` currently defines:
@@ -114,16 +167,17 @@ configuration and does not load secrets from mobile `EXPO_PUBLIC_*` variables.
 - strict response metadata;
 - the companion status and feature-availability response;
 - stable safe error codes and error envelopes;
-- base metadata for ordered versioned event streams.
+- one-time pairing requests and responses;
+- compatibility, session, history, turn, and cancellation requests and responses;
+- a strict discriminated union of ordered normalized turn events.
 
 Schemas reject unknown fields unless a future contract explicitly defines forward-compatible
 behavior. Both sides validate untrusted boundary data at runtime. Screens should consume normalized
 domain types through `WaveBackendClient`; they must not construct HTTP, SSE, Hermes, or OpenAI
 protocol messages.
 
-The current contracts are the foundation, not the finished chat protocol. Pairing, session,
-history, streamed conversation, cancellation, and Realtime tool schemas will be added alongside
-their companion handlers and contract tests.
+Realtime call setup and `ask_hermes` tool schemas remain future additions. They will be added
+alongside their companion handlers and contract tests rather than inferred in mobile code.
 
 ## State and UI direction
 

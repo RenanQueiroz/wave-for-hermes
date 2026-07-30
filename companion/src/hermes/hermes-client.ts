@@ -611,6 +611,13 @@ export class HttpHermesClient implements HermesClient {
       throw normalizeRequestFailure(error, context);
     } finally {
       context.cleanup();
+      if (!sawDone) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Preserve the original stream outcome if the transport rejects cancellation.
+        }
+      }
       reader.releaseLock();
     }
   }

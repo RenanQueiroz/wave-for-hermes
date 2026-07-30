@@ -1,0 +1,453 @@
+import type {
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+} from 'fastify';
+import { z } from 'zod';
+
+import {
+  WAVE_API_VERSION,
+  WAVE_COMPANION_SERVICE,
+  WaveCancelTurnResponseSchema,
+  WaveCompatibilityResponseSchema,
+  WaveCreateSessionRequestSchema,
+  WaveIdentifierSchema,
+  WaveImportSessionsRequestSchema,
+  WaveRedeemPairingRequestSchema,
+  WaveRedeemPairingResponseSchema,
+  WaveSessionHistoryResponseSchema,
+  WaveSessionListResponseSchema,
+  WaveSessionResponseSchema,
+  WaveStartTurnRequestSchema,
+  WaveStatusResponseSchema,
+  type WaveErrorCode,
+  type WaveTurnEvent,
+} from '@wave/contracts';
+
+import {
+  createDeviceAuthenticator,
+  requireAuthenticatedDevice,
+} from '../auth/http-auth.ts';
+import type { DeviceStore } from '../auth/device-store.ts';
+import type { ActiveTurnRegistry } from '../chat/active-turns.ts';
+import type { CompanionConfig } from '../config.ts';
+import { HermesClientError } from '../hermes/hermes-errors.ts';
+import type { HermesClient } from '../hermes/hermes-types.ts';
+import {
+  formatWaveSseEvent,
+  normalizeHermesMessage,
+  normalizeHermesSession,
+  WaveTurnEventFactory,
+} from '../hermes/wave-normalizers.ts';
+import {
+  normalizeHermesError,
+  WaveHttpError,
+} from '../http/errors.ts';
+
+const SERVICE_VERSION = '0.1.0';
+const SessionParamsSchema = z
+  .object({
+    sessionId: WaveIdentifierSchema,
+  })
+  .strict();
+const TurnParamsSchema = SessionParamsSchema.extend({
+  turnId: WaveIdentifierSchema,
+}).strict();
+
+interface WaveApiServices {
+  deviceStore: DeviceStore;
+  hermesClient: HermesClient;
+  turnRegistry: ActiveTurnRegistry;
+}
+
+interface RegisterWaveApiOptions {
+  now?: () => Date;
+}
+
+export function registerWaveApi(
+  app: FastifyInstance,
+  config: CompanionConfig,
+  services: WaveApiServices,
+  options: RegisterWaveApiOptions = {},
+) {
+  const now = options.now ?? (() => new Date());
+  const authenticateDevice = createDeviceAuthenticator(services.deviceStore);
+
+  app.decorateRequest('waveDevice', null);
+
+  app.get('/v1/status', async (request, reply) => {
+    return reply.send(
+      WaveStatusResponseSchema.parse({
+        ...responseMetadata(request),
+        features: {
+          chat: true,
+          pairing: true,
+          realtime: false,
+        },
+        hermes: {
+          configured: true,
+        },
+        serverTime: now().toISOString(),
+        service: WAVE_COMPANION_SERVICE,
+        serviceVersion: SERVICE_VERSION,
+        status: 'ok',
+      }),
+    );
+  });
+
+  app.post(
+    '/v1/pairings/redeem',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
+      const input = WaveRedeemPairingRequestSchema.parse(request.body);
+      const redeemed = services.deviceStore.redeemPairingCode(
+        input.code,
+        input.deviceName,
+      );
+      if (!redeemed) {
+        throw new WaveHttpError(
+          'The pairing code is invalid or no longer available.',
+          {
+            code: 'unauthorized',
+            statusCode: 401,
+          },
+        );
+      }
+      return reply.code(201).send(
+        WaveRedeemPairingResponseSchema.parse({
+          ...responseMetadata(request),
+          ...redeemed,
+        }),
+      );
+    },
+  );
+
+  app.get(
+    '/v1/compatibility',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const report = await services.hermesClient.probeCapabilities();
+      return reply.send(
+        WaveCompatibilityResponseSchema.parse({
+          ...responseMetadata(request),
+          compatible: report.supported,
+          missingEndpoints: report.missingEndpoints,
+          missingFeatures: report.missingFeatures,
+        }),
+      );
+    },
+  );
+
+  app.get(
+    '/v1/sessions',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const authorizedIds = new Set(
+        services.deviceStore.listSessionIds(device.id),
+      );
+      const sessions =
+        authorizedIds.size === 0
+          ? []
+          : (await services.hermesClient.listSessions({ limit: 200 }))
+              .filter((session) => authorizedIds.has(session.id))
+              .map(normalizeHermesSession);
+      return reply.send(
+        WaveSessionListResponseSchema.parse({
+          ...responseMetadata(request),
+          sessions,
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/v1/sessions/import',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      WaveImportSessionsRequestSchema.parse(request.body ?? {});
+      const sessions = (await services.hermesClient.listSessions({
+        limit: 200,
+      })).map(normalizeHermesSession);
+      for (const session of sessions) {
+        services.deviceStore.bindSession(device.id, session.id);
+      }
+      return reply.send(
+        WaveSessionListResponseSchema.parse({
+          ...responseMetadata(request),
+          sessions,
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/v1/sessions',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const input = WaveCreateSessionRequestSchema.parse(request.body ?? {});
+      const session = normalizeHermesSession(
+        await services.hermesClient.createSession({
+          ...(input.title ? { title: input.title } : {}),
+        }),
+      );
+      services.deviceStore.bindSession(device.id, session.id);
+      return reply.code(201).send(
+        WaveSessionResponseSchema.parse({
+          ...responseMetadata(request),
+          session,
+        }),
+      );
+    },
+  );
+
+  app.get(
+    '/v1/sessions/:sessionId/messages',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      requireSessionAccess(services.deviceStore, device.id, sessionId);
+      const messages = (
+        await services.hermesClient.getSessionMessages(sessionId)
+      ).map(normalizeHermesMessage);
+      return reply.send(
+        WaveSessionHistoryResponseSchema.parse({
+          ...responseMetadata(request),
+          messages,
+          sessionId,
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/v1/sessions/:sessionId/turns',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      const input = WaveStartTurnRequestSchema.parse(request.body);
+      requireSessionAccess(services.deviceStore, device.id, sessionId);
+      const turn = services.turnRegistry.start(device.id, sessionId);
+      await streamTurn(
+        request,
+        reply,
+        config,
+        services.hermesClient,
+        services.turnRegistry,
+        turn,
+        input.input,
+        now,
+      );
+    },
+  );
+
+  app.post(
+    '/v1/sessions/:sessionId/turns/:turnId/cancel',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { sessionId, turnId } = TurnParamsSchema.parse(request.params);
+      requireSessionAccess(services.deviceStore, device.id, sessionId);
+      if (!services.turnRegistry.cancel(device.id, sessionId, turnId)) {
+        throw new WaveHttpError('The active Wave turn was not found.', {
+          code: 'not_found',
+          statusCode: 404,
+        });
+      }
+      return reply.code(202).send(
+        WaveCancelTurnResponseSchema.parse({
+          ...responseMetadata(request),
+          status: 'cancellation_requested',
+          turnId,
+        }),
+      );
+    },
+  );
+}
+
+async function streamTurn(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  config: CompanionConfig,
+  hermesClient: HermesClient,
+  turnRegistry: ActiveTurnRegistry,
+  turn: ReturnType<ActiveTurnRegistry['start']>,
+  input: string,
+  now: () => Date,
+) {
+  const events = new WaveTurnEventFactory(
+    turn.sessionId,
+    turn.turnId,
+    now,
+  );
+  let idleTimer: NodeJS.Timeout | undefined;
+  const totalTimer = setTimeout(
+    () => turn.abort('total_timeout'),
+    config.hermesTotalTimeoutMs,
+  );
+  const resetIdleTimer = (firstEvent: boolean) => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(
+      () => turn.abort(firstEvent ? 'first_event_timeout' : 'idle_timeout'),
+      firstEvent
+        ? config.hermesFirstEventTimeoutMs
+        : config.hermesIdleTimeoutMs,
+    );
+  };
+  const onClose = () => {
+    if (!reply.raw.writableEnded) {
+      turn.abort('client_disconnected');
+    }
+  };
+
+  reply.raw.once('close', onClose);
+  reply.hijack();
+  reply.raw.writeHead(200, {
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'content-type': 'text/event-stream; charset=utf-8',
+    'x-accel-buffering': 'no',
+  });
+  writeEvent(reply, events.createStarted());
+  resetIdleTimer(true);
+
+  try {
+    for await (const event of hermesClient.streamChat(turn.sessionId, {
+      input,
+      signal: turn.controller.signal,
+    })) {
+      resetIdleTimer(false);
+      const normalized = events.fromHermes(event);
+      if (normalized) {
+        writeEvent(reply, normalized);
+      }
+      if (event.type === 'error') {
+        break;
+      }
+    }
+  } catch (error) {
+    const failure = streamFailureEvent(events, turn.abortReason(), error);
+    if (failure && canWrite(reply)) {
+      writeEvent(reply, failure);
+    }
+  } finally {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+    clearTimeout(totalTimer);
+    reply.raw.off('close', onClose);
+    turnRegistry.finish(turn.turnId);
+    if (canWrite(reply)) {
+      reply.raw.end();
+    }
+  }
+}
+
+function streamFailureEvent(
+  events: WaveTurnEventFactory,
+  reason: ReturnType<
+    ReturnType<ActiveTurnRegistry['start']>['abortReason']
+  >,
+  error: unknown,
+) {
+  switch (reason) {
+    case 'client_disconnected':
+      return undefined;
+    case 'cancelled':
+      return events.createError(
+        'cancelled',
+        'The Wave turn was cancelled.',
+        false,
+      );
+    case 'first_event_timeout':
+    case 'idle_timeout':
+    case 'total_timeout':
+      return events.createError(
+        'timeout',
+        'Hermes did not respond before the turn timeout.',
+        true,
+      );
+    case 'server_shutdown':
+      return events.createError(
+        'upstream_unavailable',
+        'Wave Companion is shutting down.',
+        true,
+      );
+    case undefined: {
+      const normalized =
+        error instanceof HermesClientError
+          ? normalizeHermesError(error)
+          : new WaveHttpError('Hermes could not complete the turn.', {
+              code: 'upstream_unavailable',
+              retryable: true,
+              statusCode: 503,
+            });
+      return events.createError(
+        asStreamErrorCode(normalized.code),
+        normalized.message,
+        normalized.retryable,
+      );
+    }
+  }
+}
+
+function asStreamErrorCode(
+  code: WaveErrorCode,
+):
+  | 'cancelled'
+  | 'timeout'
+  | 'upstream_incompatible'
+  | 'upstream_unavailable' {
+  switch (code) {
+    case 'cancelled':
+    case 'timeout':
+    case 'upstream_incompatible':
+    case 'upstream_unavailable':
+      return code;
+    default:
+      return 'upstream_unavailable';
+  }
+}
+
+function writeEvent(reply: FastifyReply, event: WaveTurnEvent) {
+  if (canWrite(reply)) {
+    reply.raw.write(formatWaveSseEvent(event));
+  }
+}
+
+function canWrite(reply: FastifyReply) {
+  return !reply.raw.destroyed && !reply.raw.writableEnded;
+}
+
+function requireSessionAccess(
+  store: DeviceStore,
+  deviceId: string,
+  sessionId: string,
+) {
+  if (!store.hasSession(deviceId, sessionId)) {
+    throw new WaveHttpError('The Hermes session was not found.', {
+      code: 'not_found',
+      statusCode: 404,
+    });
+  }
+}
+
+function responseMetadata(request: FastifyRequest) {
+  return {
+    apiVersion: WAVE_API_VERSION,
+    requestId: request.id,
+  };
+}

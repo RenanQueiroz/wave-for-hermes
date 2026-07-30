@@ -266,6 +266,35 @@ test('maps caller aborts to cancellation', async () => {
   );
 });
 
+test('cancels the upstream response when a stream consumer exits early', async () => {
+  const encoder = new TextEncoder();
+  let cancelled = false;
+  const fetch = async () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true;
+        },
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              'event: run.started\ndata: {"session_id":"session-1","run_id":"run-1","seq":1,"ts":1}\n\n',
+            ),
+          );
+        },
+      }),
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    );
+  const stream = createClient(fetch).streamChat('session-1', {
+    input: 'Wait',
+  });
+
+  assert.equal((await stream.next()).value?.type, 'run.started');
+  await stream.return(undefined);
+
+  assert.equal(cancelled, true);
+});
+
 test('rejects unknown and truncated event streams', async () => {
   const unknownClient = createClient(async () =>
     sseResponse([

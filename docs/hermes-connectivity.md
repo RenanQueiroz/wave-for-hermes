@@ -23,9 +23,11 @@ live in the companion workspace. Do not import `HermesClient` into mobile featur
 application will instead use `WaveBackendClient` and Wave-owned normalized contracts from
 `packages/contracts`.
 
-The companion currently exposes only a non-sensitive `GET /v1/status` foundation route. That route
-reports accepted configuration, not a live Hermes capability result. Pairing and Wave-owned
-session/chat routes will be introduced before mobile connects to the companion.
+The companion exposes a non-sensitive `GET /v1/status` plus authenticated Wave-owned compatibility,
+session, history, streamed-turn, and cancellation routes. The authenticated
+`GET /v1/compatibility` route performs a live Hermes capability probe. The mobile application still
+does not call these routes directly; Phase 4 will add the contract-validating `WaveBackendClient`
+and platform-backed credential storage.
 
 ## Minimum server contract
 
@@ -72,7 +74,8 @@ usage payloads are deliberately not copied into UI-facing events.
 For the pinned release, the `run_id` emitted by the session streaming handler is local to that
 stream. It is not registered with `POST /v1/runs/{run_id}/stop`. Cancelling a session-chat stream
 therefore aborts its fetch; the server observes the closed connection and cancels the associated
-task. `HermesClient.stopRun` is reserved for runs created through `/v1/runs`.
+task. Ending Wave's downstream stream early also cancels the upstream response reader.
+`HermesClient.stopRun` is reserved for runs created through `/v1/runs`.
 
 ## Private deployment prerequisite
 

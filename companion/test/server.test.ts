@@ -7,11 +7,17 @@ import { buildCompanionServer } from '../src/app.ts';
 import type { CompanionConfig } from '../src/config.ts';
 
 const config: CompanionConfig = {
+  databasePath: ':memory:',
   hermes: {
     baseUrl: 'https://hermes.example.test',
     bearerToken: 'server-only-key',
   },
+  hermesFirstEventTimeoutMs: 30_000,
+  hermesIdleTimeoutMs: 60_000,
+  hermesTotalTimeoutMs: 600_000,
   host: '127.0.0.1',
+  maxActiveTurns: 4,
+  pairingCodeTtlSeconds: 600,
   port: 8787,
 };
 
@@ -31,8 +37,8 @@ test('returns a strict, non-sensitive compatibility status', async () => {
   const status = WaveStatusResponseSchema.parse(response.json());
   assert.equal(status.status, 'ok');
   assert.deepEqual(status.features, {
-    chat: false,
-    pairing: false,
+    chat: true,
+    pairing: true,
     realtime: false,
   });
   assert.equal(status.hermes.configured, true);
