@@ -25,9 +25,9 @@ application will instead use `WaveBackendClient` and Wave-owned normalized contr
 
 The companion exposes a non-sensitive `GET /v1/status` plus authenticated Wave-owned compatibility,
 session, history, streamed-turn, and cancellation routes. The authenticated
-`GET /v1/compatibility` route performs a live Hermes capability probe. The mobile application still
-does not call these routes directly; Phase 4 will add the contract-validating `WaveBackendClient`
-and platform-backed credential storage.
+`GET /v1/compatibility` route performs a live Hermes capability probe. Mobile does not call Hermes
+routes directly: its contract-validating `WaveBackendClient` calls only the normalized Wave API,
+and pairing/bootstrap require the live compatibility probe before showing the connected route.
 
 ## Minimum server contract
 

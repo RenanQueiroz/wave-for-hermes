@@ -20,6 +20,7 @@
     "reload": "npm run build --silent && node --enable-source-maps dist/cli.js reload",
     "smoke:android": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-android",
     "smoke:observability": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-observability",
+    "smoke:pairing": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-pairing",
     "smoke:ios": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-ios",
     "smoke:production": "npm run build --silent && node --enable-source-maps dist/cli.js smoke-production",
     "test": "node --test \"dist/**/*.test.js\""

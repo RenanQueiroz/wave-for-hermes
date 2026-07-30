@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join } from 'node:path';
 
 import { ANDROID_PACKAGE, type MobileAgentConfig } from '../config.js';
 import { runCommand } from '../process.js';
@@ -190,6 +190,15 @@ export function parseAdbDevices(
         description: details.join(' '),
       };
     });
+}
+
+export function androidSdkRootFromAdbPath(
+  adbPath: string | undefined,
+): string | undefined {
+  if (!adbPath || !isAbsolute(adbPath)) return undefined;
+  const platformTools = dirname(adbPath);
+  if (basename(platformTools) !== 'platform-tools') return undefined;
+  return dirname(platformTools);
 }
 
 async function resolveAdbPath(env: NodeJS.ProcessEnv): Promise<string | undefined> {

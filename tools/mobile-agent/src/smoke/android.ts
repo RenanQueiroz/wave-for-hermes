@@ -6,6 +6,8 @@ import type { MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
 import { callToolText, connectMobileAgentClient, type ToolTextResult } from '../mcp/client.js';
 
+const SAFE_CONTROL_ID = 'pair-device-button';
+
 export interface AndroidSmokeReport {
   ok: boolean;
   sessionCreated: boolean;
@@ -179,7 +181,7 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
 
     const normalizedElement = await callToolText(connection.client, 'mobile_find_elements', {
       snapshotId,
-      text: safeElement.label,
+      resourceId: safeElement.resourceId,
       exact: true,
       interactiveOnly: true,
       maxResults: 5,
@@ -190,7 +192,7 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     const nodes = foundResult.nodes;
     if (!Array.isArray(nodes) || nodes.length !== 1) {
       throw new Error(
-        `Expected one normalized "${safeElement.label}" node, received ${Array.isArray(nodes) ? nodes.length : 'invalid nodes'}.`,
+        `Expected one normalized "${safeElement.resourceId}" node, received ${Array.isArray(nodes) ? nodes.length : 'invalid nodes'}.`,
       );
     }
     const normalizedNode = nodes[0];
@@ -201,7 +203,7 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     report.steps.push({
       name: 'normalized-find',
       ok: true,
-      detail: `Resolved "${safeElement.label}" to stable node ${nodeId}.`,
+      detail: `Resolved "${safeElement.resourceId}" to stable node ${nodeId}.`,
     });
 
     const screenshot = await callToolText(
@@ -232,11 +234,11 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
       throw new Error('The normalized tap did not return its before/after action trace.');
     }
     report.traceDirectory = readString(trace as Record<string, unknown>, 'directory');
-    report.tappedElement = safeElement.label;
+    report.tappedElement = safeElement.resourceId;
     report.steps.push({
       name: 'safe-tap',
       ok: true,
-      detail: `Tapped "${safeElement.label}" through stable normalized node ${nodeId}.`,
+      detail: `Tapped "${safeElement.resourceId}" through stable normalized node ${nodeId}.`,
     });
     report.steps.push({
       name: 'action-trace',
@@ -409,28 +411,26 @@ async function dismissOnboardingIfPresent(
 async function findSafeElement(
   client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
   sessionId: string | undefined,
-): Promise<{ label: string }> {
+): Promise<{ resourceId: string }> {
   for (let attempt = 1; attempt <= 30; attempt += 1) {
-    for (const label of ['Home', 'Explore']) {
-      const found = await callToolText(client, 'mobile_find_elements', {
-        text: label,
-        exact: true,
-        interactiveOnly: true,
-        maxResults: 5,
-        ...sessionArgs(sessionId),
-      });
-      if (!found.isError) {
-        const result = parseJsonObject(found.text, 'safe element result');
-        const nodes = result.nodes;
-        if (Array.isArray(nodes) && nodes.length === 1) {
-          return { label };
-        }
+    const found = await callToolText(client, 'mobile_find_elements', {
+      resourceId: SAFE_CONTROL_ID,
+      exact: true,
+      interactiveOnly: true,
+      maxResults: 5,
+      ...sessionArgs(sessionId),
+    });
+    if (!found.isError) {
+      const result = parseJsonObject(found.text, 'safe element result');
+      const nodes = result.nodes;
+      if (Array.isArray(nodes) && nodes.length === 1) {
+        return { resourceId: SAFE_CONTROL_ID };
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(
-    'Could not find a unique interactive Home or Explore tab after waiting for Wave to finish loading.',
+    `Could not find the safe ${SAFE_CONTROL_ID} control after waiting for Wave to finish loading.`,
   );
 }
 

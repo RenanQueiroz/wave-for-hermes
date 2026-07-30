@@ -7,6 +7,8 @@ import { runDoctor } from '../doctor.js';
 import { callToolText, connectMobileAgentClient, type ToolTextResult } from '../mcp/client.js';
 import { ensureSimulatorWda } from '../wda.js';
 
+const SAFE_CONTROL_ID = 'pair-device-button';
+
 export interface IosSmokeReport {
   ok: boolean;
   sessionCreated: boolean;
@@ -330,23 +332,21 @@ async function findSafeElement(
   sessionId: string | undefined,
 ): Promise<{ label: string; elementId: string }> {
   for (let attempt = 1; attempt <= 30; attempt += 1) {
-    for (const label of ['Home', 'Explore']) {
-      const found = await callToolText(client, 'appium_find_element', {
-        strategy: 'accessibility id',
-        selector: label,
-        ...sessionArgs(sessionId),
-      });
-      if (!found.isError) {
-        return {
-          label,
-          elementId: readElementId(found.text),
-        };
-      }
+    const found = await callToolText(client, 'appium_find_element', {
+      strategy: 'accessibility id',
+      selector: SAFE_CONTROL_ID,
+      ...sessionArgs(sessionId),
+    });
+    if (!found.isError) {
+      return {
+        label: SAFE_CONTROL_ID,
+        elementId: readElementId(found.text),
+      };
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(
-    'Could not find the safe Home or Explore tab by accessibility ID after waiting for Wave to finish loading.',
+    `Could not find the safe ${SAFE_CONTROL_ID} control by accessibility ID after waiting for Wave to finish loading.`,
   );
 }
 

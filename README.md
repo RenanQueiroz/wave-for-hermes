@@ -39,7 +39,8 @@ Homelab repository.
 
 ## Current status
 
-The repository is at the application-foundation and transport stage. It currently includes:
+The repository is at the authenticated mobile-connection and transport stage. It currently
+includes:
 
 - Expo SDK 57 with Expo Router and development-client support for iOS and Android;
 - [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
@@ -53,13 +54,18 @@ The repository is at the application-foundation and transport stage. It currentl
   logs, and graceful shutdown;
 - runtime-neutral Wave pairing, session, history, cancellation, error, and normalized turn-event
   schemas in `@wave/contracts`;
+- a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded requests,
+  cancellation, response-size limits, safe normalized errors, and no direct Hermes transport;
+- a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
+  the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
+  access explicitly;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
-The visible screens are still starter UI. The companion authentication and text-chat API are
-implemented and tested, but mobile secure credential storage, connection screens, the
-`WaveBackendClient`, chat UI, and the Realtime voice slice have not been implemented yet.
+The visible app now begins with the real connection flow and shows a connected placeholder after a
+live compatibility check. The session list, chat UI, active SSE controller, and Realtime voice
+slice have not been implemented yet.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 private deployment prerequisite.
@@ -103,7 +109,9 @@ The companion defaults to `127.0.0.1:8787`. It requires HTTPS for Hermes unless
 configuration and boundary details are in [`docs/architecture.md`](./docs/architecture.md), and
 the pairing/operator workflow is in [`companion/README.md`](./companion/README.md).
 
-Create and run a local development build when native dependencies change:
+Create and run a local development build when native dependencies change. The current client
+requires both `react-native-webrtc` and `expo-secure-store`, so an older installed development
+client cannot run it:
 
 ```bash
 npx expo prebuild --clean
@@ -117,13 +125,44 @@ Native identifiers are configured in `app.json`:
 - iOS bundle identifier: `com.renanqueiroz.wave`
 - Android application ID: `com.renanqueiroz.wave`
 
+### Pair a mobile development build
+
+Start a companion that the emulator or simulator can reach, then generate a one-time code against
+the same `WAVE_DATABASE_PATH`:
+
+```bash
+npm run companion:pair
+```
+
+In Wave, enter the companion URL, a recognizable device name, and the 16-character code. Production
+builds accept HTTPS only. Development builds also allow an explicit HTTP URL for trusted local
+testing. Pairing checks the public companion status, redeems the code exactly once, saves the
+device-scoped credential in platform secure storage, and performs an authenticated live Hermes
+compatibility check before entering the app.
+
+On later launches Wave reads the saved connection asynchronously and repeats the compatibility
+check. **Disconnect this device** removes only the phone's local credential; use
+`npm run companion:revoke -- <device-id>` when the credential must also be invalidated server-side.
+The full operator workflow is in [`companion/README.md`](./companion/README.md).
+
+For UI development before the private Hermes API is available, the companion also provides an
+explicitly development-only, in-memory fixture:
+
+```bash
+WAVE_FIXTURE_HOST=0.0.0.0 npm run companion:mobile-fixture
+```
+
+An Android emulator can reach that listener at `http://10.0.2.2:8787`. See the companion README
+before using it; the fixture is not a production entrypoint and all of its state disappears when it
+stops.
+
 ### WebRTC development proof
 
 After installing `react-native-webrtc` or changing microphone permissions, rebuild the native
-development client; a JavaScript reload alone cannot add native code. In a development build, open
-**Explore** and select **Start proof** to verify microphone acquisition, a local peer negotiation,
-a remote audio track, a data-channel echo, and cleanup. Wave requests microphone access only and
-explicitly blocks the Android camera permission.
+development client; a JavaScript reload alone cannot add native code. In a paired development
+build, open **Development tools** and select **Start proof** to verify microphone acquisition, a
+local peer negotiation, a remote audio track, a data-channel echo, and cleanup. Wave requests
+microphone access only and explicitly blocks the Android camera permission.
 
 The proof is a native foundation check, not the production OpenAI Realtime transport. See
 [`docs/webrtc-foundation.md`](./docs/webrtc-foundation.md) for the exact workflow, validation
@@ -166,8 +205,9 @@ components can coexist.
   short-lived credentials created by a trusted server-side component.
 - Treat Realtime tool arguments and Hermes responses as untrusted input. Validate them at the
   boundary.
-- Store user credentials with an appropriate platform-backed secure-storage solution when that
-  feature is implemented.
+- Store only the revocable device-scoped companion credential and its small connection record in
+  Expo SecureStore. Never expose that credential through UI, development state, logs, screenshots,
+  or traces.
 - Keep Wave's Hermes access limited to chat and explicit conversational tools; do not quietly add
   configuration or administrative capabilities.
 
@@ -176,7 +216,7 @@ components can coexist.
 The server-side transport boundary lives under `companion/src/hermes`. It supports an optional
 profile or proxy prefix in the base URL, requires HTTPS unless an explicit private/local development
 exception is enabled, and never exposes raw tool arguments through its event types. Mobile features
-will use `WaveBackendClient`, not `HermesClient`; the repository intentionally has no second mobile
+use `WaveBackendClient`, not `HermesClient`; the repository intentionally has no second mobile
 Hermes transport.
 
 Run its deterministic tests with:

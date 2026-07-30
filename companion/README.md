@@ -38,7 +38,9 @@ npm run companion:pair
 
 The default expiry is ten minutes. The code can be redeemed exactly once by
 `POST /v1/pairings/redeem`; a successful response is the only time the random device credential is
-returned in plaintext.
+returned in plaintext. In the mobile app, enter the reachable companion URL, a recognizable device
+name, and this code on the **Connect Wave** screen. Production mobile builds require an HTTPS
+companion URL; local development builds allow an explicit trusted HTTP URL.
 
 List device IDs and lifecycle metadata:
 
@@ -59,6 +61,28 @@ required.
 
 The operator commands need only `WAVE_DATABASE_PATH` and
 `WAVE_PAIRING_CODE_TTL_SECONDS`; they do not load or print Hermes credentials.
+
+### Development-only mobile fixture
+
+When a live private Hermes API is not available, run a local in-memory companion fixture to verify
+mobile pairing and connection restoration without inventing production credentials:
+
+```bash
+npm run companion:mobile-fixture
+```
+
+It prints one short-lived pairing code, uses a deterministic fake Hermes capability response, and
+loses every device/session when stopped. It binds to `127.0.0.1:8787` by default. To reach it from
+an Android emulator, bind the fixture to the host network and enter `http://10.0.2.2:8787` in a
+development build:
+
+```bash
+WAVE_FIXTURE_HOST=0.0.0.0 npm run companion:mobile-fixture
+```
+
+`WAVE_FIXTURE_PORT` can select another local port. This fixture is not a deployment entrypoint,
+must never be exposed outside a trusted development machine, and does not replace validation
+against the pinned Hermes deployment.
 
 ## Wave API
 

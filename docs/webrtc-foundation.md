@@ -35,7 +35,7 @@ directory checks remain enabled.
 
 ## Development proof
 
-Development builds expose a temporary proof card on the Explore screen. It:
+Paired development builds expose a temporary proof card under **Development tools**. It:
 
 1. requests an audio-only microphone stream;
 2. creates two local `RTCPeerConnection` instances with no external ICE servers;
@@ -69,16 +69,17 @@ npx expo run:android
 
 Radon IDE can perform the native build and manage Metro instead. After the rebuilt app opens:
 
-1. Open **Explore**.
-2. Select **Start proof**.
-3. Allow microphone access when prompted.
-4. Confirm the card reaches:
+1. Pair the development build with a Wave Companion.
+2. Open **Development tools** from the connected screen.
+3. Select **Start proof**.
+4. Allow microphone access when prompted.
+5. Confirm the card reaches:
    - phase `passed`;
    - at least one microphone track;
    - at least one remote audio track;
    - data echo `received`;
    - peers `connected / connected`.
-5. Select **Stop** and confirm the card returns to `idle`.
+6. Select **Stop** and confirm the card returns to `idle`.
 
 The Android permission dialog may temporarily background the activity. The harness allows an
 in-flight permission request to finish, but established media is still cleaned up when the app

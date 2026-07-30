@@ -5,6 +5,10 @@ import { mkdir } from 'node:fs/promises';
 import { createAppiumMcpServer, verifyAppiumMcpNames } from 'appium-mcp/core';
 
 import { loadConfig } from './config.js';
+import {
+  androidSdkRootFromAdbPath,
+  discoverAndroid,
+} from './discovery/android.js';
 import { WaveMobileAgentPlugin } from './mcp/plugin.js';
 
 const config = loadConfig();
@@ -14,6 +18,11 @@ process.env.NO_UI ??= '1';
 process.env.SCREENSHOTS_DIR ??= config.artifactsDir;
 process.env.APPIUM_MCP_EVIDENCE ??= 'true';
 process.env.APPIUM_MCP_ON_CLIENT_DISCONNECT ??= 'delete_all';
+if (!process.env.ANDROID_HOME && !process.env.ANDROID_SDK_ROOT) {
+  const android = await discoverAndroid(config);
+  const sdkRoot = androidSdkRootFromAdbPath(android.adbPath);
+  if (sdkRoot) process.env.ANDROID_HOME = sdkRoot;
+}
 
 const plugins = [new WaveMobileAgentPlugin()];
 const verification = verifyAppiumMcpNames({ plugins });

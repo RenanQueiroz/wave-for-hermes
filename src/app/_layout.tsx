@@ -1,6 +1,11 @@
 import '../global.css';
 
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { PanelUIProvider, useThemeMode } from 'panelui-native';
 import { useEffect, useMemo } from 'react';
@@ -8,8 +13,8 @@ import { Platform, type ColorValue } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
+import { WaveConnectionProvider } from '@/features/connection/connection-provider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,8 +60,14 @@ function ThemedApp() {
 
   return (
     <ThemeProvider value={navigationTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+      <WaveConnectionProvider>
+        <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="connect" options={{ title: 'Connect Wave' }} />
+          <Stack.Screen name="(app)" options={{ headerShown: false }} />
+        </Stack>
+        <AnimatedSplashOverlay />
+      </WaveConnectionProvider>
     </ThemeProvider>
   );
 }

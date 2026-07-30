@@ -150,6 +150,7 @@ npm run prune:artifacts
 npm run prune:artifacts -- --confirm
 npm run smoke:android
 npm run smoke:ios
+npm run smoke:pairing -- --platform android
 npm run smoke:observability -- --platform android
 npm run smoke:production
 npm run check
@@ -157,9 +158,30 @@ npm run mcp
 ```
 
 `smoke:android` and `smoke:ios` create and remove an Appium session on the currently
-selected Radon device without terminating the running app. `smoke:observability` verifies
-Hermes logs, fetch metadata, the development state provider, and platform-native logs
-without creating an Appium session.
+selected Radon device without terminating the running app. They use the pairing screen's
+stable `pair-device-button` identifier for a safe validation-only tap, so the smoke remains
+aligned with the current application shell. `smoke:observability` verifies Hermes logs,
+fetch metadata, the development state provider, and platform-native logs without creating
+an Appium session.
+
+`smoke:pairing` is an explicit stateful development check for the in-memory companion
+fixture. Wave must begin disconnected. The check redeems the supplied one-time code,
+confirms a secret-free development-state summary, terminates and relaunches the app to
+verify SecureStore restoration, then clears the fixture credential locally and deletes
+its owned Appium session. Inputs come from the environment, text/action traces are
+disabled, the MCP child process's diagnostic stream is not forwarded, and the report
+contains neither the pairing code nor the device credential:
+
+```sh
+MOBILE_AGENT_METRO_URL=http://127.0.0.1:<radon-port> \
+MOBILE_AGENT_PAIRING_URL=http://10.0.2.2:8787 \
+MOBILE_AGENT_PAIRING_CODE=XXXX-XXXX-XXXX-XXXX \
+npm run smoke:pairing -- --platform android
+```
+
+Use a fresh fixture/code for each platform because a code can be redeemed only once. See
+[`companion/README.md`](../../companion/README.md) for the fixture's trust boundary.
+
 `reload` sends the React Native inspector's supported `Page.reload` command, prints the
 unified action envelope, and exits after Metro accepts it; the long-running MCP collector
 reconnects when Wave's Hermes target returns. It auto-selects the platform only when

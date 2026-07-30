@@ -28,8 +28,9 @@ Wave mobile ◀════════ direct WebRTC audio ══════�
 ```
 
 The companion is the mobile application's only production backend. Standard OpenAI and Hermes API
-keys remain server-side. The phone will store only a revocable device credential and transient
-Realtime connection material.
+keys remain server-side. The phone stores only a revocable device credential and its small
+connection profile in platform secure storage; future Realtime connection material will remain
+transient.
 
 Homelab owns deployment manifests, private networks, pinned production images, Nginx/Tailscale
 routing, and secrets. This repository owns companion behavior, its container artifact when one is
@@ -62,6 +63,32 @@ dependencies.
 
 Run `npm run verify:boundaries` to check these rules against workspace manifests, source imports,
 the companion production dependency tree, and an existing production mobile export.
+
+## Current mobile connection boundary
+
+The mobile connection implementation lives under `src/features/connection`,
+`src/services/credentials`, and `src/services/wave`:
+
+- `WaveBackendClient` is the only mobile production HTTP boundary. It validates request inputs and
+  every JSON response with `@wave/contracts`, preserves an intentional companion path prefix,
+  rejects credentials/query/fragment components in configured URLs, rejects HTTP outside an
+  explicit development exception, refuses redirects, bounds response size, and applies
+  cancellation-aware request timeouts.
+- `SecureWaveCredentialStore` persists one versioned connection record through Expo SecureStore's
+  asynchronous APIs with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The record contains the normalized
+  companion URL, public device metadata, and the revocable device credential. UI and
+  development-state summaries omit the credential.
+- `WaveConnectionProvider` owns bootstrap, pairing, restore, compatibility verification, retry, and
+  local disconnect state. Screens do not construct authorization headers or raw protocol
+  messages.
+- The PanelUI connection route performs the public status check and one-time redemption before
+  saving the credential, then requires an authenticated live compatibility check. A saved
+  credential is rechecked at launch. Local disconnect deletes the secure record but deliberately
+  does not revoke the server-side device.
+
+The current client covers finite JSON endpoints. Phase 5 will add a dedicated normalized SSE
+streaming boundary and controller rather than reading Hermes events or managing stream lifecycle in
+React components.
 
 ## Current companion API
 
@@ -184,6 +211,8 @@ alongside their companion handlers and contract tests rather than inferred in mo
 - Hermes remains the source of truth for durable sessions and history.
 - TanStack Query is planned only for finite server state such as status, sessions, and history.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
+- The connection provider owns only credential bootstrap and compatibility state; it is not a
+  general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
 - Realtime voice remains an ephemeral overlay on an active Hermes session until post-call history
   behavior is deliberately decided.

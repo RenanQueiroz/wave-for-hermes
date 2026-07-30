@@ -11,6 +11,7 @@
     "dev": "npm run build --workspace @wave/contracts && node --experimental-strip-types --watch src/server.ts",
     "integration:hermes": "node --experimental-strip-types scripts/hermes-integration.ts",
     "lint": "eslint src test scripts --max-warnings=0",
+    "mobile-fixture": "npm run build --workspace @wave/contracts && node --experimental-strip-types scripts/mobile-fixture.ts",
     "start": "node dist/server.js",
     "test": "npm run build --workspace @wave/contracts && node --experimental-strip-types --test src/auth/sqlite-device-store.test.ts src/chat/active-turns.test.ts src/hermes/hermes-sse.test.ts src/hermes/hermes-client.test.ts test/config.test.ts test/server.test.ts test/wave-api.test.ts",
     "test:hermes": "node --experimental-strip-types --test src/hermes/hermes-sse.test.ts src/hermes/hermes-client.test.ts",

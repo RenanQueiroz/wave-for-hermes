@@ -2,7 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { AndroidDevice } from '../types.js';
-import { parseAdbDevices, selectAndroidDevice } from './android.js';
+import {
+  androidSdkRootFromAdbPath,
+  parseAdbDevices,
+  selectAndroidDevice,
+} from './android.js';
+
+test('androidSdkRootFromAdbPath derives only an absolute SDK platform-tools root', () => {
+  assert.equal(
+    androidSdkRootFromAdbPath('/opt/android-sdk/platform-tools/adb'),
+    '/opt/android-sdk',
+  );
+  assert.equal(androidSdkRootFromAdbPath('adb'), undefined);
+  assert.equal(
+    androidSdkRootFromAdbPath('/usr/local/bin/adb'),
+    undefined,
+  );
+});
 
 test('parseAdbDevices parses devices and preserves descriptive fields', () => {
   const devices = parseAdbDevices(
