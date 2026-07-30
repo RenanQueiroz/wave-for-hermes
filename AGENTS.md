@@ -43,6 +43,10 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   dependencies so both the companion and Metro can consume it.
 - Use the official OpenAI JavaScript SDK only in the companion. Do not import it into the React
   Native application.
+- Keep server-only configuration, entrypoints, and Hermes/OpenAI protocol adapters under
+  `companion/`. Never use `EXPO_PUBLIC_*` for companion credentials.
+- Run `npm run verify:boundaries` after changing workspace manifests, shared contracts, backend
+  imports, or production bundling.
 - Homelab owns deployment manifests, private networking, pinned production images, Nginx routing,
   and secrets. This repository owns the companion implementation and its API contract.
 
@@ -90,9 +94,7 @@ documentation before implementing UI.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
 - Hermes HTTP, SSE, capability, and error normalization belongs in the companion's server-only
-  Hermes adapter. The existing implementation remains temporarily under `src/services/hermes`
-  only until the companion workspace is introduced; do not import it into new mobile feature or UI
-  code.
+  adapter under `companion/src/hermes`; do not import it into mobile feature or UI code.
 - Do not retain a second production Hermes transport in the mobile bundle after the adapter moves.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
@@ -126,9 +128,11 @@ documentation before implementing UI.
 Run checks proportional to the change. The normal repository handoff is:
 
 ```bash
+npm run build
 npm test
 npm run lint
-npx tsc --noEmit
+npm run typecheck
+npm run verify:boundaries
 npx expo install --check
 npm run mobile:smoke:production
 ```

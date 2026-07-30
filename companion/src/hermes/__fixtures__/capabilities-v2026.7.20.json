@@ -1,6 +1,6 @@
 {
-  "object": "hermes.api_server.capabilities",
   "platform": "hermes-agent",
+  "object": "hermes.api_server.capabilities",
   "model": "hermes-agent",
   "auth": {
     "type": "bearer",

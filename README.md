@@ -48,14 +48,17 @@ The repository is at the application-foundation and transport stage. It currentl
   an audio-only development proof validated on iOS and Android;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
-- a typed, bearer-authenticated Hermes Sessions API adapter with capability validation, streamed
-  SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests.
+- a Node.js 24/Fastify Wave Companion workspace with strict server-only configuration, a versioned
+  status endpoint, normalized errors, redacted logs, and graceful shutdown;
+- runtime-neutral Wave status, error, and event-envelope schemas in `@wave/contracts`;
+- a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
+  streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
+- automated dependency, import, configuration, and production-bundle boundary checks.
 
-The adapter is temporarily located under `src/services/hermes`; it will move into the Node
-companion when the workspace is introduced and must not become a mobile production dependency. The
-visible screens are still starter UI. Companion authentication, secure device credential storage,
-connection screens, text chat, and the Realtime voice slice have not been implemented yet. See
-[`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current adapter contract and
+The visible screens are still starter UI. Companion authentication, secure device credential
+storage, connection screens, text chat, and the Realtime voice slice have not been implemented yet.
+See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
+[`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 private deployment prerequisite.
 
 ## Local development
@@ -81,6 +84,20 @@ launch/Metro server so the Uniwind transform is reloaded.
 
 Wave does not support React Native Web. Web dependencies, scripts, configuration, and
 platform-specific implementations should not be added.
+
+The root is also the npm workspace root. Build and run the current companion foundation separately:
+
+```bash
+export HERMES_API_URL=https://<private-hermes-api>
+read -s HERMES_API_KEY
+export HERMES_API_KEY
+npm run companion:build
+npm run companion:start
+```
+
+The companion defaults to `127.0.0.1:8787`. It requires HTTPS for Hermes unless
+`HERMES_ALLOW_INSECURE_HTTP=1` explicitly permits a trusted private/local HTTP endpoint. Full
+configuration and boundary details are in [`docs/architecture.md`](./docs/architecture.md).
 
 Create and run a local development build when native dependencies change:
 
@@ -113,9 +130,11 @@ record, automation hooks, and remaining physical-device gates.
 Run these before handing off a change:
 
 ```bash
+npm run build
 npm test
 npm run lint
-npx tsc --noEmit
+npm run typecheck
+npm run verify:boundaries
 npx expo install --check
 npm run mobile:smoke:production
 ```
@@ -150,11 +169,11 @@ components can coexist.
 
 ## Hermes adapter
 
-The server-side transport boundary is currently staged under `src/services/hermes`. It supports an
-optional profile or proxy prefix in the base URL, requires HTTPS unless an explicit private/local
-development exception is enabled, and never exposes raw tool arguments through its event types.
-When the companion workspace is introduced, this implementation and its tests will move behind the
-companion. Mobile features will use `WaveBackendClient`, not `HermesClient`.
+The server-side transport boundary lives under `companion/src/hermes`. It supports an optional
+profile or proxy prefix in the base URL, requires HTTPS unless an explicit private/local development
+exception is enabled, and never exposes raw tool arguments through its event types. Mobile features
+will use `WaveBackendClient`, not `HermesClient`; the repository intentionally has no second mobile
+Hermes transport.
 
 Run its deterministic tests with:
 
@@ -180,5 +199,6 @@ a command-line argument. Full setup and cancellation semantics are documented in
 - [PanelUI CLI](https://www.panelui.dev/docs/cli)
 - [PanelUI theming](https://www.panelui.dev/docs/theming)
 - [OpenAI Realtime API](https://platform.openai.com/docs/api-reference/realtime)
+- [Wave architecture and workspace boundaries](./docs/architecture.md)
 - [Hermes connectivity contract](./docs/hermes-connectivity.md)
 - [WebRTC foundation and validation](./docs/webrtc-foundation.md)

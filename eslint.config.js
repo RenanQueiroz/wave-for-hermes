@@ -1,4 +1,7 @@
 const { defineConfig, globalIgnores } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 
-module.exports = defineConfig([globalIgnores(['dist/*']), expoConfig]);
+module.exports = defineConfig([
+  globalIgnores(['**/dist/**', '.mobile-agent/**']),
+  expoConfig,
+]);

@@ -49,7 +49,7 @@ async function collect(events: AsyncGenerator<HermesStreamEvent>) {
   return result;
 }
 
-test('normalizes base URLs and enforces HTTPS by default', () => {
+test('normalizes server-side base URLs and enforces HTTPS by default', () => {
   assert.equal(
     normalizeHermesBaseUrl(' https://hermes.test/p/default/// '),
     'https://hermes.test/p/default',

@@ -13,8 +13,9 @@
     }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "uniwind-types.d.ts",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ]

@@ -6,7 +6,7 @@ dashboard's PTY or WebSocket protocol.
 
 ## Current server adapter
 
-The Hermes adapter is temporarily staged under `src/services/hermes` and currently provides:
+The Hermes adapter is server-only under `companion/src/hermes` and currently provides:
 
 - bearer-authenticated capability probing;
 - session creation and listing;
@@ -17,14 +17,15 @@ The Hermes adapter is temporarily staged under `src/services/hermes` and current
 - normalized configuration, authentication, network, timeout, server, and protocol errors;
 - redaction that prevents bearer keys and raw tool arguments from entering events or errors.
 
-It uses standard `fetch`, `ReadableStream`, `AbortController`, and encoding APIs with no Expo or
-React Native imports. That keeps it suitable for relocation into the Node.js companion without a
-transport rewrite.
+It uses Node.js 24's standard `fetch`, `ReadableStream`, `AbortController`, and encoding APIs with no
+Expo or React Native imports. Its implementation, fixture, unit tests, and integration probe all
+live in the companion workspace. Do not import `HermesClient` into mobile features. The mobile
+application will instead use `WaveBackendClient` and Wave-owned normalized contracts from
+`packages/contracts`.
 
-When the companion workspace is introduced, move the implementation, fixture, tests, and
-integration probe behind its server-only Hermes boundary. Do not import `HermesClient` into mobile
-features. The mobile application will instead use `WaveBackendClient` and Wave-owned normalized
-contracts from `packages/contracts`.
+The companion currently exposes only a non-sensitive `GET /v1/status` foundation route. That route
+reports accepted configuration, not a live Hermes capability result. Pairing and Wave-owned
+session/chat routes will be introduced before mobile connects to the companion.
 
 ## Minimum server contract
 
@@ -56,10 +57,10 @@ session_messages
 sessions
 ```
 
-The source-derived fixture is currently
-`src/services/hermes/__fixtures__/capabilities-v2026.7.20.json`. Replace it with a sanitized live
+The source-derived fixture is
+`companion/src/hermes/__fixtures__/capabilities-v2026.7.20.json`. Replace it with a sanitized live
 response after the private endpoint is enabled and verify that the meaningful contract has not
-drifted. Its path will move with the adapter.
+drifted.
 
 ## Streaming and cancellation
 
@@ -99,10 +100,16 @@ mobile production API and must not weaken dashboard or API authentication.
 
 ## Validation
 
-Run deterministic transport tests:
+Run deterministic contract and companion tests:
 
 ```bash
 npm test
+```
+
+To run only the relocated Hermes adapter tests:
+
+```bash
+npm run test:hermes
 ```
 
 After a development endpoint exists, put the key into the shell without committing it or placing

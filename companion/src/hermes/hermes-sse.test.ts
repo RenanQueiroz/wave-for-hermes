@@ -4,7 +4,7 @@ import test from 'node:test';
 import { HermesClientError } from './hermes-errors.ts';
 import { HermesSseParser } from './hermes-sse.ts';
 
-test('parses fragmented UTF-8, multiple events, comments, and CRLF frames', () => {
+test('parses server-side fragmented UTF-8, multiple events, comments, and CRLF frames', () => {
   const parser = new HermesSseParser();
   const bytes = new TextEncoder().encode(
     ': keepalive\r\n\r\nevent: assistant.delta\r\ndata: {"delta":"olá"}\r\n\r\n' +

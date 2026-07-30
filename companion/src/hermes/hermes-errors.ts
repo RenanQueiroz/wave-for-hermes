@@ -1,3 +1,4 @@
+// Hermes errors never cross directly into the mobile application.
 export type HermesErrorKind =
   | 'authentication'
   | 'cancelled'

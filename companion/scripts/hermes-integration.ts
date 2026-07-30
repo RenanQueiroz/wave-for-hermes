@@ -1,5 +1,5 @@
-import { HttpHermesClient } from '../src/services/hermes/hermes-client.ts';
-import { HermesClientError } from '../src/services/hermes/hermes-errors.ts';
+import { HttpHermesClient } from '../src/hermes/hermes-client.ts';
+import { HermesClientError } from '../src/hermes/hermes-errors.ts';
 
 const baseUrl = process.env.HERMES_API_URL?.trim();
 const bearerToken = process.env.HERMES_API_KEY?.trim();

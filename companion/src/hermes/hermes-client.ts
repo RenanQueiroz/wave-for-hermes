@@ -425,7 +425,7 @@ export class HttpHermesClient implements HermesClient {
 
     this.baseUrl = normalizeHermesBaseUrl(config.baseUrl, config);
     this.bearerToken = bearerToken;
-    // Expo SDK 57 installs expo/fetch as global fetch on iOS and Android.
+    // Node.js 24 provides the standard fetch implementation used by the companion.
     this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }

@@ -1,4 +1,6 @@
 import { HermesClientError } from './hermes-errors.ts';
+
+// This parser is server-only and validates the pinned Hermes API contract.
 import type {
   HermesCapabilities,
   HermesCapabilityReport,

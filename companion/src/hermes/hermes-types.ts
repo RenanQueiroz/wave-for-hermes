@@ -1,3 +1,4 @@
+/** Configuration owned only by the Wave Companion process. */
 export interface HermesConnectionConfig {
   allowInsecureHttp?: boolean;
   baseUrl: string;

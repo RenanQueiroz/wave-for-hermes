@@ -164,8 +164,10 @@ without creating an Appium session.
 unified action envelope, and exits after Metro accepts it; the long-running MCP collector
 reconnects when Wave's Hermes target returns. It auto-selects the platform only when
 exactly one is ready; otherwise pass `--platform`. If multiple Wave Hermes targets are
-connected, set `MOBILE_AGENT_OBSERVABILITY_TARGET_ID` to an ID reported by
-`mobile_doctor`.
+connected through one Metro server, set `MOBILE_AGENT_OBSERVABILITY_TARGET_ID` to an ID
+reported by `mobile_doctor`. If iOS and Android use separate Radon Metro servers, set
+`MOBILE_AGENT_METRO_URL` to the intended server; an explicit URL disables automatic Metro
+discovery so the agent never attaches to the other platform by accident.
 `smoke:production` creates ignored iOS and Android production exports and verifies
 that the development state bridge is absent from both native bundles.
 

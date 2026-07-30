@@ -69,11 +69,12 @@ export async function discoverMetro(config: MobileAgentConfig): Promise<MetroDis
   };
 }
 
-async function candidateMetroUrls(config: MobileAgentConfig): Promise<string[]> {
-  const urls = new Set<string>();
+export async function candidateMetroUrls(config: MobileAgentConfig): Promise<string[]> {
   if (config.metroUrl) {
-    urls.add(normalizeBaseUrl(config.metroUrl));
+    return [normalizeBaseUrl(config.metroUrl)];
   }
+
+  const urls = new Set<string>();
   urls.add('http://127.0.0.1:8081');
 
   const ports = await listeningNodePorts();

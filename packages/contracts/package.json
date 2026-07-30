@@ -1,0 +1,35 @@
+{
+  "name": "@wave/contracts",
+  "version": "0.1.0",
+  "description": "Runtime-neutral protocol contracts shared by Wave mobile and the Wave Companion",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src test --max-warnings=0",
+    "test": "node --experimental-strip-types --test test/contracts.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "typescript": "~6.0.3"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

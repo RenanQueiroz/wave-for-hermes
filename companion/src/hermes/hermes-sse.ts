@@ -1,5 +1,6 @@
 import { HermesClientError } from './hermes-errors.ts';
 
+/** Incremental parser for Hermes's server-side event stream. */
 export interface HermesSseFrame {
   data: string;
   event: string;
