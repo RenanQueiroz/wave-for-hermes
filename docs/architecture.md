@@ -40,6 +40,9 @@ The production artifact is defined by `companion/Dockerfile`. Its multi-stage bu
 the Companion/contracts workspaces and copies only compiled server-side output plus production
 dependencies into the non-root runtime stage. Homelab pins the resulting source revision and owns
 the read-only runtime policy, private writable authorization database, health check, and ingress.
+The validated deployment keeps Hermes API Server port `8642` and Companion port `8787` unpublished,
+then exposes the Wave API only below `/wave/` on the existing private `svc:hermes` Tailscale HTTPS
+origin. The LAN Nginx listener has no Wave route.
 
 ## Workspace boundaries
 

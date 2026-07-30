@@ -65,6 +65,9 @@ The repository is at the authenticated text-chat vertical-slice stage. It curren
   controls reachable;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
+- a live Homelab deployment with unpublished Hermes/Companion ports, Tailscale-only HTTPS ingress
+  at `/wave`, revocable device authentication, and validated streaming, persisted history, and
+  cancellation against the pinned Hermes release;
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
 The visible app begins with the real connection flow, then opens the user's authorized Hermes
@@ -72,7 +75,7 @@ conversations and streams normalized text turns. The OpenAI Realtime voice slice
 implemented yet.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
-private deployment prerequisite.
+validated private deployment.
 
 ## Local development
 
@@ -123,8 +126,9 @@ docker build \
 ```
 
 The image contains only the compiled Companion, compiled shared contracts, and their production
-dependencies. Homelab owns its pinned image tag, private network, persistent authorization
-database, Nginx route, and runtime secrets.
+dependencies. Homelab pins the exact Wave source revision, builds the image locally, and owns its
+private network, persistent authorization database, Tailscale-only `/wave/` Nginx route, runtime
+secrets, pairing/revocation commands, and live integration validation.
 
 Create and run a local development build when native dependencies change. The current client
 requires `react-native-webrtc`, `expo-secure-store`, and `react-native-keyboard-controller`, so an

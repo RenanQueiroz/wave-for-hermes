@@ -32,7 +32,7 @@ and pairing/bootstrap require the live compatibility probe before showing the co
 ## Minimum server contract
 
 The current fixture and parsers were checked against the exact Hermes image pinned by the
-development Homelab:
+development Homelab and revalidated against its live API Server on 2026-07-30:
 
 ```text
 nousresearch/hermes-agent:v2026.7.20
@@ -59,10 +59,11 @@ session_messages
 sessions
 ```
 
-The source-derived fixture is
-`companion/src/hermes/__fixtures__/capabilities-v2026.7.20.json`. Replace it with a sanitized live
-response after the private endpoint is enabled and verify that the meaningful contract has not
-drifted.
+The sanitized fixture is
+`companion/src/hermes/__fixtures__/capabilities-v2026.7.20.json`. Its complete shape and required
+values match the live response; only the deployment-specific `model` value is normalized to
+`hermes-agent` so a local provider choice does not enter the repository. Revalidate it whenever
+the pinned Hermes image changes.
 
 ## Streaming and cancellation
 
@@ -77,29 +78,35 @@ therefore aborts its fetch; the server observes the closed connection and cancel
 task. Ending Wave's downstream stream early also cancels the upstream response reader.
 `HermesClient.stopRun` is reserved for runs created through `/v1/runs`.
 
-## Private deployment prerequisite
+## Private production deployment
 
-The audited Homelab deployment currently runs only the authenticated dashboard on port `9119`.
-`API_SERVER_*` is absent and port `8642` is not listening, so live Wave integration remains pending
-a separate, deliberate Homelab change.
+The Homelab deployment now runs the pinned Hermes API Server and the production Companion with
+these boundaries:
 
-That deployment should:
+1. Hermes API Server listens on port `8642` only inside the private Compose network and requires a
+   generated bearer key.
+2. Wave Companion listens on port `8787` only inside that network and is the sole service given
+   the Hermes key.
+3. Neither service publishes a host or LAN port.
+4. Nginx exposes the Companion only at `/wave/` on the host-loopback listener used by the existing
+   private `svc:hermes` Tailscale HTTPS Service.
+5. The plain-HTTP LAN listener has no Wave route.
+6. Nginx strips the `/wave/` prefix, disables response/request buffering, uses bounded long
+   streaming timeouts, and writes Wave requests through a pathless log format.
+7. The Companion runs as a non-root user with a read-only root filesystem, all capabilities
+   dropped, and one dedicated private authorization-state mount.
+8. CORS remains disabled because Wave supports native iOS and Android only.
 
-1. enable the API server with a strong unique `API_SERVER_KEY`;
-2. bind port `8642` to the container's private Compose network, never directly to the LAN;
-3. place the Wave Companion on the same explicit private network;
-4. let only the companion call the API Server in production;
-5. expose the companion through the existing private Nginx/Tailscale HTTPS edge without publishing
-   a direct host or LAN port;
-6. disable proxy response buffering and retain long streaming timeouts for the companion's Wave
-   event stream;
-7. preserve Hermes bearer authentication and existing dashboard authentication;
-8. avoid CORS configuration because Wave supports native iOS and Android only.
+The generated Hermes key stays in Homelab's ignored mode-`0600` `.env` and the two server
+environments. A mobile device receives only a separately revocable Wave credential after
+one-time pairing.
 
-Container-to-container Hermes traffic may use an explicit private-network HTTP exception such as
-`http://hermes:8642`; the companion's externally reachable Wave API still requires private HTTPS.
-An optional development-only Hermes edge may be used by the integration probe, but it is not the
-mobile production API and must not weaken dashboard or API authentication.
+Container-to-container traffic uses the explicit private-network exception
+`http://hermes:8642`; the mobile Wave API remains private HTTPS at:
+
+```text
+https://hermes.<tailnet>.ts.net/wave
+```
 
 ## Validation
 
@@ -115,20 +122,21 @@ To run only the relocated Hermes adapter tests:
 npm run test:hermes
 ```
 
-After a development endpoint exists, put the key into the shell without committing it or placing
-it in a command argument, then run the server-side integration probe:
+The Homelab repository owns production deployment validation. From that repository run:
 
 ```bash
-read -s HERMES_API_KEY
-export HERMES_API_KEY
-export HERMES_API_URL=https://<private-hermes-service>/wave
-npm run test:hermes:integration
-unset HERMES_API_KEY HERMES_API_URL
+./scripts/validate-wave-companion.sh
+./scripts/validate-wave-companion.sh --live
 ```
 
-The probe validates capabilities, creates a session unless `HERMES_INTEGRATION_SESSION_ID` is
-provided, completes and reloads one streamed turn, and cancels a second active stream. It prints
-only the resulting session ID and supported operations, never the key or response content. For a
-private container-to-container endpoint, set `HERMES_ALLOW_INSECURE_HTTP=1` in that server-side
-process only. These variables belong only to the local integration process or deployed companion;
-they must never use the `EXPO_PUBLIC_*` prefix or enter mobile storage.
+The base check validates container isolation, the Tailscale-only Wave route, device-auth rejection,
+the existing password-gated dashboard and WebSocket boundary, and the live Hermes capability
+contract. `--live` additionally creates and revokes a temporary Wave device, exercises pairing and
+authenticated compatibility through Nginx, creates a Hermes session, completes and reloads a
+streamed turn, and cancels a second active stream. It prints only the resulting session ID and
+supported operations, never the key, device credential, or response content.
+
+For a separate development server, `npm run test:hermes:integration` remains available with
+server-only `HERMES_API_URL`, `HERMES_API_KEY`, and, for a trusted private HTTP endpoint,
+`HERMES_ALLOW_INSECURE_HTTP=1`. These variables must never use the `EXPO_PUBLIC_*` prefix or enter
+mobile storage.
