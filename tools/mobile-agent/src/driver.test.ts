@@ -44,7 +44,11 @@ test('swipe and drag build bounded W3C touch sequences', async () => {
 
 test('text values are sent directly to the selected native element', async () => {
   const calls: Array<{ text: string; elementId: string }> = [];
+  const cleared: string[] = [];
   const driver = fakeDriver({
+    clear: async (elementId) => {
+      cleared.push(elementId);
+    },
     setValue: async (text, elementId) => {
       calls.push({ text, elementId });
     },
@@ -55,8 +59,8 @@ test('text values are sent directly to the selected native element', async () =>
 
   assert.deepEqual(calls, [
     { text: 'private text', elementId: 'element-1' },
-    { text: '', elementId: 'element-1' },
   ]);
+  assert.deepEqual(cleared, ['element-1', 'element-1']);
 });
 
 test('safe lifecycle and deep-link helpers use platform-specific mobile commands', async () => {

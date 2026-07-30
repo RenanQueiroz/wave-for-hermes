@@ -82,6 +82,8 @@ export async function runPairingSmoke(
       ok: true,
     });
 
+    await lifecycle(connection.client, sessionId, 'terminate');
+    await lifecycle(connection.client, sessionId, 'activate');
     await waitForNode(
       connection.client,
       sessionId,
@@ -95,12 +97,22 @@ export async function runPairingSmoke(
       'companion-url-input',
       options.baseUrl,
     );
+    await revealNextPairingField(
+      connection.client,
+      sessionId,
+      options.platform,
+    );
     await replaceNodeText(
       connection.client,
       sessionId,
       options.platform,
       'device-name-input',
       `Wave ${options.platform} pairing smoke`,
+    );
+    await revealNextPairingField(
+      connection.client,
+      sessionId,
+      options.platform,
     );
     await replaceNodeText(
       connection.client,
@@ -109,6 +121,11 @@ export async function runPairingSmoke(
       'pairing-code-input',
       options.code,
     );
+    await revealNextPairingField(
+      connection.client,
+      sessionId,
+      options.platform,
+    );
     report.steps.push({
       detail:
         'Entered the fixture URL, device name, and one-time code without action traces.',
@@ -116,11 +133,10 @@ export async function runPairingSmoke(
       ok: true,
     });
 
-    await tapNode(
+    await submitPairing(
       connection.client,
       sessionId,
       options.platform,
-      PAIR_BUTTON_ID,
     );
     await waitForNode(
       connection.client,
@@ -254,6 +270,47 @@ async function lifecycle(
     sessionId,
   });
   assertToolSucceeded(action, result);
+}
+
+async function revealNextPairingField(
+  client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
+  sessionId: string,
+  platform: MobilePlatform,
+) {
+  if (platform !== 'ios') return;
+  const result = await callToolText(client, 'mobile_scroll', {
+    captureTrace: false,
+    direction: 'up',
+    distance: 0.16,
+    durationMs: 300,
+    sessionId,
+  });
+  assertToolSucceeded('reveal-next-pairing-field', result);
+}
+
+async function submitPairing(
+  client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
+  sessionId: string,
+  platform: MobilePlatform,
+) {
+  if (platform === 'android') {
+    await tapNode(client, sessionId, platform, PAIR_BUTTON_ID);
+    return;
+  }
+  const result = await callToolText(client, 'appium_perform_actions', {
+    actions: [
+      {
+        type: 'key',
+        id: 'pairing-submit',
+        actions: [
+          { type: 'keyDown', value: '\uE007' },
+          { type: 'keyUp', value: '\uE007' },
+        ],
+      },
+    ],
+    sessionId,
+  });
+  assertToolSucceeded('submit-pairing', result);
 }
 
 async function replaceNodeText(

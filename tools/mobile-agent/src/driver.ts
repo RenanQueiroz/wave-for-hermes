@@ -21,6 +21,7 @@ export interface NativeDriver {
   findElement(strategy: string, selector: string): Promise<unknown>;
   click?(elementId: string): Promise<unknown>;
   elementClick?(elementId: string): Promise<unknown>;
+  clear?(elementId: string): Promise<unknown>;
   setValue?(text: string, elementId: string): Promise<unknown>;
   back?(): Promise<unknown>;
   activateApp?(applicationId: string): Promise<unknown>;
@@ -288,6 +289,10 @@ export async function setNativeElementValue(
   elementId: string,
   value: string,
 ): Promise<void> {
+  if (typeof driver.clear === 'function') {
+    await driver.clear(elementId);
+    if (!value) return;
+  }
   if (typeof driver.setValue !== 'function') {
     if (typeof driver.elementSendKeys === 'function') {
       await driver.elementSendKeys(elementId, value);
