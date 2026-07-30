@@ -16,6 +16,13 @@ export default function AppLayout() {
         options={{ title: 'Hermes' }}
       />
       <Stack.Screen
+        name="sessions/[sessionId]/voice"
+        options={{
+          presentation: 'modal',
+          title: 'Live voice',
+        }}
+      />
+      <Stack.Screen
         name="development"
         options={{ title: 'Development' }}
       />

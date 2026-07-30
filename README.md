@@ -4,7 +4,7 @@ Wave is a focused mobile client for chatting with a user's
 [Hermes Agent](https://github.com/NousResearch/hermes-agent). It is a conversation surface, not an
 administration console.
 
-The core feature will be a low-latency live voice mode backed by the OpenAI Realtime API. The
+The core feature is a low-latency live voice mode backed by the OpenAI Realtime API. The
 Realtime model can request typed tools; Wave validates those tool calls, forwards the corresponding
 request to the user's Hermes agent, and returns the result to the conversation.
 
@@ -39,8 +39,8 @@ Homelab repository.
 
 ## Current status
 
-The repository has an authenticated text-chat vertical slice and the server-side foundation for
-the live-voice slice. It currently includes:
+The repository has authenticated text chat and the first end-to-end live-voice vertical slice. It
+currently includes:
 
 - Expo SDK 57 with Expo Router and development-client support for iOS and Android;
 - [PanelUI](https://www.panelui.dev/docs) through the `panelui-native` package;
@@ -61,6 +61,12 @@ the live-voice slice. It currently includes:
   strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
   limits, authenticated Realtime call start/end methods, safe normalized errors, and no direct
   Hermes or OpenAI transport;
+- an audio-only native `RealtimeTransport` and focused lifecycle controller that own microphone
+  tracks, WebRTC negotiation, data-channel events, reconnect bounds, cancellation, expiry, and
+  explicit companion cleanup outside React components;
+- a PanelUI live-voice route over the active Hermes session with safe listening/speaking/error
+  state, ephemeral transcripts, mute/unmute, explicit hangup, stable automation identifiers, and
+  validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
@@ -79,11 +85,11 @@ the live-voice slice. It currently includes:
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
 The visible app begins with the real connection flow, then opens the user's authorized Hermes
-conversations and streams normalized text turns. The Companion can now create an OpenAI Realtime
-call from a mobile SDP offer and automatically dispatch a strictly validated
-`ask_hermes({ instruction })` call against the trusted active Hermes session. The production mobile
-`RealtimeTransport` controller and live voice UI are the next slice; no user-visible voice flow is
-wired to these endpoints yet.
+conversations and streams normalized text turns. From an active chat, the microphone control opens
+the live-voice route, establishes a native WebRTC call through the Companion, and can automatically
+dispatch a strictly validated `ask_hermes({ instruction })` call against the trusted active Hermes
+session. Physical-device audio routing, interruption, barge-in, release-build, and realistic
+network validation remain before live voice is production-ready.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 validated private deployment.
@@ -214,7 +220,8 @@ build, open **Development tools** and select **Start proof** to verify microphon
 local peer negotiation, a remote audio track, a data-channel echo, and cleanup. Wave requests
 microphone access only and explicitly blocks the Android camera permission.
 
-The proof is a native foundation check, not the production OpenAI Realtime transport. See
+The proof remains a small local diagnostic separate from the production OpenAI Realtime transport.
+See
 [`docs/webrtc-foundation.md`](./docs/webrtc-foundation.md) for the exact workflow, validation
 record, automation hooks, and remaining physical-device gates.
 

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Redirect } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import {
   Alert,
   Avatar,
@@ -7,6 +7,7 @@ import {
   Input,
   KeyboardAvoider,
   Message,
+  MicIcon,
   SendIcon,
   Shimmer,
   Task,
@@ -64,6 +65,7 @@ function ConnectedChatScreen({
   sessionId: string;
 }) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
   const activeSessionStore = useMemo(
@@ -235,14 +237,29 @@ function ConnectedChatScreen({
             ■
           </Button>
         ) : (
-          <Button
-            size="icon"
-            accessibilityLabel="Send message to Hermes"
-            disabled={!input.trim()}
-            testID="chat-send-button"
-            onPress={send}>
-            <SendIcon size={18} />
-          </Button>
+          <>
+            <Button
+              size="icon"
+              variant="outline"
+              accessibilityLabel="Start live voice"
+              testID="chat-voice-button"
+              onPress={() =>
+                router.push({
+                  pathname: '/sessions/[sessionId]/voice',
+                  params: { sessionId },
+                })
+              }>
+              <MicIcon size={18} />
+            </Button>
+            <Button
+              size="icon"
+              accessibilityLabel="Send message to Hermes"
+              disabled={!input.trim()}
+              testID="chat-send-button"
+              onPress={send}>
+              <SendIcon size={18} />
+            </Button>
+          </>
         )}
       </KeyboardAvoider>
     </View>

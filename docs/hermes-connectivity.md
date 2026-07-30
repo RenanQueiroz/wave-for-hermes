@@ -120,10 +120,12 @@ The generated Hermes key stays in Homelab's ignored mode-`0600` `.env` and the t
 environments. A mobile device receives only a separately revocable Wave credential after
 one-time pairing.
 
-The currently recorded Homelab validation covers pairing, authorization, text streaming,
-persisted history, and cancellation. OpenAI Realtime must be enabled with a server-only
-`OPENAI_API_KEY` and validated separately before the deployment can advertise the live voice
-feature.
+The recorded Homelab validation covers pairing, authorization, text streaming, persisted history,
+cancellation, OpenAI unified Realtime setup, authenticated sideband `ask_hermes`, explicit
+termination, and registry cleanup. The server-only `OPENAI_API_KEY` is present only in Homelab's
+ignored mode-`0600` environment and the Companion container. The same private deployment also
+accepted and cleaned up native Realtime calls from the Radon-managed iOS and Android simulators on
+2026-07-30.
 
 Container-to-container traffic uses the explicit private-network exception
 `http://hermes:8642`; the mobile Wave API remains private HTTPS at:

@@ -1,6 +1,6 @@
 # WebRTC foundation
 
-Status: native foundation adopted and validated; production voice validation remains incomplete
+Status: native Realtime path validated on simulators; physical and release validation remains incomplete
 
 Validated: 2026-07-30
 
@@ -8,11 +8,11 @@ Wave uses `react-native-webrtc` as the native media foundation for the OpenAI Re
 voice transport. The dependency is installed through `npx expo install`; the validated lockfile
 currently resolves `react-native-webrtc` `124.0.8`.
 
-This decision establishes that the library can be autolinked, configured, built, and exercised
-with Expo SDK 57 and React Native 0.86. The Companion's unified Realtime SDP setup and authenticated
-sideband `ask_hermes` dispatch have also passed a live OpenAI/Hermes browser-WebRTC integration
-probe. The mobile production transport/controller and complete voice experience have not been
-implemented.
+The library is autolinked, configured, built, and exercised with Expo SDK 57 and React Native 0.86.
+The Companion's unified Realtime SDP setup and authenticated sideband `ask_hermes` dispatch pass a
+live OpenAI/Hermes browser-WebRTC integration probe. The production mobile transport, lifecycle
+controller, and PanelUI voice route also establish and explicitly terminate real Realtime calls on
+Radon-managed iOS and Android simulators.
 
 ## Native configuration
 
@@ -54,6 +54,27 @@ The controller lives in `src/dev/webrtc-audio-loopback.ts` and the PanelUI harne
 
 The card also registers the read-only `webrtc-proof` development state provider for the
 repository-local mobile agent. Meaningful controls have stable test IDs and accessibility labels.
+
+## Production mobile transport
+
+The production boundary is split across:
+
+- `src/services/realtime/realtime-transport.ts` for normalized, bounded transport events and the
+  provider-independent interface;
+- `src/services/realtime/react-native-realtime-transport.ts` for microphone acquisition, SDP,
+  peer/data-channel state, remote audio tracks, reconnect bounds, timers, and native cleanup;
+- `src/features/realtime/realtime-controller.ts` for Wave call ownership, cancellation, expiry,
+  safe UI state, transcript bounds, and explicit Companion call termination;
+- `src/features/realtime/voice-screen.tsx` for the PanelUI state renderer and accessible controls.
+
+React components never own raw WebRTC resources. Leaving the focused route, backgrounding an
+established call, ending explicitly, setup failure, connection failure, or call expiry closes local
+media and attempts authenticated Companion cleanup. A failed server-side cleanup remains visible
+and retryable; Wave does not silently start a second call. A transient peer disconnect may recover
+inside a bounded window, while a closed event channel is terminal.
+
+The initial voice transcript is an ephemeral in-call overlay. Hermes remains the durable chat
+history source.
 
 ### Run the proof
 
@@ -101,16 +122,22 @@ The foundation proof passed with:
 - generated iOS and Android permission output with microphone access and no Android camera
   permission.
 
+The production simulator path additionally passed on 2026-07-30:
+
+- native mobile SDP exchange through the private Homelab Companion;
+- a real OpenAI Realtime WebRTC connection reaching the `Listening` state;
+- microphone mute/unmute state changes;
+- explicit peer, media, data-channel, timer, and Companion-call teardown;
+- return to the existing chat on both the Radon-managed iOS and Android devices.
+
 The simulator proof demonstrates native-module loading, microphone acquisition, peer negotiation,
-remote track delivery, data channels, and cleanup. It does **not** prove audible full-duplex audio
-or production Realtime behavior.
+remote track delivery, data channels, real Realtime setup, and cleanup. It does **not** prove
+audible full-duplex audio on physical hardware or release readiness.
 
 ## Remaining production voice gates
 
 Before declaring voice production-ready, validate:
 
-- the implemented Companion unified-call route from the native mobile transport, including native
-  SDP exchange and explicit call cleanup;
 - audible full-duplex capture and playback on physical iOS and Android devices;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
@@ -118,8 +145,8 @@ Before declaring voice production-ready, validate:
 - permission denial and later recovery;
 - release builds and realistic network transitions.
 
-These checks belong to the mobile Realtime phase. The local proof should stay small and
-development-only until the production controller supersedes it.
+The local proof should remain a small development-only native diagnostic even though the
+production controller now exists.
 
 ## References
 

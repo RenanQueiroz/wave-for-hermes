@@ -112,7 +112,7 @@ documentation before implementing UI.
 
 ## WebRTC foundation
 
-- `react-native-webrtc` is the accepted native foundation for the future OpenAI Realtime
+- `react-native-webrtc` is the accepted native foundation for the production OpenAI Realtime
   transport. Keep the production peer connection, media tracks, data channels, timers, and cleanup
   behind a focused `RealtimeTransport`/controller boundary; React components render snapshots and
   do not own raw WebRTC objects.
@@ -122,7 +122,7 @@ documentation before implementing UI.
 - Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
   SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
   native edits or repository-owned config plugin.
-- The Explore-screen loopback proof under `src/dev` is development-only. It validates native
+- The development-tools loopback proof under `src/dev` is development-only. It validates native
   loading, microphone tracks, local negotiation, remote track delivery, data-channel echo, and
   cleanup; it is not a production Realtime transport.
 - After changing WebRTC/native dependencies or permissions, run a clean prebuild and native build

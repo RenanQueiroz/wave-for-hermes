@@ -76,8 +76,8 @@ the companion production dependency tree, and an existing production mobile expo
 ## Current mobile data boundary
 
 The mobile implementation lives under `src/features/connection`, `src/features/sessions`,
-`src/features/chat`, `src/services/credentials`, `src/services/query`, `src/services/sessions`, and
-`src/services/wave`:
+`src/features/chat`, `src/features/realtime`, `src/services/credentials`, `src/services/query`,
+`src/services/realtime`, `src/services/sessions`, and `src/services/wave`:
 
 - `WaveBackendClient` is the only mobile production HTTP boundary. It validates request inputs and
   every JSON response with `@wave/contracts`, preserves an intentional companion path prefix,
@@ -108,6 +108,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   cancellation races, safe error state, and post-stream history reconciliation. The reducer keeps
   the composer busy until stream cleanup and reconciliation have settled, so a newly enabled send
   cannot race the prior turn. React screens do not parse SSE or construct protocol messages.
+- `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
+  native peer and data channel, remote audio tracks, bounded reconnect timing, and cleanup.
+  `WaveRealtimeController` owns the authenticated Companion call, cancellation/expiry, normalized
+  activity and transcript state, and retryable server-cleanup failures. The PanelUI voice route
+  renders controller snapshots and never owns raw WebRTC resources or provider protocol messages.
 - The PanelUI session and chat routes render normalized conversation data only. Tool events become
   name/status-only `Task` parts; raw arguments, output, upstream events, and credentials never enter
   the mobile render model. `KeyboardProvider` is mounted once at the app root, and PanelUI's
