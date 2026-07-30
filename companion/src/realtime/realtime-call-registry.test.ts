@@ -156,8 +156,9 @@ test('binds a Realtime call to trusted device and session state', async () => {
   assert.equal(context.provider.calls[0]?.sdpOffer, SDP_OFFER);
   assert.match(
     context.provider.calls[0]?.safetyIdentifier ?? '',
-    /^wave_device_[a-f0-9]{64}$/,
+    /^[a-f0-9]{64}$/,
   );
+  assert.equal(context.provider.calls[0]?.safetyIdentifier.length, 64);
   assert.equal(
     context.provider.calls[0]?.safetyIdentifier.includes(
       context.deviceId,

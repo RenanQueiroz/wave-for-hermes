@@ -70,7 +70,7 @@ test('uses the official SDK for unified call setup and call-id sideband control'
     });
     const provider = new OpenAIRealtimeProvider(config, { client });
     const call = await provider.createCall({
-      safetyIdentifier: `wave_device_${'a'.repeat(64)}`,
+      safetyIdentifier: 'a'.repeat(64),
       sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
     });
 
@@ -82,7 +82,7 @@ test('uses the official SDK for unified call setup and call-id sideband control'
     );
     assert.equal(
       requests[0]?.headers.get('openai-safety-identifier'),
-      `wave_device_${'a'.repeat(64)}`,
+      'a'.repeat(64),
     );
     assert.ok(requests[0]?.body instanceof FormData);
     const form = requests[0]?.body as FormData;

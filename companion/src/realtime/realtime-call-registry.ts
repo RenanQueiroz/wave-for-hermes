@@ -426,9 +426,9 @@ export class RealtimeCallRegistry {
 }
 
 function createSafetyIdentifier(deviceId: string) {
-  return `wave_device_${createHash('sha256')
+  return createHash('sha256')
     .update(deviceId, 'utf8')
-    .digest('hex')}`;
+    .digest('hex');
 }
 
 function normalizeProviderError(error: unknown) {
