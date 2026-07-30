@@ -107,6 +107,10 @@ documentation before implementing UI.
   Hermes's own tool safety policy remains authoritative.
 - Bind the active Hermes session to trusted companion call state. Do not accept a model-controlled
   Hermes session ID in `ask_hermes` arguments.
+- Treat Hermes work as background work relative to the live voice conversation. Barge-in interrupts
+  Realtime playback, not the active Hermes run. Serialize and bound additional `ask_hermes` calls
+  for the trusted session, and deliver completed results only when no user speech or default
+  Realtime response is in progress.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Do not log access tokens, full authorization headers, or sensitive conversation payloads.
 

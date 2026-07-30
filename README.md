@@ -54,7 +54,8 @@ currently includes:
   logs, and graceful shutdown;
 - the official OpenAI JavaScript SDK in the Companion only for unified WebRTC call setup and
   lifecycle requests, plus the documented authenticated `ws` sideband connection, opaque
-  Wave-owned call identifiers, bounded call state, and cleanup;
+  Wave-owned call identifiers, bounded call state, background Hermes request serialization,
+  response-safe result delivery, and cleanup;
 - runtime-neutral Wave pairing, session, history, cancellation, error, normalized turn-event,
   Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,

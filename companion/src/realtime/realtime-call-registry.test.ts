@@ -257,6 +257,131 @@ test('reauthorizes the device and session before every Hermes dispatch', async (
   closeContext(context);
 });
 
+test('keeps Hermes work running while later tool calls wait in order', async () => {
+  const context = createContext();
+  let finishFirst: (() => void) | undefined;
+  const firstGate = new Promise<void>((resolve) => {
+    finishFirst = resolve;
+  });
+  context.hermes.stream = async function* (input) {
+    const first = input.input === 'Explain rainbows';
+    const runId = first ? 'run-rainbow' : 'run-follow-up';
+    yield {
+      runId,
+      sequence: 1,
+      sessionId: context.sessionId,
+      timestamp: 1,
+      type: 'run.started',
+    };
+    if (first) {
+      await firstGate;
+    }
+    yield {
+      content: first ? 'Rainbow answer.' : 'Follow-up answer.',
+      interrupted: false,
+      messageId: `${runId}-message`,
+      partial: false,
+      runId,
+      sequence: 2,
+      sessionId: context.sessionId,
+      timestamp: 2,
+      type: 'assistant.completed',
+    };
+    yield {
+      runId,
+      sequence: 3,
+      sessionId: context.sessionId,
+      timestamp: 3,
+      type: 'done',
+    };
+  };
+  await context.registry.start({
+    deviceId: context.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: context.sessionId,
+  });
+  const sideband = context.provider.calls[0]?.sideband;
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({ instruction: 'Explain rainbows' }),
+    callId: 'tool-call-rainbow',
+    name: 'ask_hermes',
+  });
+  await waitFor(() => context.hermes.instructions.length === 1);
+
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({ instruction: 'Give the follow-up' }),
+    callId: 'tool-call-follow-up',
+    name: 'ask_hermes',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.deepEqual(context.hermes.instructions, ['Explain rainbows']);
+  assert.equal(sideband?.results.length, 0);
+
+  finishFirst?.();
+  await waitFor(() => sideband?.results.length === 2);
+
+  assert.deepEqual(context.hermes.instructions, [
+    'Explain rainbows',
+    'Give the follow-up',
+  ]);
+  assert.deepEqual(
+    sideband?.results.map(({ callId, result }) => ({
+      answer: result.ok ? result.answer : undefined,
+      callId,
+    })),
+    [
+      {
+        answer: 'Rainbow answer.',
+        callId: 'tool-call-rainbow',
+      },
+      {
+        answer: 'Follow-up answer.',
+        callId: 'tool-call-follow-up',
+      },
+    ],
+  );
+  closeContext(context);
+});
+
+test('bounds outstanding background Hermes work per live call', async () => {
+  const context = createContext();
+  context.hermes.stream = async function* (input) {
+    await new Promise<void>((_resolve, reject) => {
+      input.signal?.addEventListener(
+        'abort',
+        () => reject(new Error('aborted')),
+        { once: true },
+      );
+    });
+  };
+  await context.registry.start({
+    deviceId: context.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: context.sessionId,
+  });
+  const sideband = context.provider.calls[0]?.sideband;
+
+  for (let index = 1; index <= 9; index += 1) {
+    sideband?.emitFunctionCall({
+      arguments: JSON.stringify({
+        instruction: `Background request ${index}`,
+      }),
+      callId: `tool-call-background-${index}`,
+      name: 'ask_hermes',
+    });
+  }
+  await waitFor(() => sideband?.results.length === 1);
+
+  assert.equal(context.hermes.instructions.length, 1);
+  assert.equal(
+    sideband?.results[0]?.result.ok === false &&
+      sideband.results[0].result.error.code,
+    'busy',
+  );
+  closeContext(context);
+});
+
 test('bounds call concurrency per device, session, and process', async () => {
   const context = createContext({ maxActiveCalls: 1 });
   await context.registry.start({

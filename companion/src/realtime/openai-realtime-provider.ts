@@ -204,7 +204,13 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     new Set<(error: RealtimeProviderError) => void>();
   private readonly functionCallListeners =
     new Set<(call: RealtimeFunctionCall) => void>();
+  private readonly pendingFunctionResults: {
+    callId: string;
+    output: string;
+  }[] = [];
+  private responseInProgress = false;
   private readonly socket: SidebandSocket;
+  private userSpeaking = false;
 
   constructor(socket: SidebandSocket) {
     this.socket = socket;
@@ -262,29 +268,8 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     const output = JSON.stringify(
       WaveAskHermesToolResultSchema.parse(result),
     );
-    try {
-      this.socket.send(JSON.stringify({
-        item: {
-          call_id: callId,
-          output,
-          type: 'function_call_output',
-        },
-        type: 'conversation.item.create',
-      }));
-      this.socket.send(JSON.stringify({
-        type: 'response.create',
-      }));
-      return true;
-    } catch {
-      this.emitError(
-        new RealtimeProviderError(
-          'Could not send the Hermes result to OpenAI Realtime.',
-          { kind: 'unavailable', retryable: true },
-        ),
-      );
-      this.close();
-      return false;
-    }
+    this.pendingFunctionResults.push({ callId, output });
+    return this.flushFunctionResults();
   }
 
   async waitUntilOpen(timeoutMs: number, signal?: AbortSignal) {
@@ -395,6 +380,18 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
       );
       return;
     }
+    if (event.type === 'input_audio_buffer.speech_started') {
+      this.userSpeaking = true;
+      return;
+    }
+    if (event.type === 'input_audio_buffer.speech_stopped') {
+      this.userSpeaking = false;
+      return;
+    }
+    if (event.type === 'response.created') {
+      this.responseInProgress = true;
+      return;
+    }
     if (event.type !== 'response.done') {
       return;
     }
@@ -408,6 +405,7 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
       );
       return;
     }
+    this.responseInProgress = false;
     for (const output of event.response.output ?? []) {
       if (!isRecord(output) || output.type !== 'function_call') {
         continue;
@@ -426,6 +424,49 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
           name: parsed.data.name,
         });
       }
+    }
+    this.flushFunctionResults();
+  }
+
+  private flushFunctionResults() {
+    if (
+      this.closed ||
+      this.responseInProgress ||
+      this.userSpeaking
+    ) {
+      return !this.closed;
+    }
+    if (this.pendingFunctionResults.length === 0) {
+      return true;
+    }
+    try {
+      for (const result of this.pendingFunctionResults) {
+        this.socket.send(JSON.stringify({
+          item: {
+            call_id: result.callId,
+            output: result.output,
+            type: 'function_call_output',
+          },
+          type: 'conversation.item.create',
+        }));
+      }
+      this.pendingFunctionResults.length = 0;
+      this.socket.send(JSON.stringify({
+        type: 'response.create',
+      }));
+      // Treat the request as active immediately so two fast tool completions
+      // cannot race before the corresponding response.created event arrives.
+      this.responseInProgress = true;
+      return true;
+    } catch {
+      this.emitError(
+        new RealtimeProviderError(
+          'Could not send the Hermes result to OpenAI Realtime.',
+          { kind: 'unavailable', retryable: true },
+        ),
+      );
+      this.close();
+      return false;
     }
   }
 
@@ -533,6 +574,8 @@ function createSessionConfig(
     instructions:
       'You are Wave, a concise live voice interface to the user’s Hermes agent. ' +
       'Use ask_hermes whenever the user asks Hermes to answer a question or perform work. ' +
+      'Hermes requests continue in the background, so remain available for conversational ' +
+      'follow-ups while waiting and do not treat an interruption of your speech as cancelling Hermes. ' +
       'Preserve the user’s intent in the instruction, never invent a session identifier, ' +
       'and do not claim Hermes completed work until the tool result confirms it. ' +
       'Explain tool failures briefly and let the user retry.',

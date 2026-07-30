@@ -186,10 +186,16 @@ do not add replicas without sticky ownership or coordinated call state.
 The Realtime session exposes exactly one function:
 `ask_hermes({ instruction: string })`. Its JSON Schema is generated from the same strict runtime
 schema used at dispatch. The Companion ignores model-selected session identifiers, rechecks device
-and trusted session authorization before every invocation, permits one Hermes tool request at a
-time per call, caps a call at 128 tool requests, and returns only bounded structured success/error
-results. Wave does not add a separate approval prompt; Hermes's own tool safety policy remains
-authoritative.
+and trusted session authorization before every invocation, executes one Hermes request at a time
+for the bound session, allows at most eight active-or-waiting requests per call, caps a call at 128
+total tool requests, and returns only bounded structured success/error results. Additional requests
+wait in order instead of cancelling the active Hermes run.
+
+Hermes work remains in the background relative to the voice conversation. Realtime barge-in stops
+assistant playback but does not cancel Hermes. If Hermes finishes while the user is speaking or a
+default-conversation response is active, the sideband holds the structured result until it can add
+the function output and safely create one follow-up response. Wave does not add a separate approval
+prompt; Hermes's own tool safety policy remains authoritative.
 
 ## Configuration
 

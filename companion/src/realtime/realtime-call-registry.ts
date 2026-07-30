@@ -20,6 +20,7 @@ import {
 
 const ASK_HERMES_TOOL_NAME = 'ask_hermes';
 const MAX_TOOL_CALLS_PER_REALTIME_CALL = 128;
+const MAX_OUTSTANDING_TOOL_CALLS_PER_REALTIME_CALL = 8;
 
 interface ActiveRealtimeTool {
   callId: string;
@@ -31,9 +32,11 @@ interface RealtimeCallState {
   deviceId: string;
   expiresAt: Date;
   handledToolCallIds: Set<string>;
+  outstandingToolCalls: number;
   providerCall: RealtimeProviderCall;
   sessionId: string;
   timer: NodeJS.Timeout;
+  toolQueue: Promise<void>;
   waveCallId: string;
 }
 
@@ -127,11 +130,13 @@ export class RealtimeCallRegistry {
       deviceId: input.deviceId,
       expiresAt,
       handledToolCallIds: new Set(),
+      outstandingToolCalls: 0,
       providerCall,
       sessionId: input.sessionId,
       timer: setTimeout(() => {
         void this.release(call, true);
       }, this.config.callTtlMs),
+      toolQueue: Promise.resolve(),
       waveCallId,
     };
     this.calls.set(waveCallId, call);
@@ -248,7 +253,7 @@ export class RealtimeCallRegistry {
     };
   }
 
-  private async handleFunctionCall(
+  private handleFunctionCall(
     call: RealtimeCallState,
     toolCall: RealtimeFunctionCall,
   ) {
@@ -307,13 +312,7 @@ export class RealtimeCallRegistry {
       return;
     }
 
-    if (
-      !this.services.deviceStore.isDeviceActive(call.deviceId) ||
-      !this.services.deviceStore.hasSession(
-        call.deviceId,
-        call.sessionId,
-      )
-    ) {
+    if (!this.isCallAuthorized(call)) {
       this.completeToolCall(
         call,
         toolCall.callId,
@@ -326,36 +325,104 @@ export class RealtimeCallRegistry {
       return;
     }
 
-    if (call.activeTool) {
+    if (
+      call.outstandingToolCalls >=
+      MAX_OUTSTANDING_TOOL_CALLS_PER_REALTIME_CALL
+    ) {
       this.completeToolCall(
         call,
         toolCall.callId,
         toolError(
           'busy',
-          'Hermes is already handling a request for this live call.',
+          'This live call has too many Hermes requests waiting.',
           true,
         ),
       );
       return;
     }
 
+    call.outstandingToolCalls += 1;
+    call.toolQueue = call.toolQueue
+      .then(() =>
+        this.executeQueuedTool(
+          call,
+          toolCall.callId,
+          parsed.data.instruction,
+        ),
+      )
+      .catch(() => {
+        this.completeToolCall(
+          call,
+          toolCall.callId,
+          toolError(
+            'upstream_unavailable',
+            'Hermes could not complete the request.',
+            true,
+          ),
+        );
+      })
+      .finally(() => {
+        call.outstandingToolCalls -= 1;
+      });
+  }
+
+  private async executeQueuedTool(
+    call: RealtimeCallState,
+    toolCallId: string,
+    instruction: string,
+  ) {
+    if (this.calls.get(call.waveCallId) !== call) {
+      return;
+    }
+    if (!this.isCallAuthorized(call)) {
+      this.completeToolCall(
+        call,
+        toolCallId,
+        toolError(
+          'unauthorized',
+          'This Wave call is no longer authorized for Hermes.',
+          false,
+        ),
+      );
+      return;
+    }
+
     const activeTool: ActiveRealtimeTool = {
-      callId: toolCall.callId,
+      callId: toolCallId,
       controller: new AbortController(),
     };
     call.activeTool = activeTool;
-    const result = await this.executeHermesTool(
-      call,
-      parsed.data.instruction,
-      activeTool.controller,
-    );
+    let result: WaveAskHermesToolResult;
+    try {
+      result = await this.executeHermesTool(
+        call,
+        instruction,
+        activeTool.controller,
+      );
+    } catch {
+      result = toolError(
+        'upstream_unavailable',
+        'Hermes could not complete the request.',
+        true,
+      );
+    }
     if (
       this.calls.get(call.waveCallId) === call &&
       call.activeTool === activeTool
     ) {
       call.activeTool = undefined;
-      this.completeToolCall(call, toolCall.callId, result);
+      this.completeToolCall(call, toolCallId, result);
     }
+  }
+
+  private isCallAuthorized(call: RealtimeCallState) {
+    return (
+      this.services.deviceStore.isDeviceActive(call.deviceId) &&
+      this.services.deviceStore.hasSession(
+        call.deviceId,
+        call.sessionId,
+      )
+    );
   }
 
   private async release(call: RealtimeCallState, endProviderCall: boolean) {

@@ -149,6 +149,8 @@ Before declaring voice production-ready, validate:
 
 - physical iOS microphone capture and assistant playback;
 - full-duplex barge-in and assistant-audio interruption on physical Android and iOS;
+- preservation of active background Hermes work across barge-in, including ordered follow-up
+  `ask_hermes` requests;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
 - permission denial and later recovery;

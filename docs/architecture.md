@@ -138,7 +138,11 @@ The companion lives in `companion/` and provides:
 - the official server-only OpenAI SDK adapter for unified WebRTC setup and lifecycle requests,
   with the documented bearer-authenticated `ws` connection for sideband control;
 - strict `ask_hermes` validation, per-call tool serialization, timeout/cancellation, and structured
-  results through the existing Hermes adapter;
+  results through the existing Hermes adapter; Hermes execution remains background work relative
+  to live speech, with at most eight active-or-waiting requests per call;
+- sideband response coordination that holds completed Hermes outputs while the user is speaking or
+  a default-conversation response is active, then appends the results and creates one safe model
+  response;
 - normalized versioned error envelopes for unknown routes and internal failures;
 - the tested Hermes HTTP/SSE adapter under `companion/src/hermes`.
 
@@ -237,9 +241,14 @@ authenticated device. Wave creates the OpenAI call server-side, attaches the ser
 and returns only the SDP answer, an expiry, and an opaque Wave call ID. The registry rejects a
 second call for the same device or Hermes session and defaults to two calls process-wide. It
 reauthorizes the device/session before every tool dispatch, never accepts a model-controlled
-session ID, serializes `ask_hermes` calls per live call, caps each call at 128 tool requests, and
-expires all state after 30 minutes by default. Call state is intentionally process-local, so a
-multi-replica deployment requires deliberate shared-state and routing decisions first.
+session ID, serializes `ask_hermes` calls per live call, bounds active-or-waiting Hermes work to
+eight requests, caps each call at 128 total tool requests, and expires all state after 30 minutes
+by default. Barge-in stops the Realtime model's audio response without cancelling the active
+Hermes request. Additional Hermes requests wait in order on the same trusted session. Completed
+tool outputs remain buffered while the user is speaking or another default-conversation response
+is active, preventing competing `response.create` events. Call state is intentionally
+process-local, so a multi-replica deployment requires deliberate shared-state and routing
+decisions first.
 
 See [`companion/README.md`](../companion/README.md) for the endpoint table and operator workflow.
 

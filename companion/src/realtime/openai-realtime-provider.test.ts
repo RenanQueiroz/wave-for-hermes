@@ -89,6 +89,7 @@ test('uses the official SDK for unified setup and authenticated sideband control
     const sessionPart = form.get('session');
     assert.equal(typeof sessionPart, 'string');
     const session = JSON.parse(sessionPart as string) as {
+      instructions: string;
       model: string;
       parallel_tool_calls: boolean;
       tools: {
@@ -115,6 +116,12 @@ test('uses the official SDK for unified setup and authenticated sideband control
     ]);
     assert.equal(session.tracing, null);
     assert.equal(JSON.stringify(session).includes('sessionId'), false);
+    assert.equal(
+      session.instructions.includes(
+        'Hermes requests continue in the background',
+      ),
+      true,
+    );
 
     assert.equal(sockets.length, 1);
     assert.equal(
@@ -178,6 +185,72 @@ test('uses the official SDK for unified setup and authenticated sideband control
       ok: true,
       truncated: false,
     });
+
+    sockets[0]?.emitMessage({
+      response: { output: [] },
+      type: 'response.created',
+    });
+    const sentBeforeDeferredResult = sockets[0]?.sent.length ?? 0;
+    assert.equal(
+      call.sideband.sendFunctionResult('tool-call-2', {
+        answer: 'Second Hermes result.',
+        ok: true,
+        truncated: false,
+      }),
+      true,
+    );
+    assert.equal(sockets[0]?.sent.length, sentBeforeDeferredResult);
+
+    sockets[0]?.emitMessage({
+      response: { output: [] },
+      type: 'response.done',
+    });
+    assert.deepEqual(
+      sockets[0]?.sent
+        .slice(sentBeforeDeferredResult)
+        .map((message) => JSON.parse(message).type),
+      ['conversation.item.create', 'response.create'],
+    );
+
+    sockets[0]?.emitMessage({
+      response: { output: [] },
+      type: 'response.created',
+    });
+    sockets[0]?.emitMessage({
+      type: 'input_audio_buffer.speech_started',
+    });
+    const sentBeforeUserFollowUp = sockets[0]?.sent.length ?? 0;
+    assert.equal(
+      call.sideband.sendFunctionResult('tool-call-3', {
+        answer: 'Result completed during a follow-up.',
+        ok: true,
+        truncated: false,
+      }),
+      true,
+    );
+    sockets[0]?.emitMessage({
+      response: { output: [] },
+      type: 'response.done',
+    });
+    sockets[0]?.emitMessage({
+      type: 'input_audio_buffer.speech_stopped',
+    });
+    assert.equal(sockets[0]?.sent.length, sentBeforeUserFollowUp);
+
+    sockets[0]?.emitMessage({
+      response: { output: [] },
+      type: 'response.created',
+    });
+    sockets[0]?.emitMessage({
+      response: { output: [] },
+      type: 'response.done',
+    });
+    assert.deepEqual(
+      sockets[0]?.sent
+        .slice(sentBeforeUserFollowUp)
+        .map((message) => JSON.parse(message).type),
+      ['conversation.item.create', 'response.create'],
+    );
 
     await call.end();
     assert.equal(requests.length, 2);
