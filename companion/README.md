@@ -198,7 +198,7 @@ authoritative.
 | `HERMES_API_URL` | Required | Server-only Hermes API Server base URL |
 | `HERMES_API_KEY` | Required | Server-only Hermes bearer credential |
 | `OPENAI_API_KEY` | unset | Server-only OpenAI credential; enables Realtime when present |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Server-selected Realtime model |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1-mini` | Server-selected cost-efficient Realtime model |
 | `OPENAI_REALTIME_VOICE` | `marin` | Server-selected Realtime voice |
 | `HERMES_ALLOW_INSECURE_HTTP` | `false` | Allow explicit private/local HTTP upstream traffic |
 | `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device and session authorization database |

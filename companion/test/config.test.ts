@@ -40,13 +40,12 @@ test('enables only server-configured OpenAI Realtime with bounded defaults', () 
     HERMES_API_KEY: 'server-only-hermes-key',
     HERMES_API_URL: 'https://hermes.example.test',
     OPENAI_API_KEY: 'server-only-openai-key',
-    OPENAI_REALTIME_MODEL: 'gpt-realtime-2.1',
     OPENAI_REALTIME_VOICE: 'cedar',
   });
 
   assert.deepEqual(config.openAI, {
     apiKey: 'server-only-openai-key',
-    model: 'gpt-realtime-2.1',
+    model: 'gpt-realtime-2.1-mini',
     requestTimeoutMs: 15_000,
     sidebandConnectTimeoutMs: 10_000,
     voice: 'cedar',

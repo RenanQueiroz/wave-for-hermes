@@ -175,7 +175,7 @@ Optional variables:
 | `WAVE_HERMES_IDLE_TIMEOUT_MS` | `60000` | Time allowed between Hermes events |
 | `WAVE_HERMES_TOTAL_TIMEOUT_MS` | `600000` | Maximum total turn duration |
 | `OPENAI_API_KEY` | unset | Server-only credential; enables Realtime when present |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Server-selected Realtime model |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1-mini` | Server-selected cost-efficient Realtime model |
 | `OPENAI_REALTIME_VOICE` | `marin` | Server-selected Realtime voice |
 | `WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS` | `15000` | Unified setup and hangup request timeout |
 | `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000` | Sideband WebSocket connection timeout |

@@ -12,7 +12,7 @@ const CompanionEnvironmentSchema = z.object({
     .trim()
     .min(1)
     .max(100)
-    .default('gpt-realtime-2.1'),
+    .default('gpt-realtime-2.1-mini'),
   OPENAI_REALTIME_VOICE: z
     .enum([
       'alloy',

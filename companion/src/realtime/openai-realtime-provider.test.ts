@@ -9,7 +9,7 @@ import { OpenAIRealtimeProvider } from './openai-realtime-provider.ts';
 
 const config: OpenAIRealtimeConfig = {
   apiKey: 'server-only-openai-key',
-  model: 'gpt-realtime-2.1',
+  model: 'gpt-realtime-2.1-mini',
   requestTimeoutMs: 5_000,
   sidebandConnectTimeoutMs: 1_000,
   voice: 'marin',
@@ -102,7 +102,7 @@ test('uses the official SDK for unified setup and authenticated sideband control
       type: string;
     };
     assert.equal(session.type, 'realtime');
-    assert.equal(session.model, 'gpt-realtime-2.1');
+    assert.equal(session.model, 'gpt-realtime-2.1-mini');
     assert.equal(session.parallel_tool_calls, false);
     assert.equal(session.tools.length, 1);
     assert.equal(session.tools[0]?.name, 'ask_hermes');

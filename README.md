@@ -66,7 +66,9 @@ currently includes:
   explicit companion cleanup outside React components;
 - a PanelUI live-voice route over the active Hermes session with safe listening/speaking/error
   state, ephemeral transcripts, mute/unmute, explicit hangup, stable automation identifiers, and
-  validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators;
+  validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators,
+  plus audible microphone/assistant playback and `ask_hermes` dispatch on a physical Android
+  device;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
@@ -88,8 +90,9 @@ The visible app begins with the real connection flow, then opens the user's auth
 conversations and streams normalized text turns. From an active chat, the microphone control opens
 the live-voice route, establishes a native WebRTC call through the Companion, and can automatically
 dispatch a strictly validated `ask_hermes({ instruction })` call against the trusted active Hermes
-session. Physical-device audio routing, interruption, barge-in, release-build, and realistic
-network validation remain before live voice is production-ready.
+session. Physical iOS, audio-route, interruption, barge-in, release-build, and realistic network
+validation remain before live voice is production-ready. See the tracked
+[`docs/roadmap.md`](./docs/roadmap.md) for the prioritized remaining work.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 validated private deployment.

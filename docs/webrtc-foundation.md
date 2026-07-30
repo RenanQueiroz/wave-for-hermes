@@ -1,6 +1,6 @@
 # WebRTC foundation
 
-Status: native Realtime path validated on simulators; physical and release validation remains incomplete
+Status: native Realtime path validated on simulators and physical Android; remaining production gates are tracked below
 
 Validated: 2026-07-30
 
@@ -130,18 +130,27 @@ The production simulator path additionally passed on 2026-07-30:
 - explicit peer, media, data-channel, timer, and Companion-call teardown;
 - return to the existing chat on both the Radon-managed iOS and Android devices.
 
-The simulator proof demonstrates native-module loading, microphone acquisition, peer negotiation,
-remote track delivery, data channels, real Realtime setup, and cleanup. It does **not** prove
-audible full-duplex audio on physical hardware or release readiness.
+The production path also passed on a physical Google Pixel 8 Pro on 2026-07-30:
+
+- microphone capture reached the Realtime session and produced a user turn;
+- the assistant response was clearly audible through the device;
+- the connection exposed one remote audio track;
+- a strict `ask_hermes` call completed and persisted the expected Hermes user/assistant turn;
+- microphone mute/unmute changed the live media state; and
+- explicit hangup returned to chat and removed the development state provider after cleanup.
+
+This physical Android proof demonstrates audible bidirectional audio for a normal turn. It does
+**not** establish simultaneous full-duplex behavior, barge-in, alternate audio routes, physical
+iOS behavior, or release readiness.
 
 ## Remaining production voice gates
 
 Before declaring voice production-ready, validate:
 
-- audible full-duplex capture and playback on physical iOS and Android devices;
+- physical iOS microphone capture and assistant playback;
+- full-duplex barge-in and assistant-audio interruption on physical Android and iOS;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
-- barge-in and assistant-audio interruption;
 - permission denial and later recovery;
 - release builds and realistic network transitions.
 
