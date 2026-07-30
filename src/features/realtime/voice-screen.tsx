@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
@@ -10,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
 } from 'react';
 import { AppState, ScrollView, View } from 'react-native';
@@ -20,6 +22,7 @@ import {
   WaveRealtimeController,
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
+import { refreshWaveSessionHistory } from '@/features/sessions/refresh-session-history';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
 import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
 
@@ -34,18 +37,31 @@ export function VoiceScreen({ sessionId }: VoiceScreenProps) {
     return <Redirect href={sessionId ? '/' : '/sessions'} />;
   }
   return (
-    <ConnectedVoiceScreen client={client} sessionId={sessionId} />
+    <ConnectedVoiceScreen
+      baseUrl={connection.summary.baseUrl}
+      client={client}
+      connectionId={connection.summary.device.id}
+      sessionId={sessionId}
+    />
   );
 }
 
 function ConnectedVoiceScreen({
+  baseUrl,
   client,
+  connectionId,
   sessionId,
 }: {
+  baseUrl: string;
   client: WaveBackendClient;
+  connectionId: string;
   sessionId: string;
 }) {
+  const queryClient = useQueryClient();
   const router = useRouter();
+  const stopAndRefreshRef = useRef<Promise<void> | undefined>(
+    undefined,
+  );
   const controller = useMemo(
     () =>
       new WaveRealtimeController({
@@ -58,14 +74,44 @@ function ConnectedVoiceScreen({
     controller.subscribe,
     controller.getState,
   );
+  const stopAndRefresh = useCallback(() => {
+    if (stopAndRefreshRef.current) {
+      return stopAndRefreshRef.current;
+    }
+    const task = (async () => {
+      await controller.stop();
+      if (controller.getState().phase !== 'idle') return;
+      await refreshWaveSessionHistory({
+        baseUrl,
+        connectionId,
+        load: (signal) =>
+          client.getSessionHistory(sessionId, signal),
+        queryClient,
+        sessionId,
+      }).catch(() => undefined);
+    })();
+    stopAndRefreshRef.current = task;
+    return task;
+  }, [
+    baseUrl,
+    client,
+    connectionId,
+    controller,
+    queryClient,
+    sessionId,
+  ]);
+  const start = useCallback(() => {
+    stopAndRefreshRef.current = undefined;
+    void controller.start(sessionId);
+  }, [controller, sessionId]);
 
   useFocusEffect(
     useCallback(() => {
-      void controller.start(sessionId);
+      start();
       return () => {
-        void controller.stop();
+        void stopAndRefresh();
       };
-    }, [controller, sessionId]),
+    }, [start, stopAndRefresh]),
   );
 
   useEffect(() => {
@@ -97,21 +143,16 @@ function ConnectedVoiceScreen({
   }, [state]);
 
   const end = useCallback(async () => {
-    await controller.stop();
+    await stopAndRefresh();
     if (controller.getState().phase === 'idle') router.back();
-  }, [controller, router]);
+  }, [controller, router, stopAndRefresh]);
+  const retryStop = useCallback(() => {
+    stopAndRefreshRef.current = undefined;
+    void stopAndRefresh();
+  }, [stopAndRefresh]);
 
-  const primaryAction = state.cleanupPending
-    ? {
-        label: 'Retry ending call',
-        onPress: () => void controller.stop(),
-      }
-    : state.phase === 'idle' || state.phase === 'error'
-      ? {
-          label: 'Start voice',
-          onPress: () => void controller.start(sessionId),
-        }
-      : undefined;
+  const canStart =
+    state.phase === 'idle' || state.phase === 'error';
 
   return (
     <ScrollView
@@ -188,13 +229,21 @@ function ConnectedVoiceScreen({
       </View>
 
       <View className="w-full max-w-md self-center gap-3">
-        {primaryAction ? (
+        {state.cleanupPending ? (
           <Button
             fullWidth
-            accessibilityLabel={primaryAction.label}
+            accessibilityLabel="Retry ending call"
             testID="voice-primary-button"
-            onPress={primaryAction.onPress}>
-            {primaryAction.label}
+            onPress={retryStop}>
+            Retry ending call
+          </Button>
+        ) : canStart ? (
+          <Button
+            fullWidth
+            accessibilityLabel="Start voice"
+            testID="voice-primary-button"
+            onPress={start}>
+            Start voice
           </Button>
         ) : (
           <View className="flex-row gap-3">

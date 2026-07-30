@@ -2,15 +2,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import {
   Alert,
+  AlertTriangleIcon,
   Avatar,
   Button,
+  CheckCircleIcon,
   Input,
+  Item,
   KeyboardAvoider,
   Message,
   MicIcon,
   SendIcon,
   Shimmer,
-  Task,
+  Spinner,
   Typography,
 } from 'panelui-native';
 import {
@@ -22,6 +25,7 @@ import {
 } from 'react';
 import { FlatList, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCSSVariable } from 'uniwind';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
@@ -29,6 +33,7 @@ import {
   type WaveChatMessage,
 } from '@/features/chat/chat-state';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
+import { refreshWaveSessionHistory } from '@/features/sessions/refresh-session-history';
 import { waveHistoryQueryKey } from '@/features/sessions/session-query-keys';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
@@ -83,13 +88,21 @@ function ConnectedChatScreen({
   });
   const reconcileHistory = useCallback(
     () =>
-      queryClient.fetchQuery({
-        queryFn: ({ signal }) =>
+      refreshWaveSessionHistory({
+        baseUrl,
+        connectionId,
+        load: (signal) =>
           client.getSessionHistory(sessionId, signal),
-        queryKey: historyKey,
-        staleTime: 0,
+        queryClient,
+        sessionId,
       }),
-    [client, historyKey, queryClient, sessionId],
+    [
+      baseUrl,
+      client,
+      connectionId,
+      queryClient,
+      sessionId,
+    ],
   );
   const chat = useWaveChat({
     client,
@@ -278,6 +291,7 @@ const ChatTurn = memo(
     return (
       <Message
         align={isUser ? 'end' : 'start'}
+        className={isUser ? undefined : 'items-start'}
         testID={`chat-message-${message.id}`}>
         {!isUser ? (
           <Message.Avatar>
@@ -300,17 +314,12 @@ const ChatTurn = memo(
               );
             }
             return (
-              <Task
+              <ChatToolStep
                 key={part.id}
                 status={part.status}
-                testID={`chat-task-${part.id}`}>
-                <Task.Trigger title={part.title} />
-                <Task.Content>
-                  <Task.Item>
-                    {taskDescription(part.status)}
-                  </Task.Item>
-                </Task.Content>
-              </Task>
+                testID={`chat-task-${part.id}`}
+                title={part.title}
+              />
             );
           })}
           {isStreaming && message.parts.length === 0 ? (
@@ -330,6 +339,63 @@ const ChatTurn = memo(
     previous.message.parts === next.message.parts,
 );
 
+function ChatToolStep({
+  status,
+  testID,
+  title,
+}: {
+  status: 'complete' | 'error' | 'pending' | 'running';
+  testID: string;
+  title: string;
+}) {
+  const displayTitle = formatToolName(title);
+  const success = useCSSVariable('--color-success');
+  const destructive = useCSSVariable('--color-destructive');
+  return (
+    <Item
+      size="xs"
+      accessibilityLabel={`${displayTitle}, ${toolStatusDescription(status).toLowerCase()}`}
+      testID={testID}
+      variant={status === 'error' ? 'outline' : 'muted'}>
+      <Item.Media variant="icon">
+        {status === 'complete' ? (
+          <CheckCircleIcon
+            color={typeof success === 'string' ? success : undefined}
+            size={16}
+          />
+        ) : status === 'error' ? (
+          <AlertTriangleIcon
+            color={
+              typeof destructive === 'string'
+                ? destructive
+                : undefined
+            }
+            size={16}
+          />
+        ) : (
+          <Spinner size="sm" />
+        )}
+      </Item.Media>
+      <Item.Content>
+        <Item.Title>
+          {status === 'running' ? (
+            <Shimmer textClassName="text-sm font-medium">
+              {displayTitle}
+            </Shimmer>
+          ) : (
+            displayTitle
+          )}
+        </Item.Title>
+        {status === 'complete' ? null : (
+          <Item.Description>
+            {toolStatusDescription(status)}
+          </Item.Description>
+        )}
+      </Item.Content>
+    </Item>
+  );
+}
+
 function Thinking({ label }: { label: string }) {
   return (
     <Message className="pb-2" testID="chat-thinking">
@@ -345,16 +411,27 @@ function Thinking({ label }: { label: string }) {
   );
 }
 
-function taskDescription(
+function formatToolName(name: string) {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!words) return 'Hermes tool';
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+function toolStatusDescription(
   status: 'complete' | 'error' | 'pending' | 'running',
 ) {
   switch (status) {
     case 'pending':
+      return 'Waiting to run';
     case 'running':
-      return 'Hermes is working';
+      return 'Running';
     case 'complete':
-      return 'Completed by Hermes';
+      return 'Completed';
     case 'error':
-      return 'Hermes could not complete this step';
+      return 'Could not complete';
   }
 }

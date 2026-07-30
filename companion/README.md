@@ -189,7 +189,9 @@ schema used at dispatch. The Companion ignores model-selected session identifier
 and trusted session authorization before every invocation, executes one Hermes request at a time
 for the bound session, allows at most eight active-or-waiting requests per call, caps a call at 128
 total tool requests, and returns only bounded structured success/error results. Additional requests
-wait in order instead of cancelling the active Hermes run.
+wait in order instead of cancelling the active Hermes run. Exact normalized instructions are
+executed at most once during a live call: distinct Realtime tool-call IDs share the same in-flight
+or completed Hermes result so a model retry cannot duplicate Hermes work.
 
 Hermes work remains in the background relative to the voice conversation. Realtime barge-in stops
 assistant playback but does not cancel Hermes. If Hermes finishes while the user is speaking or a

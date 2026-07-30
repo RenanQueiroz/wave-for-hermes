@@ -344,6 +344,97 @@ test('keeps Hermes work running while later tool calls wait in order', async () 
   closeContext(context);
 });
 
+test('coalesces identical instructions across distinct tool-call IDs', async () => {
+  const context = createContext();
+  let finishExecution: (() => void) | undefined;
+  context.hermes.stream = async function* (input) {
+    await new Promise<void>((resolve) => {
+      finishExecution = resolve;
+    });
+    yield {
+      content: 'One Hermes execution.',
+      interrupted: false,
+      messageId: 'coalesced-message',
+      partial: false,
+      runId: 'coalesced-run',
+      sequence: 1,
+      sessionId: context.sessionId,
+      timestamp: 1,
+      type: 'assistant.completed',
+    };
+    yield {
+      runId: 'coalesced-run',
+      sequence: 2,
+      sessionId: context.sessionId,
+      timestamp: 2,
+      type: 'done',
+    };
+  };
+  await context.registry.start({
+    deviceId: context.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: context.sessionId,
+  });
+  const sideband = context.provider.calls[0]?.sideband;
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({
+      instruction: 'Run the idempotent task',
+    }),
+    callId: 'tool-call-original',
+    name: 'ask_hermes',
+  });
+  await waitFor(() => context.hermes.instructions.length === 1);
+
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({
+      instruction: '  Run the idempotent task  ',
+    }),
+    callId: 'tool-call-duplicate-in-flight',
+    name: 'ask_hermes',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(context.hermes.instructions, [
+    'Run the idempotent task',
+  ]);
+  assert.equal(sideband?.results.length, 0);
+
+  finishExecution?.();
+  await waitFor(() => sideband?.results.length === 2);
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({
+      instruction: 'Run the idempotent task',
+    }),
+    callId: 'tool-call-duplicate-completed',
+    name: 'ask_hermes',
+  });
+  await waitFor(() => sideband?.results.length === 3);
+
+  assert.deepEqual(context.hermes.instructions, [
+    'Run the idempotent task',
+  ]);
+  assert.deepEqual(
+    sideband?.results.map(({ callId, result }) => ({
+      answer: result.ok ? result.answer : undefined,
+      callId,
+    })),
+    [
+      {
+        answer: 'One Hermes execution.',
+        callId: 'tool-call-original',
+      },
+      {
+        answer: 'One Hermes execution.',
+        callId: 'tool-call-duplicate-in-flight',
+      },
+      {
+        answer: 'One Hermes execution.',
+        callId: 'tool-call-duplicate-completed',
+      },
+    ],
+  );
+  closeContext(context);
+});
+
 test('bounds outstanding background Hermes work per live call', async () => {
   const context = createContext();
   context.hermes.stream = async function* (input) {

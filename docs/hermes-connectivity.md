@@ -94,8 +94,10 @@ When OpenAI requests `ask_hermes`, the Companion:
 6. aborts the Hermes stream when the tool times out or its Realtime call ends.
 
 Unknown tools, malformed JSON, unknown fields, model-selected session identifiers, duplicate tool
-IDs, and unauthorized calls never reach Hermes. Wave does not add another confirmation dialog for
-this narrow tool; Hermes's own tool safety behavior remains authoritative.
+IDs, and unauthorized calls never reach Hermes. Distinct tool IDs containing the same normalized
+instruction are coalesced onto one Hermes execution and each receive the shared result. Wave does
+not add another confirmation dialog for this narrow tool; Hermes's own tool safety behavior remains
+authoritative.
 
 ## Private production deployment
 

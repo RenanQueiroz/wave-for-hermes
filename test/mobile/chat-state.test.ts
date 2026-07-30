@@ -84,6 +84,86 @@ test('history hides tool output and keeps only a sanitized completed task', () =
   ]);
 });
 
+test('history groups tool records into one assistant turn and removes empty avatars', () => {
+  const messages = historyToWaveChatMessages([
+    {
+      content: 'Research voice platforms',
+      id: 'user-message',
+      role: 'user',
+    },
+    {
+      content: '',
+      id: 'empty-assistant-before-tool',
+      role: 'assistant',
+    },
+    {
+      content: '{"private":"file contents"}',
+      id: 'tool-read',
+      role: 'tool',
+      toolName: 'read_file',
+    },
+    {
+      content: '',
+      id: 'empty-assistant-between-tools',
+      role: 'assistant',
+    },
+    {
+      content: '{"private":"search results"}',
+      id: 'tool-search',
+      role: 'tool',
+      toolName: 'web_extract',
+    },
+    {
+      content: 'Here is the comparison.',
+      id: 'assistant-answer',
+      role: 'assistant',
+    },
+  ]);
+
+  assert.deepEqual(messages, [
+    {
+      id: 'user-message',
+      parts: [
+        {
+          text: 'Research voice platforms',
+          type: 'text',
+        },
+      ],
+      role: 'user',
+    },
+    {
+      id: 'tool-read',
+      parts: [
+        {
+          id: 'tool-read-tool',
+          status: 'complete',
+          title: 'read_file',
+          type: 'task',
+        },
+        {
+          id: 'tool-search-tool',
+          status: 'complete',
+          title: 'web_extract',
+          type: 'task',
+        },
+        {
+          text: 'Here is the comparison.',
+          type: 'text',
+        },
+      ],
+      role: 'assistant',
+    },
+  ]);
+  assert.equal(
+    JSON.stringify(messages).includes('file contents'),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(messages).includes('search results'),
+    false,
+  );
+});
+
 test('keeps a safe turn error after reconciled history replaces optimistic messages', () => {
   let state = waveChatReducer(initialWaveChatState, {
     assistantId: 'assistant-local',

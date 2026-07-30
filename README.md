@@ -55,7 +55,7 @@ currently includes:
 - the official OpenAI JavaScript SDK in the Companion only for unified WebRTC call setup and
   lifecycle requests, plus the documented authenticated `ws` sideband connection, opaque
   Wave-owned call identifiers, bounded call state, background Hermes request serialization,
-  response-safe result delivery, and cleanup;
+  exact-instruction coalescing, response-safe result delivery, and cleanup;
 - runtime-neutral Wave pairing, session, history, cancellation, error, normalized turn-event,
   Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
@@ -67,6 +67,7 @@ currently includes:
   explicit companion cleanup outside React components;
 - a PanelUI live-voice route over the active Hermes session with safe listening/speaking/error
   state, ephemeral transcripts, mute/unmute, explicit hangup, stable automation identifiers, and
+  canonical Hermes-history refresh before returning to text chat, plus
   validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators,
   plus audible microphone/assistant playback and `ask_hermes` dispatch on a physical Android
   device;
@@ -74,9 +75,10 @@ currently includes:
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
 - TanStack Query-backed session/history state plus PanelUI conversation list and chat routes with
-  batched assistant deltas, lifecycle-safe prompt cancellation, sanitized tool tasks,
-  active-session restoration, and a keyboard-sticky native composer that keeps Send and Stop
-  controls reachable;
+  batched assistant deltas, lifecycle-safe prompt cancellation, assistant/tool history records
+  grouped into coherent Hermes turns, compact named tool-status rows with untrusted tool output
+  hidden, active-session restoration, and a keyboard-sticky native composer that keeps Send and
+  Stop controls reachable;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - a live Homelab deployment with unpublished Hermes/Companion ports, Tailscale-only HTTPS ingress

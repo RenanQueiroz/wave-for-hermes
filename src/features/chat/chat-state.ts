@@ -147,37 +147,52 @@ export function waveChatReducer(
 export function historyToWaveChatMessages(
   history: WaveConversationMessage[],
 ): WaveChatMessage[] {
-  return history.map((message, index) => {
+  const messages: WaveChatMessage[] = [];
+  let assistantTurn: WaveChatMessage | undefined;
+  const flushAssistantTurn = () => {
+    if (!assistantTurn) return;
+    messages.push(assistantTurn);
+    assistantTurn = undefined;
+  };
+
+  history.forEach((message, index) => {
     const id =
       message.id ??
       `history-${index}-${message.createdAt ?? 'undated'}`;
-    if (message.role === 'tool') {
-      return {
-        id,
-        parts: [
-          {
-            id: `${id}-tool`,
-            status: 'complete',
-            title: message.toolName ?? 'Hermes tool',
-            type: 'task',
-          },
-        ],
-        role: 'assistant',
-      };
+    if (message.role === 'user' || message.role === 'system') {
+      flushAssistantTurn();
+      if (message.content) {
+        messages.push({
+          id,
+          parts: [{ text: message.content, type: 'text' }],
+          role: message.role,
+        });
+      }
+      return;
     }
-    return {
+
+    let part: WaveChatPart | undefined;
+    if (message.role === 'tool') {
+      part = {
+        id: `${id}-tool`,
+        status: 'complete',
+        title: message.toolName ?? 'Hermes tool',
+        type: 'task',
+      };
+    } else if (message.content) {
+      part = { text: message.content, type: 'text' };
+    }
+
+    if (!part) return;
+    assistantTurn ??= {
       id,
-      parts: message.content
-        ? [{ text: message.content, type: 'text' }]
-        : [],
-      role:
-        message.role === 'user'
-          ? 'user'
-          : message.role === 'system'
-            ? 'system'
-            : 'assistant',
+      parts: [],
+      role: 'assistant',
     };
+    assistantTurn.parts.push(part);
   });
+  flushAssistantTurn();
+  return messages;
 }
 
 function applyEvent(

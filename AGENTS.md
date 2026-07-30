@@ -111,6 +111,12 @@ documentation before implementing UI.
   Realtime playback, not the active Hermes run. Serialize and bound additional `ask_hermes` calls
   for the trusted session, and deliver completed results only when no user speech or default
   Realtime response is in progress.
+- Coalesce an exact normalized `ask_hermes` instruction within one live call. Distinct Realtime
+  tool-call IDs for that instruction must share one Hermes execution and each receive the same
+  structured result; model retries must not duplicate Hermes work.
+- When live voice ends successfully, refresh the active session's canonical Hermes history before
+  returning to text chat. Keep casual Realtime-only speech ephemeral rather than inventing a second
+  durable transcript.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Do not log access tokens, full authorization headers, or sensitive conversation payloads.
 

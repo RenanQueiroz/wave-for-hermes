@@ -139,7 +139,8 @@ The companion lives in `companion/` and provides:
   with the documented bearer-authenticated `ws` connection for sideband control;
 - strict `ask_hermes` validation, per-call tool serialization, timeout/cancellation, and structured
   results through the existing Hermes adapter; Hermes execution remains background work relative
-  to live speech, with at most eight active-or-waiting requests per call;
+  to live speech, with at most eight active-or-waiting requests per call and exact normalized
+  instructions coalesced onto one Hermes execution;
 - sideband response coordination that holds completed Hermes outputs while the user is speaking or
   a default-conversation response is active, then appends the results and creates one safe model
   response;
@@ -247,8 +248,9 @@ by default. Barge-in stops the Realtime model's audio response without cancellin
 Hermes request. Additional Hermes requests wait in order on the same trusted session. Completed
 tool outputs remain buffered while the user is speaking or another default-conversation response
 is active, preventing competing `response.create` events. Call state is intentionally
-process-local, so a multi-replica deployment requires deliberate shared-state and routing
-decisions first.
+process-local. Distinct tool-call IDs carrying the same normalized instruction share one in-flight
+or completed result, preventing a Realtime retry from duplicating Hermes work. A multi-replica
+deployment requires deliberate shared-state and routing decisions first.
 
 See [`companion/README.md`](../companion/README.md) for the endpoint table and operator workflow.
 
@@ -279,8 +281,12 @@ protocol messages.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
-- Realtime voice remains an ephemeral overlay on an active Hermes session until post-call history
-  behavior is deliberately decided.
+- History normalization drops empty assistant records and groups consecutive assistant/tool records
+  into one Hermes turn. Tool activity renders as compact named status rows; raw tool arguments and
+  output remain outside the mobile UI.
+- Realtime-only speech remains an ephemeral overlay on the active Hermes session. Successful
+  hangup refreshes the canonical Hermes history query before returning to text chat, so completed
+  `ask_hermes` turns appear immediately without persisting casual Realtime conversation twice.
 - The initial Realtime tool is the strict
   `ask_hermes({ instruction: string })` operation. A model-controlled session ID is forbidden.
 - Wave does not add an extra approval dialog before that narrow tool. The companion dispatches it

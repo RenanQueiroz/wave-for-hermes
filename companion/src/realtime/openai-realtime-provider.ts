@@ -576,7 +576,9 @@ function createSessionConfig(
       'Use ask_hermes whenever the user asks Hermes to answer a question or perform work. ' +
       'Hermes requests continue in the background, so remain available for conversational ' +
       'follow-ups while waiting and do not treat an interruption of your speech as cancelling Hermes. ' +
-      'Preserve the user’s intent in the instruction, never invent a session identifier, ' +
+      'Preserve the user’s intent and any quoted or exact wording verbatim in the instruction. ' +
+      'Call ask_hermes once per user request and do not retry an identical instruction. ' +
+      'Never invent a session identifier, ' +
       'and do not claim Hermes completed work until the tool result confirms it. ' +
       'Explain tool failures briefly and let the user retry.',
     max_output_tokens: 1_024,
@@ -591,7 +593,8 @@ function createSessionConfig(
       {
         description:
           'Ask the user’s already-authorized Hermes agent to answer or perform work. ' +
-          'Pass only the complete instruction the user intends for Hermes.',
+          'Pass only the complete instruction the user intends for Hermes, preserving quoted ' +
+          'or exact wording verbatim. Submit each user request once.',
         name: 'ask_hermes',
         parameters: z.toJSONSchema(WaveAskHermesArgumentsSchema),
         type: 'function',

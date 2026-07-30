@@ -122,6 +122,18 @@ test('uses the official SDK for unified setup and authenticated sideband control
       ),
       true,
     );
+    assert.equal(
+      session.instructions.includes(
+        'quoted or exact wording verbatim',
+      ),
+      true,
+    );
+    assert.equal(
+      session.instructions.includes(
+        'do not retry an identical instruction',
+      ),
+      true,
+    );
 
     assert.equal(sockets.length, 1);
     assert.equal(

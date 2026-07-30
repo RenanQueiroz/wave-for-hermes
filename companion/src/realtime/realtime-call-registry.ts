@@ -27,6 +27,13 @@ interface ActiveRealtimeTool {
   controller: AbortController;
 }
 
+interface RealtimeToolExecution {
+  callIds: Set<string>;
+  instruction: string;
+  primaryCallId: string;
+  result?: WaveAskHermesToolResult;
+}
+
 interface RealtimeCallState {
   activeTool?: ActiveRealtimeTool;
   deviceId: string;
@@ -37,6 +44,7 @@ interface RealtimeCallState {
   sessionId: string;
   timer: NodeJS.Timeout;
   toolQueue: Promise<void>;
+  toolExecutionsByInstruction: Map<string, RealtimeToolExecution>;
   waveCallId: string;
 }
 
@@ -137,6 +145,7 @@ export class RealtimeCallRegistry {
         void this.release(call, true);
       }, this.config.callTtlMs),
       toolQueue: Promise.resolve(),
+      toolExecutionsByInstruction: new Map(),
       waveCallId,
     };
     this.calls.set(waveCallId, call);
@@ -325,6 +334,22 @@ export class RealtimeCallRegistry {
       return;
     }
 
+    const existingExecution =
+      call.toolExecutionsByInstruction.get(
+        parsed.data.instruction,
+      );
+    if (existingExecution) {
+      existingExecution.callIds.add(toolCall.callId);
+      if (existingExecution.result) {
+        this.completeToolCall(
+          call,
+          toolCall.callId,
+          existingExecution.result,
+        );
+      }
+      return;
+    }
+
     if (
       call.outstandingToolCalls >=
       MAX_OUTSTANDING_TOOL_CALLS_PER_REALTIME_CALL
@@ -341,19 +366,22 @@ export class RealtimeCallRegistry {
       return;
     }
 
+    const execution: RealtimeToolExecution = {
+      callIds: new Set([toolCall.callId]),
+      instruction: parsed.data.instruction,
+      primaryCallId: toolCall.callId,
+    };
+    call.toolExecutionsByInstruction.set(
+      execution.instruction,
+      execution,
+    );
     call.outstandingToolCalls += 1;
     call.toolQueue = call.toolQueue
-      .then(() =>
-        this.executeQueuedTool(
-          call,
-          toolCall.callId,
-          parsed.data.instruction,
-        ),
-      )
+      .then(() => this.executeQueuedTool(call, execution))
       .catch(() => {
-        this.completeToolCall(
+        this.completeToolExecution(
           call,
-          toolCall.callId,
+          execution,
           toolError(
             'upstream_unavailable',
             'Hermes could not complete the request.',
@@ -368,16 +396,15 @@ export class RealtimeCallRegistry {
 
   private async executeQueuedTool(
     call: RealtimeCallState,
-    toolCallId: string,
-    instruction: string,
+    execution: RealtimeToolExecution,
   ) {
     if (this.calls.get(call.waveCallId) !== call) {
       return;
     }
     if (!this.isCallAuthorized(call)) {
-      this.completeToolCall(
+      this.completeToolExecution(
         call,
-        toolCallId,
+        execution,
         toolError(
           'unauthorized',
           'This Wave call is no longer authorized for Hermes.',
@@ -388,7 +415,7 @@ export class RealtimeCallRegistry {
     }
 
     const activeTool: ActiveRealtimeTool = {
-      callId: toolCallId,
+      callId: execution.primaryCallId,
       controller: new AbortController(),
     };
     call.activeTool = activeTool;
@@ -396,7 +423,7 @@ export class RealtimeCallRegistry {
     try {
       result = await this.executeHermesTool(
         call,
-        instruction,
+        execution.instruction,
         activeTool.controller,
       );
     } catch {
@@ -411,7 +438,21 @@ export class RealtimeCallRegistry {
       call.activeTool === activeTool
     ) {
       call.activeTool = undefined;
-      this.completeToolCall(call, toolCallId, result);
+      this.completeToolExecution(call, execution, result);
+    }
+  }
+
+  private completeToolExecution(
+    call: RealtimeCallState,
+    execution: RealtimeToolExecution,
+    result: WaveAskHermesToolResult,
+  ) {
+    if (execution.result) {
+      return;
+    }
+    execution.result = result;
+    for (const callId of execution.callIds) {
+      this.completeToolCall(call, callId, result);
     }
   }
 
