@@ -160,9 +160,19 @@ authenticated compatibility through Nginx, creates a Hermes session, completes a
 streamed turn, and cancels a second active stream. It prints only the resulting session ID and
 supported operations, never the key, device credential, or response content.
 
-The current Homelab validator does not create a billable OpenAI Realtime call. A dedicated,
-explicit Realtime integration probe should be added with the live mobile transport instead of
-silently extending the baseline deployment check.
+The baseline validators do not create a billable OpenAI Realtime call. Run the separate,
+deliberately opt-in integration probe when changing Realtime call setup, sideband control, or the
+Hermes tool bridge:
+
+```bash
+./scripts/probe-wave-realtime.sh
+```
+
+The probe uses a temporary device and Hermes session to validate OpenAI's unified SDP exchange,
+authenticated sideband control, WebRTC connectivity, strict `ask_hermes` dispatch, the answer
+persisted by Hermes, the final Realtime response, explicit hangup, and cleanup. It prints only a
+success or safe error summary and never prints credentials, SDP, call identifiers, or conversation
+content. The live Homelab path passed this probe on 2026-07-30.
 
 For a separate development server, `npm run test:hermes:integration` remains available with
 server-only `HERMES_API_URL`, `HERMES_API_KEY`, and, for a trusted private HTTP endpoint,

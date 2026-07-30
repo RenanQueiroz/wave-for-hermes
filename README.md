@@ -73,14 +73,17 @@ the live-voice slice. It currently includes:
 - a live Homelab deployment with unpublished Hermes/Companion ports, Tailscale-only HTTPS ingress
   at `/wave`, revocable device authentication, and validated streaming, persisted history, and
   cancellation against the pinned Hermes release;
+- an explicit live integration probe that validates OpenAI's unified SDP exchange, authenticated
+  Realtime sideband control, WebRTC connectivity, strict `ask_hermes` dispatch, Hermes persistence,
+  the final model response, and cleanup without printing secrets or conversation content;
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
 The visible app begins with the real connection flow, then opens the user's authorized Hermes
 conversations and streams normalized text turns. The Companion can now create an OpenAI Realtime
 call from a mobile SDP offer and automatically dispatch a strictly validated
 `ask_hermes({ instruction })` call against the trusted active Hermes session. The production mobile
-`RealtimeTransport` controller, actual OpenAI peer connection, and live voice UI are the next
-slice; no user-visible voice flow is wired to these endpoints yet.
+`RealtimeTransport` controller and live voice UI are the next slice; no user-visible voice flow is
+wired to these endpoints yet.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 validated private deployment.
