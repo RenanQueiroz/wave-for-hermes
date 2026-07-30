@@ -13,6 +13,7 @@ import type {
   HermesSessionSummary,
   HermesStreamChatInput,
   HermesStreamEvent,
+  HermesToolCall,
 } from './hermes-types.ts';
 
 type HermesFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -63,6 +64,20 @@ function optionalNumber(value: unknown) {
 
 function optionalString(value: unknown) {
   return typeof value === 'string' && value ? value : undefined;
+}
+
+function optionalText(value: unknown) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function requiredString(value: unknown, field: string) {
@@ -119,6 +134,35 @@ function normalizeMessageContent(value: unknown) {
     .join('\n');
 }
 
+function parseToolCalls(value: unknown): HermesToolCall[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const toolCalls = value.flatMap((toolCall) => {
+    if (!isRecord(toolCall)) {
+      return [];
+    }
+    const id =
+      optionalString(toolCall.id) ?? optionalString(toolCall.call_id);
+    if (!id) {
+      return [];
+    }
+    const fn = isRecord(toolCall.function) ? toolCall.function : {};
+    const argumentsText = optionalText(fn.arguments);
+    const name = optionalString(fn.name);
+    return [
+      {
+        ...(argumentsText === undefined
+          ? {}
+          : { arguments: argumentsText }),
+        id,
+        ...(name ? { name } : {}),
+      },
+    ];
+  });
+  return toolCalls.length > 0 ? toolCalls : undefined;
+}
+
 function parseSession(value: unknown): HermesSessionSummary {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) {
     throw new HermesClientError('Hermes returned an invalid session.', {
@@ -157,6 +201,10 @@ function parseMessage(value: unknown, fallbackSessionId: string): HermesConversa
     role: normalizeMessageRole(value.role),
     sessionId: optionalString(value.session_id) ?? fallbackSessionId,
     timestamp: optionalNumber(value.timestamp),
+    toolCallId:
+      optionalString(value.tool_call_id) ??
+      optionalString(value.call_id),
+    toolCalls: parseToolCalls(value.tool_calls),
     toolName: optionalString(value.tool_name),
   };
 }
@@ -364,7 +412,9 @@ function parseStreamFrame(frame: HermesSseFrame, bearerToken: string): HermesStr
     case 'tool.progress':
     case 'tool.started':
     case 'tool.completed':
-    case 'tool.failed':
+    case 'tool.failed': {
+      const toolInput = optionalText(payload.args);
+      const toolOutput = optionalText(payload.preview);
       return {
         ...base,
         messageId: optionalString(payload.message_id),
@@ -373,9 +423,19 @@ function parseStreamFrame(frame: HermesSseFrame, bearerToken: string): HermesStr
           | 'failed'
           | 'progress'
           | 'started',
+        ...(toolInput === undefined
+          ? {}
+          : { toolInput }),
         toolName: optionalString(payload.tool_name),
+        ...(toolOutput === undefined
+          ? {}
+          : {
+              toolOutput,
+              toolOutputIsPreview: true,
+            }),
         type: 'tool',
       };
+    }
     case 'assistant.completed':
       return {
         ...base,

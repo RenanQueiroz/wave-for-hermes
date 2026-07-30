@@ -15,7 +15,8 @@ The Hermes adapter is server-only under `companion/src/hermes` and currently pro
 - typed assistant, tool-lifecycle, completion, and error events;
 - `AbortController` cancellation;
 - normalized configuration, authentication, network, timeout, server, and protocol errors;
-- redaction that prevents bearer keys and raw tool arguments from entering events or errors.
+- redaction that prevents bearer keys from entering events or errors;
+- explicit bounded tool input/output normalization without upstream tool-call or run identifiers.
 
 It uses Node.js 24's standard `fetch`, `ReadableStream`, `AbortController`, and encoding APIs with no
 Expo or React Native imports. Its implementation, fixture, unit tests, and integration probe all
@@ -69,8 +70,15 @@ the pinned Hermes image changes.
 
 `POST /api/sessions/{session_id}/chat/stream` emits named SSE frames. Wave accepts the pinned
 server's `run.started`, `message.started`, assistant, tool, completion, error, and `done` events and
-rejects malformed or unknown frames as protocol errors. Raw tool arguments, transcript arrays, and
-usage payloads are deliberately not copied into UI-facing events.
+rejects malformed or unknown frames as protocol errors. Tool lifecycle frames may contribute raw
+`args` and output `preview` text to strict Wave detail fields. Each field is capped at 64,000
+characters and all tool details share a 512,000-character budget for one turn; previews are marked
+so canonical history can replace them with the stored output. Transcript arrays, usage payloads,
+Hermes call IDs, and Hermes run IDs are deliberately not copied into UI-facing events.
+
+Session history performs the same normalization. It correlates an assistant tool call with its tool
+result inside the Companion, then discards the correlation ID and returns only the bounded input,
+output, name, and status. The mobile app treats those strings as untrusted inert text.
 
 For the pinned release, the `run_id` emitted by the session streaming handler is local to that
 stream. It is not registered with `POST /v1/runs/{run_id}/stop`. Cancelling a session-chat stream

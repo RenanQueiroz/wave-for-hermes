@@ -14,15 +14,23 @@ const CHAT_CANCELLATION_DELTA = 'Waiting for cancellation…';
 const CHAT_CANCELLATION_PROMPT = 'Cancel the Wave chat fixture';
 const CHAT_RESPONSE_TEXT = 'Fixture response from Hermes.';
 const CHAT_STOP_BUTTON_ID = 'chat-stop-button';
+const CHAT_TOOL_COLLAPSE_LABEL =
+  'Fixture lookup, completed. Collapse tool details';
+const CHAT_TOOL_EXPAND_LABEL =
+  'Fixture lookup, completed. Expand tool details';
+const CHAT_TOOL_INPUT = JSON.stringify({
+  query: 'Run the Wave chat fixture',
+});
 const CHAT_TOOL_NAME = 'fixture_lookup';
+const CHAT_TOOL_OUTPUT = JSON.stringify({
+  result: 'Development fixture lookup completed.',
+});
 const CONNECTION_SUCCESS_ID = 'connection-success';
 const CONNECTION_DISCONNECT_BUTTON_ID = 'connection-disconnect-button';
 const CREATE_SESSION_BUTTON_ID = 'create-session-button';
 const DISCONNECT_BUTTON_ID = 'disconnect-device-button';
 const PAIR_BUTTON_ID = 'pair-device-button';
 const SEND_BUTTON_ID = 'chat-send-button';
-const HIDDEN_TOOL_OUTPUT =
-  'Development fixture tool output is intentionally hidden.';
 
 interface PairingSmokeOptions {
   baseUrl: string;
@@ -59,7 +67,7 @@ export interface ChatSmokeReport {
   responseStreamed: boolean;
   sessionCreated: boolean;
   sessionDeleted: boolean;
-  toolOutputHidden: boolean;
+  toolDetailsExpandable: boolean;
   steps: Array<{
     detail: string;
     name: string;
@@ -247,7 +255,7 @@ export async function runChatSmoke(
     sessionCreated: false,
     sessionDeleted: false,
     steps: [],
-    toolOutputHidden: false,
+    toolDetailsExpandable: false,
   };
   const doctor = await runDoctor(config);
   if (!doctor.readyPlatforms.includes(options.platform)) {
@@ -396,13 +404,50 @@ export async function runChatSmoke(
       connection.client,
       sessionId,
       options.platform,
-      HIDDEN_TOOL_OUTPUT,
+      CHAT_TOOL_INPUT,
     );
-    report.toolOutputHidden = true;
+    await assertTextAbsent(
+      connection.client,
+      sessionId,
+      options.platform,
+      CHAT_TOOL_OUTPUT,
+    );
+    await tapAccessibilityLabel(
+      connection.client,
+      sessionId,
+      CHAT_TOOL_EXPAND_LABEL,
+    );
+    await waitForText(
+      connection.client,
+      sessionId,
+      options.platform,
+      CHAT_TOOL_INPUT,
+      false,
+      30,
+    );
+    await waitForText(
+      connection.client,
+      sessionId,
+      options.platform,
+      CHAT_TOOL_OUTPUT,
+      false,
+      30,
+    );
+    await tapAccessibilityLabel(
+      connection.client,
+      sessionId,
+      CHAT_TOOL_COLLAPSE_LABEL,
+    );
+    await waitForAccessibilityNode(
+      connection.client,
+      sessionId,
+      CHAT_TOOL_EXPAND_LABEL,
+    );
+    report.toolDetailsExpandable = true;
     report.steps.push({
       detail:
-        'Confirmed the fixture tool output is absent from the native accessibility tree.',
-      name: 'hide-tool-output',
+        'Confirmed raw fixture details start collapsed, expand as inert input/output, and collapse again.',
+      name: 'toggle-tool-details',
       ok: true,
     });
 
@@ -738,6 +783,66 @@ async function tapNode(
   assertToolSucceeded(`tap-${stableId}`, tapped);
 }
 
+async function tapAccessibilityLabel(
+  client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
+  sessionId: string,
+  accessibilityLabel: string,
+) {
+  const node = await waitForAccessibilityNode(
+    client,
+    sessionId,
+    accessibilityLabel,
+  );
+  const tapped = await callToolText(client, 'mobile_tap', {
+    allowCoordinateFallback: false,
+    captureTrace: false,
+    nodeId: node.nodeId,
+    sessionId,
+    snapshotId: node.snapshotId,
+  });
+  assertToolSucceeded(`tap-${accessibilityLabel}`, tapped);
+}
+
+async function waitForAccessibilityNode(
+  client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
+  sessionId: string,
+  accessibilityLabel: string,
+  attempts = 30,
+): Promise<FoundNode> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const found = await callToolText(client, 'mobile_find_elements', {
+      accessibilityId: accessibilityLabel,
+      exact: true,
+      interactiveOnly: true,
+      maxResults: 5,
+      sessionId,
+    });
+    if (!found.isError) {
+      const result = parseJsonObject(
+        found.text,
+        `${accessibilityLabel} query`,
+      );
+      const nodes = result.nodes;
+      if (Array.isArray(nodes) && nodes.length === 1) {
+        const node = nodes[0];
+        if (node && typeof node === 'object' && !Array.isArray(node)) {
+          return {
+            nodeId: readString(
+              node as Record<string, unknown>,
+              'id',
+            ),
+            snapshotId: readString(result, 'snapshotId'),
+          };
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    `Could not find accessibility label "${accessibilityLabel}".`,
+  );
+}
+
 async function waitForNode(
   client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
   sessionId: string,
@@ -914,7 +1019,9 @@ async function assertTextAbsent(
       strategy: 'accessibility id',
     });
     if (!found.isError) {
-      throw new Error(`Sensitive fixture text "${value}" was rendered.`);
+      throw new Error(
+        `Collapsed fixture detail "${value}" was rendered.`,
+      );
     }
     return;
   }
@@ -928,7 +1035,9 @@ async function assertTextAbsent(
   assertToolSucceeded(`query-hidden-text-${value}`, found);
   const result = parseJsonObject(found.text, `${value} absence query`);
   if (!Array.isArray(result.nodes) || result.nodes.length !== 0) {
-    throw new Error(`Sensitive fixture text "${value}" was rendered.`);
+    throw new Error(
+      `Collapsed fixture detail "${value}" was rendered.`,
+    );
   }
 }
 

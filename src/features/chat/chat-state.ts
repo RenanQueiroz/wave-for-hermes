@@ -1,7 +1,9 @@
 import type {
+  WaveToolDetail,
   WaveConversationMessage,
   WaveTurnEvent,
 } from '@wave/contracts';
+import { WAVE_TOOL_DETAIL_MAX_CHARS } from '@wave/contracts';
 
 export type WaveChatTaskStatus =
   | 'complete'
@@ -16,6 +18,9 @@ export type WaveChatPart =
     }
   | {
       id: string;
+      input?: WaveToolDetail;
+      output?: WaveToolDetail;
+      outputIsPreview?: boolean;
       status: WaveChatTaskStatus;
       title: string;
       type: 'task';
@@ -175,6 +180,16 @@ export function historyToWaveChatMessages(
     if (message.role === 'tool') {
       part = {
         id: `${id}-tool`,
+        ...(message.toolInput
+          ? { input: message.toolInput }
+          : {}),
+        ...(message.toolOutput || message.content
+          ? {
+              output:
+                message.toolOutput ??
+                boundedLegacyToolOutput(message.content),
+            }
+          : {}),
         status: 'complete',
         title: message.toolName ?? 'Hermes tool',
         type: 'task',
@@ -318,7 +333,22 @@ function updateTaskPart(
   ) {
     return parts.map((part, partIndex) =>
       partIndex === index && part.type === 'task'
-        ? { ...part, status }
+        ? {
+            ...part,
+            ...(event.toolInput
+              ? { input: event.toolInput }
+              : {}),
+            ...(event.toolOutput
+              ? { output: event.toolOutput }
+              : {}),
+            ...(event.toolOutputIsPreview === undefined
+              ? {}
+              : {
+                  outputIsPreview:
+                    event.toolOutputIsPreview,
+                }),
+            status,
+          }
         : part,
     );
   }
@@ -326,11 +356,24 @@ function updateTaskPart(
     ...parts,
     {
       id: `${baseId}:${event.sequence}`,
+      ...(event.toolInput ? { input: event.toolInput } : {}),
+      ...(event.toolOutput ? { output: event.toolOutput } : {}),
+      ...(event.toolOutputIsPreview === undefined
+        ? {}
+        : { outputIsPreview: event.toolOutputIsPreview }),
       status,
       title,
       type: 'task' as const,
     },
   ];
+}
+
+function boundedLegacyToolOutput(content: string): WaveToolDetail {
+  const text = content.slice(0, WAVE_TOOL_DETAIL_MAX_CHARS);
+  return {
+    text,
+    truncated: text.length < content.length,
+  };
 }
 
 function taskStatus(

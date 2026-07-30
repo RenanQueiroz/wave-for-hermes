@@ -48,12 +48,20 @@ export interface HermesSessionSummary {
 
 export type HermesMessageRole = 'assistant' | 'system' | 'tool' | 'unknown' | 'user';
 
+export interface HermesToolCall {
+  arguments?: string;
+  id: string;
+  name?: string;
+}
+
 export interface HermesConversationMessage {
   content: string;
   id?: string;
   role: HermesMessageRole;
   sessionId: string;
   timestamp?: number;
+  toolCallId?: string;
+  toolCalls?: HermesToolCall[];
   toolName?: string;
 }
 
@@ -82,7 +90,10 @@ export interface HermesAssistantDeltaEvent extends HermesStreamEventBase {
 export interface HermesToolEvent extends HermesStreamEventBase {
   messageId?: string;
   status: 'completed' | 'failed' | 'progress' | 'started';
+  toolInput?: string;
   toolName?: string;
+  toolOutput?: string;
+  toolOutputIsPreview?: boolean;
   type: 'tool';
 }
 

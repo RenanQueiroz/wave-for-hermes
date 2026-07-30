@@ -7,7 +7,7 @@ import {
   waveChatReducer,
 } from '../../src/features/chat/chat-state.ts';
 
-test('reduces batched assistant text and sanitized tool lifecycle in order', () => {
+test('reduces batched assistant text and bounded tool lifecycle details in order', () => {
   let state = waveChatReducer(initialWaveChatState, {
     assistantId: 'assistant-local',
     input: 'Do the work',
@@ -27,6 +27,10 @@ test('reduces batched assistant text and sanitized tool lifecycle in order', () 
       messageId: 'message-1',
       sequence: 1,
       status: 'started',
+      toolInput: {
+        text: '{"query":"Wave"}',
+        truncated: false,
+      },
       toolName: 'search',
       type: 'tool.status',
     }),
@@ -38,6 +42,11 @@ test('reduces batched assistant text and sanitized tool lifecycle in order', () 
       sequence: 2,
       status: 'completed',
       toolName: 'search',
+      toolOutput: {
+        text: '{"matches":3}',
+        truncated: false,
+      },
+      toolOutputIsPreview: true,
       type: 'tool.status',
     }),
     type: 'event',
@@ -47,24 +56,37 @@ test('reduces batched assistant text and sanitized tool lifecycle in order', () 
     { text: 'Working', type: 'text' },
     {
       id: 'message-1:search:1',
+      input: {
+        text: '{"query":"Wave"}',
+        truncated: false,
+      },
+      output: {
+        text: '{"matches":3}',
+        truncated: false,
+      },
+      outputIsPreview: true,
       status: 'complete',
       title: 'search',
       type: 'task',
     },
   ]);
-  assert.equal(
-    JSON.stringify(state).includes('arguments'),
-    false,
-  );
 });
 
-test('history hides tool output and keeps only a sanitized completed task', () => {
+test('history exposes only normalized bounded tool input and output details', () => {
   const messages = historyToWaveChatMessages([
     {
-      content: '{"secret":"must not render"}',
+      content: '',
       id: 'tool-message',
       role: 'tool',
+      toolInput: {
+        text: '{"date":"tomorrow"}',
+        truncated: false,
+      },
       toolName: 'calendar',
+      toolOutput: {
+        text: '{"available":true}',
+        truncated: false,
+      },
     },
   ]);
 
@@ -74,6 +96,14 @@ test('history hides tool output and keeps only a sanitized completed task', () =
       parts: [
         {
           id: 'tool-message-tool',
+          input: {
+            text: '{"date":"tomorrow"}',
+            truncated: false,
+          },
+          output: {
+            text: '{"available":true}',
+            truncated: false,
+          },
           status: 'complete',
           title: 'calendar',
           type: 'task',
@@ -97,10 +127,14 @@ test('history groups tool records into one assistant turn and removes empty avat
       role: 'assistant',
     },
     {
-      content: '{"private":"file contents"}',
+      content: '',
       id: 'tool-read',
       role: 'tool',
       toolName: 'read_file',
+      toolOutput: {
+        text: 'file contents',
+        truncated: false,
+      },
     },
     {
       content: '',
@@ -108,10 +142,14 @@ test('history groups tool records into one assistant turn and removes empty avat
       role: 'assistant',
     },
     {
-      content: '{"private":"search results"}',
+      content: '',
       id: 'tool-search',
       role: 'tool',
       toolName: 'web_extract',
+      toolOutput: {
+        text: 'search results',
+        truncated: false,
+      },
     },
     {
       content: 'Here is the comparison.',
@@ -136,12 +174,20 @@ test('history groups tool records into one assistant turn and removes empty avat
       parts: [
         {
           id: 'tool-read-tool',
+          output: {
+            text: 'file contents',
+            truncated: false,
+          },
           status: 'complete',
           title: 'read_file',
           type: 'task',
         },
         {
           id: 'tool-search-tool',
+          output: {
+            text: 'search results',
+            truncated: false,
+          },
           status: 'complete',
           title: 'web_extract',
           type: 'task',
@@ -156,11 +202,11 @@ test('history groups tool records into one assistant turn and removes empty avat
   ]);
   assert.equal(
     JSON.stringify(messages).includes('file contents'),
-    false,
+    true,
   );
   assert.equal(
     JSON.stringify(messages).includes('search results'),
-    false,
+    true,
   );
 });
 
@@ -240,7 +286,16 @@ function event(
         messageId: string;
         sequence: number;
         status: 'completed' | 'failed' | 'progress' | 'started';
+        toolInput?: {
+          text: string;
+          truncated: boolean;
+        };
         toolName: string;
+        toolOutput?: {
+          text: string;
+          truncated: boolean;
+        };
+        toolOutputIsPreview?: boolean;
         type: 'tool.status';
       },
 ) {

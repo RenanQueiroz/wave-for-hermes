@@ -38,7 +38,7 @@ import { HermesClientError } from '../hermes/hermes-errors.ts';
 import type { HermesClient } from '../hermes/hermes-types.ts';
 import {
   formatWaveSseEvent,
-  normalizeHermesMessage,
+  normalizeHermesMessages,
   normalizeHermesSession,
   WaveTurnEventFactory,
 } from '../hermes/wave-normalizers.ts';
@@ -227,9 +227,9 @@ export function registerWaveApi(
       const device = requireAuthenticatedDevice(request);
       const { sessionId } = SessionParamsSchema.parse(request.params);
       requireSessionAccess(services.deviceStore, device.id, sessionId);
-      const messages = (
-        await services.hermesClient.getSessionMessages(sessionId)
-      ).map(normalizeHermesMessage);
+      const messages = normalizeHermesMessages(
+        await services.hermesClient.getSessionMessages(sessionId),
+      );
       return reply.send(
         WaveSessionHistoryResponseSchema.parse({
           ...responseMetadata(request),

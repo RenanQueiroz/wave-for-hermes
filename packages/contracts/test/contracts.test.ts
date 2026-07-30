@@ -4,6 +4,7 @@ import test from 'node:test';
 import { z } from 'zod';
 
 import {
+  WAVE_TOOL_DETAIL_MAX_CHARS,
   WAVE_API_VERSION,
   WaveAssistantDeltaEventSchema,
   WaveCreateSessionRequestSchema,
@@ -17,6 +18,7 @@ import {
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveSessionHistoryResponseSchema,
+  WaveToolDetailSchema,
   WaveTurnEventSchema,
   WaveStatusResponseSchema,
 } from '../src/index.ts';
@@ -137,6 +139,56 @@ test('bounds session inputs and strips no unknown fields', () => {
       sessionId: 'session-1',
     }).success,
     false,
+  );
+});
+
+test('accepts only strict bounded inert tool details', () => {
+  assert.deepEqual(
+    WaveToolDetailSchema.parse({
+      text: '{"query":"Wave"}',
+      truncated: false,
+    }),
+    {
+      text: '{"query":"Wave"}',
+      truncated: false,
+    },
+  );
+  assert.equal(
+    WaveToolDetailSchema.safeParse({
+      text: 'x'.repeat(WAVE_TOOL_DETAIL_MAX_CHARS + 1),
+      truncated: true,
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveToolDetailSchema.safeParse({
+      authorization: 'must-not-cross',
+      text: '{}',
+      truncated: false,
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveTurnEventSchema.safeParse({
+      apiVersion: WAVE_API_VERSION,
+      eventId: 'event-tool',
+      sequence: 1,
+      sessionId: 'session-1',
+      status: 'completed',
+      timestamp: '2026-07-30T02:00:00.000Z',
+      toolInput: {
+        text: '{"command":"pwd"}',
+        truncated: false,
+      },
+      toolOutput: {
+        text: '/repo',
+        truncated: false,
+      },
+      toolOutputIsPreview: true,
+      turnId: 'turn-1',
+      type: 'tool.status',
+    }).success,
+    true,
   );
 });
 

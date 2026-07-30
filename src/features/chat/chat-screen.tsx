@@ -2,18 +2,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import {
   Alert,
-  AlertTriangleIcon,
   Avatar,
   Button,
-  CheckCircleIcon,
+  CodeBlock,
   Input,
-  Item,
   KeyboardAvoider,
   Message,
   MicIcon,
   SendIcon,
   Shimmer,
-  Spinner,
+  Task,
   Typography,
 } from 'panelui-native';
 import {
@@ -23,13 +21,13 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useCSSVariable } from 'uniwind';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
   historyToWaveChatMessages,
+  type WaveChatPart,
   type WaveChatMessage,
 } from '@/features/chat/chat-state';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
@@ -291,7 +289,6 @@ const ChatTurn = memo(
     return (
       <Message
         align={isUser ? 'end' : 'start'}
-        className={isUser ? undefined : 'items-start'}
         testID={`chat-message-${message.id}`}>
         {!isUser ? (
           <Message.Avatar>
@@ -304,9 +301,18 @@ const ChatTurn = memo(
         ) : null}
         <Message.Content>
           {message.parts.map((part, index) => {
+            const isLastPart = index === message.parts.length - 1;
             if (part.type === 'text') {
               return (
-                <Message.Bubble key={`${message.id}-text-${index}`}>
+                <Message.Bubble
+                  key={`${message.id}-text-${index}`}
+                  className={
+                    isLastPart
+                      ? undefined
+                      : isUser
+                        ? 'rounded-ee-2xl'
+                        : 'rounded-es-2xl'
+                  }>
                   <Message.BubbleContent>
                     {part.text}
                   </Message.BubbleContent>
@@ -316,6 +322,10 @@ const ChatTurn = memo(
             return (
               <ChatToolStep
                 key={part.id}
+                isLast={isLastPart}
+                input={part.input}
+                output={part.output}
+                outputIsPreview={part.outputIsPreview}
                 status={part.status}
                 testID={`chat-task-${part.id}`}
                 title={part.title}
@@ -340,59 +350,110 @@ const ChatTurn = memo(
 );
 
 function ChatToolStep({
+  input,
+  isLast,
+  output,
+  outputIsPreview,
   status,
   testID,
   title,
 }: {
+  input: Extract<WaveChatPart, { type: 'task' }>['input'];
+  isLast: boolean;
+  output: Extract<WaveChatPart, { type: 'task' }>['output'];
+  outputIsPreview: Extract<
+    WaveChatPart,
+    { type: 'task' }
+  >['outputIsPreview'];
   status: 'complete' | 'error' | 'pending' | 'running';
   testID: string;
   title: string;
 }) {
   const displayTitle = formatToolName(title);
-  const success = useCSSVariable('--color-success');
-  const destructive = useCSSVariable('--color-destructive');
+  const [open, setOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
+  const setDisclosureOpen = useCallback((next: boolean) => {
+    setOpen(next);
+    if (next) {
+      setHasOpened(true);
+    }
+  }, []);
+
   return (
-    <Item
-      size="xs"
-      accessibilityLabel={`${displayTitle}, ${toolStatusDescription(status).toLowerCase()}`}
+    <Task
+      className={[
+        'rounded-xl bg-muted px-3 py-2',
+        isLast ? 'rounded-es-md' : '',
+        status === 'error'
+          ? 'border border-destructive/30'
+          : '',
+      ].join(' ')}
+      defaultOpen={false}
+      open={open}
+      status={status}
       testID={testID}
-      variant={status === 'error' ? 'outline' : 'muted'}>
-      <Item.Media variant="icon">
-        {status === 'complete' ? (
-          <CheckCircleIcon
-            color={typeof success === 'string' ? success : undefined}
-            size={16}
+      onOpenChange={setDisclosureOpen}>
+      <Task.Trigger
+        accessibilityHint="Shows the raw tool input and output"
+        accessibilityLabel={`${displayTitle}, ${toolStatusDescription(status).toLowerCase()}. ${open ? 'Collapse' : 'Expand'} tool details`}
+        testID={`${testID}-trigger`}
+        title={displayTitle}
+      />
+      {hasOpened ? (
+        <Task.Content className="ms-0 gap-2 border-s-0 ps-0">
+          <ToolDetailBlock
+            detail={input}
+            label="Input"
+            testID={`${testID}-input`}
           />
-        ) : status === 'error' ? (
-          <AlertTriangleIcon
-            color={
-              typeof destructive === 'string'
-                ? destructive
-                : undefined
-            }
-            size={16}
+          <ToolDetailBlock
+            detail={output}
+            label={outputIsPreview ? 'Output preview' : 'Output'}
+            testID={`${testID}-output`}
           />
-        ) : (
-          <Spinner size="sm" />
-        )}
-      </Item.Media>
-      <Item.Content>
-        <Item.Title>
-          {status === 'running' ? (
-            <Shimmer textClassName="text-sm font-medium">
-              {displayTitle}
-            </Shimmer>
-          ) : (
-            displayTitle
-          )}
-        </Item.Title>
-        {status === 'complete' ? null : (
-          <Item.Description>
-            {toolStatusDescription(status)}
-          </Item.Description>
-        )}
-      </Item.Content>
-    </Item>
+        </Task.Content>
+      ) : null}
+    </Task>
+  );
+}
+
+function ToolDetailBlock({
+  detail,
+  label,
+  testID,
+}: {
+  detail: Extract<WaveChatPart, { type: 'task' }>['input'];
+  label: string;
+  testID: string;
+}) {
+  if (!detail) {
+    return (
+      <Task.Item testID={testID}>
+        {`No raw ${label.toLowerCase()} was provided.`}
+      </Task.Item>
+    );
+  }
+
+  return (
+    <ScrollView
+      nestedScrollEnabled
+      showsVerticalScrollIndicator
+      style={{ maxHeight: 320 }}>
+      <CodeBlock
+        className="w-full"
+        code={detail.text}
+        language="text"
+        testID={testID}>
+        <CodeBlock.Header>
+          <CodeBlock.Filename>
+            {detail.truncated ? `${label} (truncated)` : label}
+          </CodeBlock.Filename>
+          <CodeBlock.Actions>
+            <CodeBlock.CopyButton />
+          </CodeBlock.Actions>
+        </CodeBlock.Header>
+      </CodeBlock>
+    </ScrollView>
   );
 }
 

@@ -277,6 +277,56 @@ test('binds imported and created sessions to the authenticated device', async ()
   await closeContext(context);
 });
 
+test('pairs and bounds raw Hermes tool details without exposing call identifiers', async () => {
+  const context = createContext();
+  const paired = pairDevice(context.store, 'Tool detail device');
+  context.store.bindSession(paired.device.id, 'existing-session');
+  context.hermes.getSessionMessages = async (sessionId) => [
+    {
+      content: '',
+      id: 'assistant-tool-call',
+      role: 'assistant',
+      sessionId,
+      toolCalls: [
+        {
+          arguments: 'i'.repeat(70_000),
+          id: 'upstream-call-id-must-not-cross',
+          name: 'terminal',
+        },
+      ],
+    },
+    {
+      content: 'o'.repeat(70_000),
+      id: 'tool-result',
+      role: 'tool',
+      sessionId,
+      toolCallId: 'upstream-call-id-must-not-cross',
+      toolName: 'terminal',
+    },
+  ];
+
+  const response = await context.app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/sessions/existing-session/messages',
+  });
+  assert.equal(response.statusCode, 200);
+  const history = WaveSessionHistoryResponseSchema.parse(
+    response.json(),
+  );
+  const tool = history.messages[1];
+  assert.equal(tool?.content, '');
+  assert.equal(tool?.toolInput?.text.length, 64_000);
+  assert.equal(tool?.toolInput?.truncated, true);
+  assert.equal(tool?.toolOutput?.text.length, 64_000);
+  assert.equal(tool?.toolOutput?.truncated, true);
+  assert.equal(
+    response.body.includes('upstream-call-id-must-not-cross'),
+    false,
+  );
+  await closeContext(context);
+});
+
 test('rejects unknown request fields before creating a Hermes session', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Schema device');
@@ -395,6 +445,21 @@ test('streams only normalized Wave events with ordered metadata', async () => {
   );
   assert.equal(response.body.includes('run-1'), false);
   assert.equal(response.body.includes('server-only-hermes-key'), false);
+  const toolEvent = events.find(
+    (event) => event.type === 'tool.status',
+  );
+  assert.equal(
+    toolEvent?.type === 'tool.status'
+      ? toolEvent.toolInput?.text
+      : undefined,
+    '{"command":"pwd"}',
+  );
+  assert.equal(
+    toolEvent?.type === 'tool.status'
+      ? toolEvent.toolOutput?.text
+      : undefined,
+    '/repo',
+  );
   await closeContext(context);
 });
 
@@ -646,7 +711,10 @@ async function* completedHermesStream(
     ...base,
     sequence: 2,
     status: 'started',
+    toolInput: '{"command":"pwd"}',
     toolName: 'terminal',
+    toolOutput: '/repo',
+    toolOutputIsPreview: true,
     type: 'tool',
   };
   yield {

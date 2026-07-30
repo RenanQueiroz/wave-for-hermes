@@ -114,10 +114,13 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   activity and transcript state, and retryable server-cleanup failures. The PanelUI voice route
   renders controller snapshots and never owns raw WebRTC resources or provider protocol messages.
 - The PanelUI session and chat routes render normalized conversation data only. Tool events become
-  name/status-only `Task` parts; raw arguments, output, upstream events, and credentials never enter
-  the mobile render model. `KeyboardProvider` is mounted once at the app root, and PanelUI's
-  `KeyboardAvoider` docks the complete composer row so its Input and Send/Stop controls move
-  together above the native keyboard.
+  bounded `Task` parts with a name, status, and optional raw input/output. Disclosures start
+  collapsed and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs,
+  run IDs, and credentials never enter the mobile render model. Hermes avatars align with the
+  bottom of a grouped turn and only its last item keeps the avatar-facing pointer radius.
+  `KeyboardProvider` is mounted once at the app root, and PanelUI's `KeyboardAvoider` docks the
+  complete composer row so its Input and Send/Stop controls move together above the native
+  keyboard.
 
 ## Current companion API
 
@@ -235,7 +238,9 @@ maximum defaults to four. Wave starts a normalized SSE stream before contacting 
 enforces first-event, idle, and total timers. An authenticated cancellation request, mobile
 disconnect, timeout, upstream error, or downstream consumer exit aborts or cancels the Hermes
 stream. Events contain only Wave-owned identifiers, assistant text, and sanitized tool lifecycle
-status.
+status plus optional bounded tool input/output details. Each detail is capped at 64,000 characters,
+all details share a 512,000-character per-history-response or per-turn budget, and truncation is
+explicit.
 
 Realtime call creation accepts a bounded SDP offer only for a Hermes session already bound to the
 authenticated device. Wave creates the OpenAI call server-side, attaches the server-only sideband,
@@ -265,6 +270,7 @@ See [`companion/README.md`](../companion/README.md) for the endpoint table and o
 - one-time pairing requests and responses;
 - compatibility, session, history, turn, and cancellation requests and responses;
 - a strict discriminated union of ordered normalized turn events;
+- strict inert tool-detail fields with explicit truncation;
 - bounded SDP call setup/termination contracts that contain only Wave-owned identifiers;
 - the strict `ask_hermes({ instruction })` schema and small structured success/error result.
 
@@ -282,8 +288,10 @@ protocol messages.
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
 - History normalization drops empty assistant records and groups consecutive assistant/tool records
-  into one Hermes turn. Tool activity renders as compact named status rows; raw tool arguments and
-  output remain outside the mobile UI.
+  into one Hermes turn. Tool activity renders as collapsed named status rows with the Hermes avatar
+  aligned to the last item. Expanding a row lazily renders its bounded raw input and output as
+  copyable plain code, never Markdown; streaming previews are labeled until canonical history
+  replaces them.
 - Realtime-only speech remains an ephemeral overlay on the active Hermes session. Successful
   hangup refreshes the canonical Hermes history query before returning to text chat, so completed
   `ask_hermes` turns appear immediately without persisting casual Realtime conversation twice.

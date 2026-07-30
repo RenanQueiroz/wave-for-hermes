@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
+  WAVE_TOOL_DETAIL_MAX_CHARS,
   WAVE_API_VERSION,
   WaveConversationMessageSchema,
   WaveSessionSummarySchema,
   WaveTurnEventSchema,
   type WaveConversationMessage,
   type WaveSessionSummary,
+  type WaveToolDetail,
   type WaveTurnEvent,
 } from '@wave/contracts';
 
@@ -16,19 +18,64 @@ import type {
   HermesStreamEvent,
 } from './hermes-types.ts';
 
+const WAVE_TOOL_DETAIL_AGGREGATE_MAX_CHARS = 512_000;
+
 export function normalizeHermesMessage(
   message: HermesConversationMessage,
+  details: {
+    hideToolContent?: boolean;
+    toolInput?: WaveToolDetail;
+    toolOutput?: WaveToolDetail;
+    toolName?: string;
+  } = {},
 ): WaveConversationMessage {
+  const toolName = details.toolName ?? message.toolName;
   return WaveConversationMessageSchema.parse({
-    content: message.content,
+    content: details.hideToolContent ? '' : message.content,
     ...(message.timestamp === undefined
       ? {}
       : { createdAt: timestampToIso(message.timestamp) }),
     ...(message.id ? { id: normalizeIdentifier(message.id, 'message') } : {}),
     role: message.role,
-    ...(message.toolName
-      ? { toolName: normalizeToolName(message.toolName) }
+    ...(details.toolInput ? { toolInput: details.toolInput } : {}),
+    ...(toolName
+      ? {
+          toolName: normalizeToolName(toolName),
+        }
       : {}),
+    ...(details.toolOutput ? { toolOutput: details.toolOutput } : {}),
+  });
+}
+
+export function normalizeHermesMessages(
+  messages: HermesConversationMessage[],
+): WaveConversationMessage[] {
+  const toolCalls = new Map<
+    string,
+    { arguments?: string; name?: string }
+  >();
+  for (const message of messages) {
+    for (const toolCall of message.toolCalls ?? []) {
+      toolCalls.set(toolCall.id, toolCall);
+    }
+  }
+
+  const budget = { remaining: WAVE_TOOL_DETAIL_AGGREGATE_MAX_CHARS };
+  return messages.map((message) => {
+    if (message.role !== 'tool') {
+      return normalizeHermesMessage(message);
+    }
+    const toolCall = message.toolCallId
+      ? toolCalls.get(message.toolCallId)
+      : undefined;
+    return normalizeHermesMessage(message, {
+      hideToolContent: true,
+      ...(toolCall?.arguments === undefined
+        ? {}
+        : { toolInput: normalizeToolDetail(toolCall.arguments, budget) }),
+      toolName: message.toolName ?? toolCall?.name,
+      toolOutput: normalizeToolDetail(message.content, budget),
+    });
   });
 }
 
@@ -58,6 +105,9 @@ export class WaveTurnEventFactory {
   private readonly now: () => Date;
   private sequence = 0;
   private readonly sessionId: string;
+  private readonly toolDetailBudget = {
+    remaining: WAVE_TOOL_DETAIL_AGGREGATE_MAX_CHARS,
+  };
   private readonly turnId: string;
 
   constructor(
@@ -122,9 +172,28 @@ export class WaveTurnEventFactory {
               }
             : {}),
           status: event.status,
+          ...(event.toolInput === undefined
+            ? {}
+            : {
+                toolInput: normalizeToolDetail(
+                  event.toolInput,
+                  this.toolDetailBudget,
+                ),
+              }),
           ...(event.toolName
             ? { toolName: normalizeToolName(event.toolName) }
             : {}),
+          ...(event.toolOutput === undefined
+            ? {}
+            : {
+                toolOutput: normalizeToolDetail(
+                  event.toolOutput,
+                  this.toolDetailBudget,
+                ),
+              }),
+          ...(event.toolOutputIsPreview === undefined
+            ? {}
+            : { toolOutputIsPreview: event.toolOutputIsPreview }),
           type: 'tool.status',
         });
     }
@@ -160,7 +229,10 @@ export class WaveTurnEventFactory {
       | {
           messageId?: string;
           status: 'completed' | 'failed' | 'progress' | 'started';
+          toolInput?: WaveToolDetail;
           toolName?: string;
+          toolOutput?: WaveToolDetail;
+          toolOutputIsPreview?: boolean;
           type: 'tool.status';
         }
       | {
@@ -222,6 +294,22 @@ function normalizeToolName(value: string) {
     .trim()
     .slice(0, 100);
   return normalized || 'Hermes tool';
+}
+
+function normalizeToolDetail(
+  value: string,
+  budget: { remaining: number },
+): WaveToolDetail {
+  const available = Math.max(
+    0,
+    Math.min(WAVE_TOOL_DETAIL_MAX_CHARS, budget.remaining),
+  );
+  const text = value.slice(0, available);
+  budget.remaining -= text.length;
+  return {
+    text,
+    truncated: text.length < value.length,
+  };
 }
 
 function timestampToIso(value: number) {

@@ -129,6 +129,13 @@ function createFixtureHermesClient(): HermesClient {
       const timestamp = Math.floor(Date.now() / 1_000);
       const messageId = `fixture-assistant-${turnCount}`;
       const response = 'Fixture response from Hermes.';
+      const toolCallId = `fixture-call-${turnCount}`;
+      const toolInput = JSON.stringify({
+        query: input.input,
+      });
+      const toolOutput = JSON.stringify({
+        result: 'Development fixture lookup completed.',
+      });
       const base = {
         runId: `fixture-run-${turnCount}`,
         sequence: 0,
@@ -174,6 +181,7 @@ function createFixtureHermesClient(): HermesClient {
         messageId,
         sequence: 2,
         status: 'started',
+        toolInput,
         toolName: 'fixture_lookup',
         type: 'tool',
       };
@@ -183,6 +191,8 @@ function createFixtureHermesClient(): HermesClient {
         sequence: 3,
         status: 'completed',
         toolName: 'fixture_lookup',
+        toolOutput,
+        toolOutputIsPreview: true,
         type: 'tool',
       };
       yield {
@@ -218,11 +228,26 @@ function createFixtureHermesClient(): HermesClient {
           timestamp,
         },
         {
-          content: 'Development fixture tool output is intentionally hidden.',
+          content: '',
+          id: `fixture-tool-call-${turnCount}`,
+          role: 'assistant',
+          sessionId,
+          timestamp,
+          toolCalls: [
+            {
+              arguments: toolInput,
+              id: toolCallId,
+              name: 'fixture_lookup',
+            },
+          ],
+        },
+        {
+          content: toolOutput,
           id: `fixture-tool-${turnCount}`,
           role: 'tool',
           sessionId,
           timestamp,
+          toolCallId,
           toolName: 'fixture_lookup',
         },
         {

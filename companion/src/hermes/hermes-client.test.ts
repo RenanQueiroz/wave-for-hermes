@@ -99,8 +99,32 @@ test('creates, lists, and loads normalized session history', async () => {
       data: [
         { content: 'Hello', id: 'message-1', role: 'user', session_id: 'session-1' },
         {
-          content: [{ text: 'Hi there', type: 'text' }],
+          content: '',
           id: 'message-2',
+          role: 'assistant',
+          session_id: 'session-1',
+          tool_calls: [
+            {
+              function: {
+                arguments: '{"command":"pwd"}',
+                name: 'terminal',
+              },
+              id: 'call-1',
+              type: 'function',
+            },
+          ],
+        },
+        {
+          content: '/repo',
+          id: 'message-3',
+          role: 'tool',
+          session_id: 'session-1',
+          tool_call_id: 'call-1',
+          tool_name: 'terminal',
+        },
+        {
+          content: [{ text: 'Hi there', type: 'text' }],
+          id: 'message-4',
           role: 'assistant',
           session_id: 'session-1',
         },
@@ -131,9 +155,19 @@ test('creates, lists, and loads normalized session history', async () => {
     messages.map(({ content, role }) => ({ content, role })),
     [
       { content: 'Hello', role: 'user' },
+      { content: '', role: 'assistant' },
+      { content: '/repo', role: 'tool' },
       { content: 'Hi there', role: 'assistant' },
     ],
   );
+  assert.deepEqual(messages[1]?.toolCalls, [
+    {
+      arguments: '{"command":"pwd"}',
+      id: 'call-1',
+      name: 'terminal',
+    },
+  ]);
+  assert.equal(messages[2]?.toolCallId, 'call-1');
   assert.deepEqual(JSON.parse(requests[0]?.body ?? '{}'), { id: 'session-1', title: 'Wave' });
   assert.equal(requests[1]?.url.includes('include_children=false'), true);
 });
@@ -146,12 +180,14 @@ test('streams normalized assistant and tool lifecycle events across chunks', asy
       'event: message.started\ndata: {"session_id":"session-1","run_id":"run-1","seq":2,',
       '"ts":2,"message":{"id":"message-1","role":"assistant"}}\n\n',
       'event: tool.started\ndata: {"session_id":"session-1","run_id":"run-1","seq":3,"ts":3,',
-      '"message_id":"message-1","tool_name":"terminal","args":{"secret":"hidden"}}\n\n',
-      'event: assistant.delta\ndata: {"session_id":"session-1","run_id":"run-1","seq":4,"ts":4,',
+      '"message_id":"message-1","tool_name":"terminal","args":{"command":"pwd"}}\n\n',
+      'event: tool.completed\ndata: {"session_id":"session-1","run_id":"run-1","seq":4,"ts":4,',
+      '"message_id":"message-1","tool_name":"terminal","preview":"/repo"}\n\n',
+      'event: assistant.delta\ndata: {"session_id":"session-1","run_id":"run-1","seq":5,"ts":5,',
       '"message_id":"message-1","delta":"Done"}\n\n',
-      'event: run.completed\ndata: {"session_id":"session-1","run_id":"run-1","seq":5,"ts":5,',
+      'event: run.completed\ndata: {"session_id":"session-1","run_id":"run-1","seq":6,"ts":6,',
       '"message_id":"message-1","completed":true,"messages":[{"content":"hidden"}]}\n\n',
-      'event: done\ndata: {"session_id":"session-1","run_id":"run-1","seq":6,"ts":6}\n\n',
+      'event: done\ndata: {"session_id":"session-1","run_id":"run-1","seq":7,"ts":7}\n\n',
     ]);
 
   const events = await collect(
@@ -181,36 +217,49 @@ test('streams normalized assistant and tool lifecycle events across chunks', asy
       sessionId: 'session-1',
       status: 'started',
       timestamp: 3,
+      toolInput: '{"command":"pwd"}',
       toolName: 'terminal',
+      type: 'tool',
+    },
+    {
+      messageId: 'message-1',
+      runId: 'run-1',
+      sequence: 4,
+      sessionId: 'session-1',
+      status: 'completed',
+      timestamp: 4,
+      toolName: 'terminal',
+      toolOutput: '/repo',
+      toolOutputIsPreview: true,
       type: 'tool',
     },
     {
       delta: 'Done',
       messageId: 'message-1',
       runId: 'run-1',
-      sequence: 4,
+      sequence: 5,
       sessionId: 'session-1',
-      timestamp: 4,
+      timestamp: 5,
       type: 'assistant.delta',
     },
     {
       completed: true,
       messageId: 'message-1',
       runId: 'run-1',
-      sequence: 5,
+      sequence: 6,
       sessionId: 'session-1',
-      timestamp: 5,
+      timestamp: 6,
       type: 'run.completed',
     },
     {
       runId: 'run-1',
-      sequence: 6,
+      sequence: 7,
       sessionId: 'session-1',
-      timestamp: 6,
+      timestamp: 7,
       type: 'done',
     },
   ]);
-  assert.equal(JSON.stringify(events).includes('hidden'), false);
+  assert.equal(JSON.stringify(events).includes('run.completed'), true);
 });
 
 test('normalizes authentication and server errors without exposing the bearer token', async () => {

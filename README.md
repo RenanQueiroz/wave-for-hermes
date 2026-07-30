@@ -76,9 +76,9 @@ currently includes:
   access explicitly;
 - TanStack Query-backed session/history state plus PanelUI conversation list and chat routes with
   batched assistant deltas, lifecycle-safe prompt cancellation, assistant/tool history records
-  grouped into coherent Hermes turns, compact named tool-status rows with untrusted tool output
-  hidden, active-session restoration, and a keyboard-sticky native composer that keeps Send and
-  Stop controls reachable;
+  grouped into coherent Hermes turns, bottom-aligned Hermes avatars, collapsed named tool rows
+  whose disclosures render bounded raw input/output as inert code, active-session restoration, and
+  a keyboard-sticky native composer that keeps Send and Stop controls reachable;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - a live Homelab deployment with unpublished Hermes/Companion ports, Tailscale-only HTTPS ingress
@@ -203,8 +203,10 @@ The full operator workflow is in [`companion/README.md`](./companion/README.md).
 After pairing, Wave lists only sessions authorized for that device. Start a new conversation or
 explicitly import existing Hermes sessions, then send text from the chat route. Hermes remains the
 durable history source; Wave stores only the active session identifier so it can resume that
-conversation after process restart. Raw tool arguments and output are never rendered by the mobile
-chat UI.
+conversation after process restart. Tool calls are collapsed by default. A user can expand one to
+inspect its raw input and output as inert, copyable text; Wave does not parse it as Markdown or
+execute it. Each field is limited to 64,000 characters, tool details share a 512,000-character
+history-response budget, and a visible label identifies truncated values.
 
 For UI development before the private Hermes API is available, the companion also provides an
 explicitly development-only, in-memory fixture:
@@ -215,7 +217,8 @@ WAVE_FIXTURE_HOST=0.0.0.0 npm run companion:mobile-fixture
 
 An Android emulator can reach that listener at `http://10.0.2.2:8787`. The fixture provides
 deterministic sessions, assistant deltas, sanitized tool lifecycle events, and history restoration.
-See the companion README before using it; the fixture is not a production entrypoint and all of its
+The tool event includes deterministic raw input/output for exercising the collapsed disclosure. See
+the companion README before using it; the fixture is not a production entrypoint and all of its
 state disappears when it stops.
 
 ### WebRTC development proof
@@ -282,9 +285,9 @@ components can coexist.
 
 The server-side transport boundary lives under `companion/src/hermes`. It supports an optional
 profile or proxy prefix in the base URL, requires HTTPS unless an explicit private/local development
-exception is enabled, and never exposes raw tool arguments through its event types. Mobile features
-use `WaveBackendClient`, not `HermesClient`; the repository intentionally has no second mobile
-Hermes transport.
+exception is enabled, and converts Hermes tool calls into strict bounded Wave detail fields without
+exposing upstream call or run identifiers. Mobile features use `WaveBackendClient`, not
+`HermesClient`; the repository intentionally has no second mobile Hermes transport.
 
 Run its deterministic tests with:
 

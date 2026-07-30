@@ -188,12 +188,13 @@ Use a fresh fixture/code for each platform because a code can be redeemed only o
 `smoke:chat` uses the same environment variables and one-time-code rule. It pairs, creates a
 conversation, cancels a deliberately suspended fixture turn and proves the composer is reusable,
 sends a completed fixture message, waits for the assistant text and sanitized tool task, confirms
-raw fixture tool output is absent from the native hierarchy, terminates and relaunches Wave to
-verify active-session/history restoration, then navigates back and disconnects. It also disables
-action traces for text and lifecycle operations and deletes the owned Appium session. The runner
-prints secret-free progress, clears and verifies every controlled input before submission, waits
-for the fixture's first cancellation delta before tapping Stop, and uses stable iOS accessibility
-IDs for native text assertions:
+raw fixture input/output is absent while collapsed, expands and collapses the disclosure through
+its accessibility actions, verifies the inert raw detail text while open, terminates and relaunches
+Wave to verify active-session/history restoration, then navigates back and disconnects. It also
+disables action traces for text and lifecycle operations and deletes the owned Appium session. The
+runner prints secret-free progress, clears and verifies every controlled input before submission,
+waits for the fixture's first cancellation delta before tapping Stop, and uses stable iOS
+accessibility IDs for native text assertions:
 
 ```sh
 MOBILE_AGENT_METRO_URL=http://127.0.0.1:<radon-port> \

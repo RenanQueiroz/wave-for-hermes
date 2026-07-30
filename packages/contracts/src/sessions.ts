@@ -5,6 +5,7 @@ import {
   WaveIsoDateTimeSchema,
   WaveResponseMetadataSchema,
 } from './common.ts';
+import { WaveToolDetailSchema } from './tool-details.ts';
 
 export const WaveCompatibilityResponseSchema =
   WaveResponseMetadataSchema.extend({
@@ -56,7 +57,9 @@ export const WaveConversationMessageSchema = z
     createdAt: WaveIsoDateTimeSchema.optional(),
     id: WaveIdentifierSchema.optional(),
     role: WaveConversationRoleSchema,
+    toolInput: WaveToolDetailSchema.optional(),
     toolName: z.string().trim().min(1).max(100).optional(),
+    toolOutput: WaveToolDetailSchema.optional(),
   })
   .strict();
 

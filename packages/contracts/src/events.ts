@@ -6,6 +6,7 @@ import {
   WaveIdentifierSchema,
   WaveIsoDateTimeSchema,
 } from './common.ts';
+import { WaveToolDetailSchema } from './tool-details.ts';
 
 const WaveTurnEventBaseShape = {
   apiVersion: WaveApiVersionSchema,
@@ -45,7 +46,10 @@ export const WaveToolStatusEventSchema = z
     ...WaveTurnEventBaseShape,
     messageId: WaveIdentifierSchema.optional(),
     status: z.enum(['completed', 'failed', 'progress', 'started']),
+    toolInput: WaveToolDetailSchema.optional(),
     toolName: z.string().trim().min(1).max(100).optional(),
+    toolOutput: WaveToolDetailSchema.optional(),
+    toolOutputIsPreview: z.boolean().optional(),
     type: z.literal('tool.status'),
   })
   .strict();

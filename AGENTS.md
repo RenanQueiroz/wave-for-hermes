@@ -93,6 +93,9 @@ documentation before implementing UI.
   revocable device-scoped companion credential and short-lived Realtime connection material.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
+- Raw tool input/output shown to the paired user must cross only as bounded Wave-owned detail
+  fields with explicit truncation. Never expose Hermes/OpenAI call IDs or run IDs, render tool
+  details as Markdown, or execute content-derived behavior.
 - Use TanStack Query for finite companion state and a focused controller/reducer for active
   streams. Mobile screens consume normalized state and never parse SSE directly.
 - Use Expo SDK 57's `expo/fetch` for response streaming. Keep stream framing, ordering, timeout,
@@ -118,6 +121,16 @@ documentation before implementing UI.
   returning to text chat. Keep casual Realtime-only speech ephemeral rather than inventing a second
   durable transcript.
 - Do not silently broaden a chat tool into arbitrary administration access.
+
+## Chat tool presentation
+
+- Group consecutive assistant and tool records into one Hermes turn with one avatar aligned to the
+  bottom of the turn.
+- Render each tool call as a PanelUI `Task`, collapsed by default. Expanding it may lazily render
+  normalized raw input/output with `CodeBlock`; keep the content inert and identify truncated or
+  preview values explicitly.
+- Preserve turn-aware radii: only the final item in an assistant turn keeps the avatar-facing
+  pointer corner.
 - Do not log access tokens, full authorization headers, or sensitive conversation payloads.
 
 ## WebRTC foundation

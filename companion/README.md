@@ -3,7 +3,10 @@
 The Wave Companion is the trusted server-side boundary between Wave mobile, Hermes, and OpenAI
 Realtime. It exposes only Wave-owned conversation endpoints, holds the Hermes key and, when
 Realtime is enabled, the standard OpenAI key, and never returns raw upstream events, provider call
-identifiers, run identifiers, tool arguments, authorization headers, or stack traces to a client.
+identifiers, run identifiers, authorization headers, or stack traces to a client. Session history
+and turn events may include explicit raw tool input/output fields for the paired user, but the
+Companion bounds each field to 64,000 characters, applies a 512,000-character aggregate budget,
+and never forwards the upstream tool-call identifier.
 
 ## Run locally
 
@@ -112,8 +115,8 @@ npm run companion:mobile-fixture
 
 It prints one short-lived pairing code, uses deterministic fake Hermes capability/session
 responses, provides a cancellation-only test prompt, streams assistant deltas around a sanitized
-tool lifecycle, and stores normalized history only in process memory. It loses every device/session
-when stopped. It binds to
+tool lifecycle with deterministic expandable input/output details, and stores normalized history
+only in process memory. It loses every device/session when stopped. It binds to
 `127.0.0.1:8787` by default. To reach it from an Android emulator, bind the fixture to the host
 network and enter `http://10.0.2.2:8787` in a development build:
 
