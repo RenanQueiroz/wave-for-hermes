@@ -135,8 +135,10 @@ the shared result; the same request in a later user turn executes again. Wave do
 confirmation dialog for this narrow tool; Hermes's own tool safety behavior remains authoritative.
 The interaction ledger records the validated handoff before dispatch, then records its terminal
 status and bounded result. Ending the call settles unfinished handoffs as cancelled. The terminal
-Hermes assistant message identifier remains server-internal and is used only to suppress the
-duplicate canonical range when building the unified timeline.
+Hermes assistant event ID and timestamp remain server-internal and are used only to suppress the
+duplicate canonical range when building the unified timeline. The pinned history response omits
+message IDs, so correlation falls back to the nearest assistant timestamp within five seconds and
+never compares conversation text.
 
 ## Private production deployment
 

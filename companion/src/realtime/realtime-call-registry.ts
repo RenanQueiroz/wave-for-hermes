@@ -41,6 +41,7 @@ interface RealtimeToolExecution {
 
 interface HermesExecutionOutcome {
   hermesAssistantMessageId?: string;
+  hermesAssistantMessageTimestamp?: number;
   result: WaveAskHermesToolResult;
 }
 
@@ -265,6 +266,7 @@ export class RealtimeCallRegistry {
     let answer = '';
     let completedAnswer: string | undefined;
     let hermesAssistantMessageId: string | undefined;
+    let hermesAssistantMessageTimestamp: number | undefined;
     let truncated = false;
 
     try {
@@ -285,6 +287,7 @@ export class RealtimeCallRegistry {
           }
         } else if (event.type === 'assistant.completed') {
           hermesAssistantMessageId = event.messageId;
+          hermesAssistantMessageTimestamp = event.timestamp;
           completedAnswer = event.content.slice(
             0,
             WAVE_MAX_ASK_HERMES_ANSWER_LENGTH,
@@ -336,6 +339,9 @@ export class RealtimeCallRegistry {
     }
     return {
       ...(hermesAssistantMessageId ? { hermesAssistantMessageId } : {}),
+      ...(hermesAssistantMessageTimestamp === undefined
+        ? {}
+        : { hermesAssistantMessageTimestamp }),
       result: {
         answer: finalAnswer,
         ok: true,
@@ -554,6 +560,7 @@ export class RealtimeCallRegistry {
         execution,
         outcome.result,
         outcome.hermesAssistantMessageId,
+        outcome.hermesAssistantMessageTimestamp,
       );
     }
   }
@@ -563,6 +570,7 @@ export class RealtimeCallRegistry {
     execution: RealtimeToolExecution,
     result: WaveAskHermesToolResult,
     hermesAssistantMessageId?: string,
+    hermesAssistantMessageTimestamp?: number,
   ) {
     if (execution.result) {
       return;
@@ -573,6 +581,9 @@ export class RealtimeCallRegistry {
         completedAt: this.now().toISOString(),
         handoffId: execution.handoffId,
         ...(hermesAssistantMessageId ? { hermesAssistantMessageId } : {}),
+        ...(hermesAssistantMessageTimestamp === undefined
+          ? {}
+          : { hermesAssistantMessageTimestamp }),
         result,
       });
     } catch {

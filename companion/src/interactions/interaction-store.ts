@@ -11,6 +11,7 @@ export interface InteractionHandoffRecord {
   completedAt?: string;
   createdAt: string;
   hermesAssistantMessageId?: string;
+  hermesAssistantMessageTimestamp?: number;
   id: string;
   instruction: string;
   result?: WaveAskHermesToolResult;
@@ -46,6 +47,7 @@ export interface InteractionStore {
     completedAt: string;
     handoffId: string;
     hermesAssistantMessageId?: string;
+    hermesAssistantMessageTimestamp?: number;
     result: WaveAskHermesToolResult;
   }): void;
   deleteSession(sessionId: string): void;

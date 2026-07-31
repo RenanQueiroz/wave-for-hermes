@@ -315,6 +315,13 @@ test('persists finalized speech and correlates the Hermes handoff result', async
       'wave:The bedroom lights are off.',
     ],
   );
+  const handoff = turns[0]?.entries.find((entry) => entry.type === 'handoff');
+  assert.equal(
+    handoff?.type === 'handoff'
+      ? handoff.hermesAssistantMessageTimestamp
+      : undefined,
+    1,
+  );
   closeContext(context);
 });
 

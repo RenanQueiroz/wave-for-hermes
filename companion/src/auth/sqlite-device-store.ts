@@ -30,7 +30,7 @@ import type {
   InteractionTurnRecord,
 } from '../interactions/interaction-store.ts';
 
-const DATABASE_SCHEMA_VERSION = 3;
+const DATABASE_SCHEMA_VERSION = 4;
 const INTERACTION_SCHEMA_SQL = `
   CREATE TABLE realtime_turns (
     id TEXT PRIMARY KEY NOT NULL,
@@ -52,6 +52,7 @@ const INTERACTION_SCHEMA_SQL = `
     status TEXT CHECK (status IN ('pending', 'completed', 'failed')),
     result_json TEXT,
     hermes_assistant_message_id TEXT,
+    hermes_assistant_message_timestamp REAL,
     created_at TEXT NOT NULL,
     completed_at TEXT,
     FOREIGN KEY (turn_id) REFERENCES realtime_turns (id) ON DELETE CASCADE,
@@ -87,6 +88,7 @@ interface RealtimeEntryRow {
   content: string | null;
   created_at: string;
   hermes_assistant_message_id: string | null;
+  hermes_assistant_message_timestamp: number | null;
   id: string;
   instruction: string | null;
   kind: 'handoff' | 'wave_message';
@@ -215,6 +217,7 @@ export class SqliteDeviceStore implements DeviceStore, InteractionStore {
     completedAt: string;
     handoffId: string;
     hermesAssistantMessageId?: string;
+    hermesAssistantMessageTimestamp?: number;
     result: import('@wave/contracts').WaveAskHermesToolResult;
   }) {
     const completedAt = WaveIsoDateTimeSchema.parse(input.completedAt);
@@ -243,13 +246,16 @@ export class SqliteDeviceStore implements DeviceStore, InteractionStore {
       .prepare(
         `UPDATE realtime_entries
          SET status = ?, result_json = ?, hermes_assistant_message_id = ?,
-             completed_at = ?
+             hermes_assistant_message_timestamp = ?, completed_at = ?
          WHERE id = ? AND kind = 'handoff' AND status = 'pending'`,
       )
       .run(
         status,
         resultJson,
         input.hermesAssistantMessageId ?? null,
+        input.hermesAssistantMessageTimestamp === undefined
+          ? null
+          : parseHermesTimestamp(input.hermesAssistantMessageTimestamp),
         completedAt,
         handoffId,
       );
@@ -277,7 +283,8 @@ export class SqliteDeviceStore implements DeviceStore, InteractionStore {
     const entryRows = this.database
       .prepare(
         `SELECT e.id, e.turn_id, e.kind, e.content, e.instruction, e.status,
-                e.result_json, e.hermes_assistant_message_id, e.created_at,
+                e.result_json, e.hermes_assistant_message_id,
+                e.hermes_assistant_message_timestamp, e.created_at,
                 e.completed_at
          FROM realtime_entries e
          INNER JOIN realtime_turns t ON t.id = e.turn_id
@@ -493,6 +500,16 @@ export class SqliteDeviceStore implements DeviceStore, InteractionStore {
     if (version === DATABASE_SCHEMA_VERSION) {
       return;
     }
+    if (version === 3) {
+      this.database.exec(`
+        BEGIN IMMEDIATE;
+        ALTER TABLE realtime_entries
+          ADD COLUMN hermes_assistant_message_timestamp REAL;
+        PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
+        COMMIT;
+      `);
+      return;
+    }
     if (version === 2) {
       this.database.exec(`
         BEGIN IMMEDIATE;
@@ -609,6 +626,13 @@ function toInteractionEntry(row: RealtimeEntryRow): InteractionEntryRecord {
     ...(row.hermes_assistant_message_id
       ? { hermesAssistantMessageId: row.hermes_assistant_message_id }
       : {}),
+    ...(row.hermes_assistant_message_timestamp === null
+      ? {}
+      : {
+          hermesAssistantMessageTimestamp: parseHermesTimestamp(
+            row.hermes_assistant_message_timestamp,
+          ),
+        }),
     id: row.id,
     instruction: row.instruction,
     ...(row.result_json
@@ -625,6 +649,13 @@ function toInteractionEntry(row: RealtimeEntryRow): InteractionEntryRecord {
 
 function hasOneChange(result: StatementResultingChanges) {
   return result.changes === 1;
+}
+
+function parseHermesTimestamp(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error('Hermes interaction timestamp is invalid.');
+  }
+  return value;
 }
 
 function prepareDatabasePath(path: string) {

@@ -330,6 +330,9 @@ protocol messages.
   Direct Hermes work and Realtime handoffs both render under the Wave identity. Tool activity
   renders as collapsed named status rows with the Wave avatar aligned to the last item. Expanding a
   row lazily renders bounded raw input and output as copyable plain code, never Markdown.
+- Handoff correlation keeps the terminal Hermes stream event ID and timestamp server-side. Because
+  the pinned history response omits message IDs, the merge falls back to the nearest assistant
+  timestamp inside a five-second window; it never compares user or assistant text.
 - The Companion persists only finalized Realtime user and assistant transcripts. Successful
   hangup refreshes the unified timeline query before returning to text chat, so casual Wave speech
   and completed `ask_hermes` work appear immediately without duplicating Hermes's canonical turn.

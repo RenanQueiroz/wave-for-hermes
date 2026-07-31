@@ -15,6 +15,8 @@ interface OrderedTimelineEntry {
   timestamp?: string;
 }
 
+const HERMES_CORRELATION_MAX_DELTA_SECONDS = 5;
+
 export function createUnifiedTimeline(input: {
   hermesMessages: HermesConversationMessage[];
   interactionTurns: InteractionTurnRecord[];
@@ -160,16 +162,25 @@ function findSuppressedHermesIndexes(
   turns: InteractionTurnRecord[],
 ) {
   const indexes = new Set<number>();
-  const terminalMessageIds = turns.flatMap((turn) =>
+  const terminalMessages = turns.flatMap((turn) =>
     turn.entries.flatMap((entry) =>
-      entry.type === 'handoff' && entry.hermesAssistantMessageId
-        ? [entry.hermesAssistantMessageId]
+      entry.type === 'handoff' &&
+      (entry.hermesAssistantMessageId ||
+        entry.hermesAssistantMessageTimestamp !== undefined)
+        ? [
+            {
+              id: entry.hermesAssistantMessageId,
+              timestamp: entry.hermesAssistantMessageTimestamp,
+            },
+          ]
         : [],
     ),
   );
-  for (const terminalMessageId of terminalMessageIds) {
-    const terminalIndex = messages.findIndex(
-      (message) => message.id === terminalMessageId,
+  for (const terminalMessage of terminalMessages) {
+    const terminalIndex = findTerminalHermesIndex(
+      messages,
+      terminalMessage.id,
+      terminalMessage.timestamp,
     );
     if (terminalIndex < 0) {
       continue;
@@ -192,4 +203,36 @@ function findSuppressedHermesIndexes(
     }
   }
   return indexes;
+}
+
+function findTerminalHermesIndex(
+  messages: HermesConversationMessage[],
+  messageId: string | undefined,
+  timestamp: number | undefined,
+) {
+  if (messageId) {
+    const index = messages.findIndex((message) => message.id === messageId);
+    if (index >= 0) {
+      return index;
+    }
+  }
+  if (timestamp === undefined) {
+    return -1;
+  }
+  let closestIndex = -1;
+  let closestDelta = Number.POSITIVE_INFINITY;
+  messages.forEach((message, index) => {
+    if (message.role !== 'assistant' || message.timestamp === undefined) {
+      return;
+    }
+    const delta = Math.abs(message.timestamp - timestamp);
+    if (
+      delta <= HERMES_CORRELATION_MAX_DELTA_SECONDS &&
+      (delta < closestDelta || (delta === closestDelta && index > closestIndex))
+    ) {
+      closestDelta = delta;
+      closestIndex = index;
+    }
+  });
+  return closestIndex;
 }

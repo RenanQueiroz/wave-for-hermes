@@ -232,10 +232,12 @@ add a separate approval prompt; Hermes's own tool safety policy remains authorit
 The same authenticated sideband observes finalized user transcription and completed assistant
 audio-transcript events. The SQLite interaction ledger writes those items idempotently with
 Wave-owned IDs, records each validated handoff before Hermes executes it, and retains the terminal
-Hermes assistant message ID only as internal correlation metadata. The unified timeline suppresses
-that canonical Hermes request/result range when it is represented by the nested handoff, so mobile
-does not show the same work twice. Direct Hermes turns remain canonical and unchanged. Deleting the
-parent session removes its interaction ledger in the same Wave lifecycle operation.
+Hermes assistant event ID and timestamp only as internal correlation metadata. The pinned Hermes
+history currently omits message IDs, so the unified timeline first checks the ID and then uses the
+nearest assistant timestamp inside a five-second window; it never matches conversation text. It
+suppresses that canonical Hermes request/result range when it is represented by the nested handoff,
+so mobile does not show the same work twice. Direct Hermes turns remain canonical and unchanged.
+Deleting the parent session removes its interaction ledger in the same Wave lifecycle operation.
 
 ## Configuration
 

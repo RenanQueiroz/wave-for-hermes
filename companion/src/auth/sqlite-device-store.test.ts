@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { SqliteDeviceStore } from './sqlite-device-store.ts';
@@ -122,6 +126,7 @@ test('persists idempotent realtime turns, messages, and Hermes handoffs', () => 
     completedAt: '2026-07-30T01:00:01.000Z',
     handoffId,
     hermesAssistantMessageId: 'internal-hermes-message',
+    hermesAssistantMessageTimestamp: 1_785_370_005.125,
     result: {
       answer: 'The bedroom lights are off.',
       ok: true,
@@ -143,6 +148,7 @@ test('persists idempotent realtime turns, messages, and Hermes handoffs', () => 
           completedAt: '2026-07-30T01:00:01.000Z',
           createdAt: NOW.toISOString(),
           hermesAssistantMessageId: 'internal-hermes-message',
+          hermesAssistantMessageTimestamp: 1_785_370_005.125,
           id: handoffId,
           instruction: 'Turn off the lights in the bedroom.',
           result: {
@@ -163,4 +169,42 @@ test('persists idempotent realtime turns, messages, and Hermes handoffs', () => 
   store.deleteSession('session-1');
   assert.deepEqual(store.listSessionTurns('session-1'), []);
   store.close();
+});
+
+test('migrates a version 3 interaction ledger to timestamp correlation', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'wave-store-'));
+  const databasePath = join(directory, 'wave.sqlite');
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE realtime_entries (
+        id TEXT PRIMARY KEY NOT NULL
+      ) STRICT;
+      PRAGMA user_version = 3;
+    `);
+    database.close();
+
+    const store = new SqliteDeviceStore(databasePath);
+    store.close();
+
+    const migrated = new DatabaseSync(databasePath, { readOnly: true });
+    const version = migrated.prepare('PRAGMA user_version').get() as {
+      user_version: number;
+    };
+    const columns = migrated
+      .prepare('PRAGMA table_info(realtime_entries)')
+      .all() as unknown as { name: string; type: string }[];
+    migrated.close();
+    assert.equal(version.user_version, 4);
+    assert.equal(
+      columns.some(
+        (column) =>
+          column.name === 'hermes_assistant_message_timestamp' &&
+          column.type === 'REAL',
+      ),
+      true,
+    );
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
 });

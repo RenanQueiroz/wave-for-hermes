@@ -201,3 +201,105 @@ test('suppresses only the correlated terminal message without a preceding Hermes
     false,
   );
 });
+
+test('correlates Hermes history without message IDs using the terminal timestamp', () => {
+  const entries = createUnifiedTimeline({
+    hermesMessages: [
+      {
+        content: 'Run the delegated task.',
+        role: 'user',
+        sessionId: 'session-1',
+        timestamp: 1_785_370_004,
+      },
+      {
+        content: 'Delegated result.',
+        role: 'assistant',
+        sessionId: 'session-1',
+        timestamp: 1_785_370_005.007,
+      },
+    ],
+    interactionTurns: [
+      {
+        createdAt: '2026-07-30T02:00:03.000Z',
+        entries: [
+          {
+            completedAt: '2026-07-30T02:00:05.100Z',
+            createdAt: '2026-07-30T02:00:03.100Z',
+            hermesAssistantMessageId: 'stream-only-message-id',
+            hermesAssistantMessageTimestamp: 1_785_370_005,
+            id: 'wave-handoff-1',
+            instruction: 'Run the delegated task.',
+            result: {
+              answer: 'Delegated result.',
+              ok: true,
+              truncated: false,
+            },
+            status: 'completed',
+            type: 'handoff',
+          },
+        ],
+        id: 'wave-turn-1',
+        sessionId: 'session-1',
+        userTranscript: 'Run the delegated task',
+      },
+    ],
+    sessionId: 'session-1',
+  });
+
+  assert.deepEqual(
+    entries.map((entry) => entry.type),
+    ['message', 'handoff'],
+  );
+  assert.equal(
+    entries.some(
+      (entry) => entry.type === 'message' && entry.source === 'hermes',
+    ),
+    false,
+  );
+});
+
+test('does not suppress unrelated Hermes history outside the correlation window', () => {
+  const entries = createUnifiedTimeline({
+    hermesMessages: [
+      {
+        content: 'Keep this earlier answer.',
+        role: 'assistant',
+        sessionId: 'session-1',
+        timestamp: 1_785_370_000,
+      },
+    ],
+    interactionTurns: [
+      {
+        createdAt: '2026-07-30T02:00:03.000Z',
+        entries: [
+          {
+            completedAt: '2026-07-30T02:00:15.000Z',
+            createdAt: '2026-07-30T02:00:03.100Z',
+            hermesAssistantMessageTimestamp: 1_785_370_015,
+            id: 'wave-handoff-1',
+            instruction: 'Run a later task.',
+            result: {
+              answer: 'Done.',
+              ok: true,
+              truncated: false,
+            },
+            status: 'completed',
+            type: 'handoff',
+          },
+        ],
+        id: 'wave-turn-1',
+        sessionId: 'session-1',
+      },
+    ],
+    sessionId: 'session-1',
+  });
+
+  assert.equal(
+    entries.some(
+      (entry) =>
+        entry.type === 'message' &&
+        entry.message.content === 'Keep this earlier answer.',
+    ),
+    true,
+  );
+});
