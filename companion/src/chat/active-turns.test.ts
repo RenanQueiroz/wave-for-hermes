@@ -58,3 +58,20 @@ test('aborts every active turn during server shutdown', () => {
   assert.equal(second.controller.signal.aborted, true);
   assert.equal(second.abortReason(), 'server_shutdown');
 });
+
+test('makes session deletion mutually exclusive with new turns', () => {
+  const registry = new ActiveTurnRegistry(2);
+
+  assert.equal(registry.reserveSessionDeletion('session-1'), true);
+  assert.equal(registry.reserveSessionDeletion('session-1'), false);
+  assert.throws(
+    () => registry.start('device-1', 'session-1'),
+    /being deleted/,
+  );
+
+  registry.releaseSessionDeletion('session-1');
+  const turn = registry.start('device-1', 'session-1');
+  assert.equal(registry.reserveSessionDeletion('session-1'), false);
+  registry.finish(turn.turnId);
+  assert.equal(registry.reserveSessionDeletion('session-1'), true);
+});

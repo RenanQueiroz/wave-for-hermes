@@ -15,7 +15,7 @@ Wave mobile
           │ private HTTPS: versioned Wave REST/SSE
           ▼
 Wave Companion
-  ├─ device authentication and authorization
+  ├─ device authentication and account access
   ├─ Wave contract validation
   ├─ server-only Hermes adapter
   └─ OpenAI Realtime call registry, setup, and sideband tools
@@ -101,9 +101,9 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
 - `WaveQueryProvider` owns finite server state for session lists and histories. Connection changes
   cancel and remove the connection-scoped `wave` cache so one companion/device cannot reuse
   another's data.
-- `ActiveSessionStore` persists only a versioned, non-secret connection/session identifier pair.
-  Hermes remains the durable message source and the sessions screen resumes only an authorized ID
-  returned by the current companion.
+- `ActiveSessionStore` persists only a versioned, non-secret connection/session identifier pair for
+  current-flow coordination. Connected cold launch deliberately creates a new conversation;
+  Hermes remains the durable source for every prior conversation shown in the drawer.
 - `useWaveChat` and its reducer own the single active stream, 50 ms assistant-delta batching,
   cancellation races, safe error state, and post-stream history reconciliation. The reducer keeps
   the composer busy until stream cleanup and reconciliation have settled, so a newly enabled send
@@ -113,14 +113,24 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   `WaveRealtimeController` owns the authenticated Companion call, cancellation/expiry, normalized
   activity and transcript state, and retryable server-cleanup failures. The PanelUI voice route
   renders controller snapshots and never owns raw WebRTC resources or provider protocol messages.
-- The PanelUI session and chat routes render normalized conversation data only. Tool events become
+- The Expo Router drawer is the connected app shell. Cold launch and **New conversation** create a
+  Hermes session immediately; sticky top actions provide new, title search, and read-only scheduled
+  jobs; paginated account history fills the middle; Settings and Disconnect stay fixed at the
+  bottom. Rename/delete use typed lifecycle mutations, and a deleted current session routes to a
+  new conversation.
+- The PanelUI chat route renders normalized conversation data only. Tool events become
   bounded `Task` parts with a name, status, and optional raw input/output. Disclosures start
   collapsed and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs,
   run IDs, and credentials never enter the mobile render model. Hermes avatars align with the
   bottom of a grouped turn and only its last item keeps the avatar-facing pointer radius.
   `KeyboardProvider` is mounted once at the app root, and PanelUI's `KeyboardAvoider` docks the
-  complete composer row so its Input and Send/Stop controls move together above the native
-  keyboard.
+  rounded `InputGroup` composer above the native keyboard. The attachment control sits inside the
+  leading edge. The trailing slot shows exactly one of Stop, Send, or the live-wave action; when
+  idle, trimmed text selects Send and empty text selects live voice.
+- Camera/Photos become bounded inline JPEG turn parts. Supported text-based Files are read from the
+  document-picker cache and become bounded inert text-file parts. The mobile client rejects
+  unsupported binary files, and the Companion validates the same strict contract before converting
+  it to Hermes text and `image_url` content.
 
 ## Current companion API
 
@@ -132,8 +142,9 @@ The companion lives in `companion/` and provides:
 - graceful `SIGINT` and `SIGTERM` shutdown;
 - a public, non-sensitive `GET /v1/status`;
 - one-time operator-generated pairing codes and revocable device credentials;
-- device-scoped session authorization;
-- live compatibility, session, history, streamed-turn, and cancellation routes;
+- account-scoped device authorization;
+- live compatibility, paginated session lifecycle, history, attachment-aware streamed-turn,
+  cancellation, and normalized read-only scheduled-job routes;
 - request-size, rate, active-turn, first-event, idle, and total-time bounds;
 - authenticated, rate-limited Realtime call setup and device-owned call termination;
 - a process-local Realtime registry that enforces one call per device/session, a bounded global
@@ -175,7 +186,7 @@ Optional variables:
 | `WAVE_HOST` | `127.0.0.1` | Listener address |
 | `WAVE_PORT` | `8787` | Listener port |
 | `WAVE_LOG_LEVEL` | `info` | Fastify/Pino log level |
-| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device and session authorization database |
+| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device authorization database |
 | `WAVE_PAIRING_CODE_TTL_SECONDS` | `600` | One-time pairing-code lifetime |
 | `WAVE_MAX_ACTIVE_TURNS` | `4` | Process-wide active turn limit |
 | `WAVE_MAX_ACTIVE_REALTIME_CALLS` | `2` | Process-wide active Realtime-call limit |
@@ -217,18 +228,24 @@ sidecar files.
 an already-running request from a separate operator process; the total turn timeout bounds that
 window.
 
-Each device can access only sessions explicitly bound to it. Creating a session binds it
-automatically. `POST /v1/sessions/import` is an explicit bootstrap operation that binds the first
-200 existing Hermes sessions to that device. Unauthorized session access returns the same `404`
-shape as a missing session.
+A valid device credential represents access to the paired Wave Gateway account. Every active
+paired device can page through, read, continue, rename, and delete the same top-level sessions
+returned by Hermes; the Companion does not keep per-device session bindings or copies. Hermes
+remains authoritative for session existence and history. Revoking the device credential removes
+that account access.
 
 ### HTTP and stream policy
 
 Public routes are limited to status and one-time pairing redemption. All other routes require an
 exact bearer device credential. The server exposes no generic upstream proxy and accepts no
-client-selected Hermes model, provider, endpoint, header, run ID, or administrative operation.
+client-selected Hermes model, provider, endpoint, header, run ID, or generic administrative
+operation. The one operational surface is an exact read-only scheduled-job status route whose
+normalizer omits prompts, outputs, and controls.
 
-Request bodies are limited to 64 KiB. The process applies a 120-request-per-minute client-IP limit
+Request bodies are limited to 6,000,000 bytes so bounded inline images fit without opening an
+upload/filesystem surface. Turn schemas still cap text, attachment count, each image at 4,000,000
+decoded bytes, and each text file at 128,000 characters. The process applies a
+120-request-per-minute client-IP limit
 and a five-attempt-per-minute pairing limit. The in-memory counters are intentionally
 single-instance; multi-replica deployment requires a shared limiter and a coordinated storage
 decision first.
@@ -242,12 +259,13 @@ status plus optional bounded tool input/output details. Each detail is capped at
 all details share a 512,000-character per-history-response or per-turn budget, and truncation is
 explicit.
 
-Realtime call creation accepts a bounded SDP offer only for a Hermes session already bound to the
-authenticated device. Wave creates the OpenAI call server-side, attaches the server-only sideband,
+Realtime call creation accepts a bounded SDP offer only after resolving the Hermes session for an
+active authenticated device. Wave creates the OpenAI call server-side, attaches the server-only sideband,
 and returns only the SDP answer, an expiry, and an opaque Wave call ID. The registry rejects a
 second call for the same device or Hermes session and defaults to two calls process-wide. It
-reauthorizes the device/session before every tool dispatch, never accepts a model-controlled
-session ID, serializes `ask_hermes` calls per live call, bounds active-or-waiting Hermes work to
+reauthorizes the device before every tool dispatch, keeps the server-bound session immutable, never
+accepts a model-controlled session ID, serializes `ask_hermes` calls per live call, bounds
+active-or-waiting Hermes work to
 eight requests, caps each call at 128 total tool requests, and expires all state after 30 minutes
 by default. Barge-in stops the Realtime model's audio response without cancelling the active
 Hermes request. Additional Hermes requests wait in order on the same trusted session. Completed
@@ -268,7 +286,8 @@ See [`companion/README.md`](../companion/README.md) for the endpoint table and o
 - the companion status and feature-availability response;
 - stable safe error codes and error envelopes;
 - one-time pairing requests and responses;
-- compatibility, session, history, turn, and cancellation requests and responses;
+- compatibility, paginated session lifecycle, history, attachment-aware turn, read-only
+  scheduled-job, and cancellation requests and responses;
 - a strict discriminated union of ordered normalized turn events;
 - strict inert tool-detail fields with explicit truncation;
 - bounded SDP call setup/termination contracts that contain only Wave-owned identifiers;
@@ -282,7 +301,8 @@ protocol messages.
 ## State and UI direction
 
 - Hermes remains the source of truth for durable sessions and history.
-- TanStack Query owns finite server state such as status, sessions, and history.
+- TanStack Query owns finite server state such as status, paginated account sessions, history, and
+  read-only scheduled jobs.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.
@@ -298,7 +318,8 @@ protocol messages.
 - The initial Realtime tool is the strict
   `ask_hermes({ instruction: string })` operation. A model-controlled session ID is forbidden.
 - Wave does not add an extra approval dialog before that narrow tool. The companion dispatches it
-  automatically only after strict argument validation and trusted device/session authorization;
+  automatically only after strict argument validation, active-device authorization, and trusted
+  server-bound session selection;
   Hermes's own tool safety policy still applies.
 
 ## Verification

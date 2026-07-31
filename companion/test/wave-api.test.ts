@@ -4,11 +4,13 @@ import test from 'node:test';
 import {
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
+  WaveDeleteSessionResponseSchema,
   WaveErrorResponseSchema,
   WaveRedeemPairingResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
+  WaveScheduledJobListResponseSchema,
   WaveTurnEventSchema,
 } from '@wave/contracts';
 
@@ -23,6 +25,7 @@ import type {
   HermesCreateSessionInput,
   HermesListSessionsOptions,
   HermesRequestOptions,
+  HermesSessionPage,
   HermesSessionSummary,
   HermesStreamChatInput,
   HermesStreamEvent,
@@ -81,10 +84,33 @@ class FakeHermesClient implements HermesClient {
     return session;
   }
 
+  async deleteSession(sessionId: string): Promise<boolean> {
+    const index = this.sessions.findIndex(
+      (session) => session.id === sessionId,
+    );
+    if (index < 0) return false;
+    this.sessions.splice(index, 1);
+    return true;
+  }
+
+  async getSession(sessionId: string): Promise<HermesSessionSummary> {
+    const session = this.sessions.find(
+      (candidate) => candidate.id === sessionId,
+    );
+    if (!session) {
+      throw new HermesClientError('Session not found.', {
+        kind: 'not_found',
+        status: 404,
+      });
+    }
+    return session;
+  }
+
   async getSessionMessages(
     sessionId: string,
     _options: HermesRequestOptions = {},
   ): Promise<HermesConversationMessage[]> {
+    await this.getSession(sessionId);
     this.historyCalls += 1;
     return [
       {
@@ -98,10 +124,33 @@ class FakeHermesClient implements HermesClient {
   }
 
   async listSessions(
-    _options: HermesListSessionsOptions = {},
-  ): Promise<HermesSessionSummary[]> {
+    options: HermesListSessionsOptions = {},
+  ): Promise<HermesSessionPage> {
     this.listCalls += 1;
-    return this.sessions;
+    const limit = options.limit ?? 50;
+    const offset = options.offset ?? 0;
+    const sessions = this.sessions.slice(offset, offset + limit);
+    return {
+      hasMore: offset + sessions.length < this.sessions.length,
+      limit,
+      offset,
+      sessions,
+    };
+  }
+
+  async listScheduledJobs() {
+    return [
+      {
+        createdAt: '2026-07-30T01:00:00-04:00',
+        enabled: true,
+        id: 'a1b2c3d4e5f6',
+        lastStatus: 'success',
+        name: 'Morning briefing',
+        nextRunAt: '2026-07-31T09:00:00-04:00',
+        schedule: '0 9 * * *',
+        state: 'scheduled',
+      },
+    ];
   }
 
   async probeCapabilities(): Promise<HermesCapabilityReport> {
@@ -134,6 +183,15 @@ class FakeHermesClient implements HermesClient {
       return this.stream(sessionId, input);
     }
     return completedHermesStream(sessionId);
+  }
+
+  async updateSession(
+    sessionId: string,
+    input: { title: string },
+  ): Promise<HermesSessionSummary> {
+    const session = await this.getSession(sessionId);
+    session.title = input.title;
+    return session;
   }
 }
 
@@ -214,30 +272,30 @@ test('authenticates compatibility checks and never reaches Hermes for invalid cr
   await closeContext(context);
 });
 
-test('binds imported and created sessions to the authenticated device', async () => {
+test('exposes canonical Hermes sessions to every paired device', async () => {
   const context = createContext();
   const first = pairDevice(context.store, 'First device');
   const second = pairDevice(context.store, 'Second device');
 
-  const empty = await context.app.inject({
+  const listed = await context.app.inject({
     headers: authorizationHeader(first.credential),
     method: 'GET',
-    url: '/v1/sessions',
+    url: '/v1/sessions?limit=1&offset=0',
   });
-  assert.deepEqual(
-    WaveSessionListResponseSchema.parse(empty.json()).sessions,
-    [],
-  );
-  assert.equal(context.hermes.listCalls, 0);
-
-  const imported = await context.app.inject({
-    headers: authorizationHeader(first.credential),
-    method: 'POST',
-    url: '/v1/sessions/import',
-  });
-  assert.equal(imported.statusCode, 200);
+  assert.equal(listed.statusCode, 200);
+  const firstPage = WaveSessionListResponseSchema.parse(listed.json());
+  assert.equal(firstPage.sessions[0]?.id, 'existing-session');
+  assert.equal(firstPage.limit, 1);
+  assert.equal(firstPage.offset, 0);
+  assert.equal(firstPage.hasMore, false);
   assert.equal(
-    WaveSessionListResponseSchema.parse(imported.json()).sessions[0]?.id,
+    (
+      await context.app.inject({
+        headers: authorizationHeader(second.credential),
+        method: 'GET',
+        url: '/v1/sessions',
+      })
+    ).json().sessions[0]?.id,
     'existing-session',
   );
 
@@ -250,10 +308,6 @@ test('binds imported and created sessions to the authenticated device', async ()
   const createdSession = WaveSessionResponseSchema.parse(
     created.json(),
   ).session;
-  assert.equal(
-    context.store.hasSession(first.device.id, createdSession.id),
-    true,
-  );
 
   const history = await context.app.inject({
     headers: authorizationHeader(first.credential),
@@ -272,15 +326,65 @@ test('binds imported and created sessions to the authenticated device', async ()
     method: 'GET',
     url: `/v1/sessions/${createdSession.id}/messages`,
   });
-  assert.equal(crossDevice.statusCode, 404);
-  assert.equal(context.hermes.historyCalls, 1);
+  assert.equal(crossDevice.statusCode, 200);
+  assert.equal(context.hermes.historyCalls, 2);
+
+  const renamed = await context.app.inject({
+    headers: authorizationHeader(second.credential),
+    method: 'PATCH',
+    payload: { title: 'Renamed from Wave' },
+    url: `/v1/sessions/${createdSession.id}`,
+  });
+  assert.equal(renamed.statusCode, 200);
+  assert.equal(
+    WaveSessionResponseSchema.parse(renamed.json()).session.title,
+    'Renamed from Wave',
+  );
+
+  const deleted = await context.app.inject({
+    headers: authorizationHeader(first.credential),
+    method: 'DELETE',
+    url: `/v1/sessions/${createdSession.id}`,
+  });
+  assert.equal(deleted.statusCode, 200);
+  assert.equal(
+    WaveDeleteSessionResponseSchema.parse(deleted.json()).deleted,
+    true,
+  );
+  await closeContext(context);
+});
+
+test('exposes only normalized read-only Hermes scheduled job status', async () => {
+  const context = createContext();
+  const paired = pairDevice(context.store, 'Operations device');
+
+  const response = await context.app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/operations/jobs',
+  });
+
+  assert.equal(response.statusCode, 200);
+  const jobs = WaveScheduledJobListResponseSchema.parse(response.json());
+  assert.deepEqual(jobs.jobs, [
+    {
+      createdAt: '2026-07-30T05:00:00.000Z',
+      enabled: true,
+      id: 'a1b2c3d4e5f6',
+      lastStatus: 'success',
+      name: 'Morning briefing',
+      nextRunAt: '2026-07-31T13:00:00.000Z',
+      schedule: '0 9 * * *',
+      state: 'scheduled',
+    },
+  ]);
+  assert.equal(response.body.includes('prompt'), false);
   await closeContext(context);
 });
 
 test('pairs and bounds raw Hermes tool details without exposing call identifiers', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Tool detail device');
-  context.store.bindSession(paired.device.id, 'existing-session');
   context.hermes.getSessionMessages = async (sessionId) => [
     {
       content: '',
@@ -349,10 +453,10 @@ test('rejects unknown request fields before creating a Hermes session', async ()
   await closeContext(context);
 });
 
-test('rejects unknown import fields and oversized bodies at the Wave boundary', async () => {
+test('rejects the removed import route, invalid turns, and oversized bodies at the Wave boundary', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Boundary device');
-  const unknownImport = await context.app.inject({
+  const removedImport = await context.app.inject({
     headers: authorizationHeader(paired.credential),
     method: 'POST',
     payload: {
@@ -360,14 +464,24 @@ test('rejects unknown import fields and oversized bodies at the Wave boundary', 
     },
     url: '/v1/sessions/import',
   });
-  assert.equal(unknownImport.statusCode, 400);
+  assert.equal(removedImport.statusCode, 404);
   assert.equal(context.hermes.listCalls, 0);
+
+  const invalidTurn = await context.app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'POST',
+    payload: {
+      input: 'x'.repeat(70_000),
+    },
+    url: '/v1/sessions/existing-session/turns',
+  });
+  assert.equal(invalidTurn.statusCode, 400);
 
   const oversized = await context.app.inject({
     headers: authorizationHeader(paired.credential),
     method: 'POST',
     payload: {
-      input: 'x'.repeat(70_000),
+      input: 'x'.repeat(6_000_000),
     },
     url: '/v1/sessions/existing-session/turns',
   });
@@ -376,6 +490,59 @@ test('rejects unknown import fields and oversized bodies at the Wave boundary', 
     WaveErrorResponseSchema.parse(oversized.json()).error.code,
     'bad_request',
   );
+  await closeContext(context);
+});
+
+test('validates attachments and maps them to the pinned Hermes multimodal contract', async () => {
+  const context = createContext();
+  const paired = pairDevice(context.store, 'Attachment device');
+  let upstreamInput: HermesStreamChatInput | undefined;
+  context.hermes.stream = (sessionId, input) => {
+    upstreamInput = input;
+    return completedHermesStream(sessionId);
+  };
+  const imageDataUrl = 'data:image/jpeg;base64,aGVsbG8=';
+
+  const response = await context.app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'POST',
+    payload: {
+      input: [
+        { text: 'Review these', type: 'text' },
+        {
+          dataUrl: imageDataUrl,
+          mimeType: 'image/jpeg',
+          name: 'photo.jpg',
+          type: 'image',
+        },
+        {
+          mimeType: 'text/markdown',
+          name: 'notes.md',
+          text: '# Notes',
+          type: 'text_file',
+        },
+      ],
+    },
+    url: '/v1/sessions/existing-session/turns',
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(upstreamInput?.input, [
+    { text: 'Review these', type: 'text' },
+    { text: '[Attached image: photo.jpg]', type: 'text' },
+    {
+      image_url: {
+        detail: 'auto',
+        url: imageDataUrl,
+      },
+      type: 'image_url',
+    },
+    {
+      text:
+        '[Attached text file: notes.md (text/markdown)]\n\n# Notes',
+      type: 'text',
+    },
+  ]);
   await closeContext(context);
 });
 
@@ -412,7 +579,6 @@ test('rate-limits repeated pairing attempts before issuing credentials', async (
 test('streams only normalized Wave events with ordered metadata', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Streaming device');
-  context.store.bindSession(paired.device.id, 'existing-session');
 
   const response = await context.app.inject({
     headers: authorizationHeader(paired.credential),
@@ -466,7 +632,6 @@ test('streams only normalized Wave events with ordered metadata', async () => {
 test('emits a normalized timeout when Hermes sends no first event', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Timeout device');
-  context.store.bindSession(paired.device.id, 'existing-session');
   context.hermes.stream = silentHermesStream;
 
   const response = await context.app.inject({
@@ -492,7 +657,6 @@ test('emits a normalized timeout when Hermes sends no first event', async () => 
 test('cancels an active streamed turn over the authenticated HTTP contract', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Cancelling device');
-  context.store.bindSession(paired.device.id, 'existing-session');
   context.hermes.stream = waitingHermesStream;
   const address = await context.app.listen({
     host: '127.0.0.1',
@@ -551,7 +715,6 @@ test('cancels an active streamed turn over the authenticated HTTP contract', asy
 test('aborts Hermes when the downstream client disconnects', async () => {
   const context = createContext();
   const paired = pairDevice(context.store, 'Disconnecting device');
-  context.store.bindSession(paired.device.id, 'existing-session');
   let observeDisconnect: (() => void) | undefined;
   const disconnected = new Promise<void>((resolve) => {
     observeDisconnect = resolve;

@@ -42,6 +42,9 @@ The implementation must:
 
 - Deliberately decide whether ended voice transcripts disappear or produce a bounded Hermes
   summary; Hermes remains the durable source of truth.
+- Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
+  through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
+  generic Hermes API browser or operational mutations.
 - Add redacted diagnostics suitable for user support without collecting conversation content.
 - Complete security, lifecycle-race, production-bundle, and private-deployment validation before
   the first store release.

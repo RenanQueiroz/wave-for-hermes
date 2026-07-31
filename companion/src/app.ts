@@ -1,6 +1,7 @@
 import rateLimit from '@fastify/rate-limit';
 import {
   WAVE_API_VERSION,
+  WAVE_MAX_REQUEST_BODY_BYTES,
   WaveErrorResponseSchema,
   type WaveErrorResponse,
 } from '@wave/contracts';
@@ -62,7 +63,7 @@ export function buildCompanionServer(
         )
       : undefined);
   const app = Fastify({
-    bodyLimit: 65_536,
+    bodyLimit: WAVE_MAX_REQUEST_BODY_BYTES,
     logger: options.logger ?? false,
     requestTimeout: 15_000,
   });

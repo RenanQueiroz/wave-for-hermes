@@ -23,12 +23,10 @@
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.CHANGE_NETWORK_STATE",
+        "android.permission.CAMERA",
         "android.permission.INTERNET",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.RECORD_AUDIO"
-      ],
-      "blockedPermissions": [
-        "android.permission.CAMERA"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -49,7 +47,15 @@
         }
       ],
       "@rnrepo/expo-config-plugin",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Wave to use your camera when you choose to share a photo with Hermes.",
+          "microphonePermission": "Allow Wave to use your microphone for live voice conversations.",
+          "photosPermission": "Allow Wave to access photos you choose to share with Hermes."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -171,6 +171,110 @@ test('starts and ends a Realtime call through strict Wave-owned contracts', asyn
   ]);
 });
 
+test('uses paginated account sessions, lifecycle mutations, and read-only jobs', async () => {
+  const requests: {
+    body?: unknown;
+    method: string;
+    path: string;
+    search: string;
+  }[] = [];
+  const fetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = new URL(String(input));
+    requests.push({
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      method: init?.method ?? 'GET',
+      path: url.pathname,
+      search: url.search,
+    });
+    if (url.pathname.endsWith('/operations/jobs')) {
+      return jsonResponse({
+        apiVersion: 'v1',
+        jobs: [
+          {
+            enabled: true,
+            id: 'job-1',
+            name: 'Morning briefing',
+            schedule: 'Every day at 9:00 AM',
+            state: 'scheduled',
+          },
+        ],
+      });
+    }
+    if (init?.method === 'DELETE') {
+      return jsonResponse({
+        apiVersion: 'v1',
+        deleted: true,
+        sessionId: 'session-1',
+      });
+    }
+    if (init?.method === 'PATCH') {
+      return jsonResponse({
+        apiVersion: 'v1',
+        session: {
+          id: 'session-1',
+          title: 'Renamed',
+        },
+      });
+    }
+    return jsonResponse({
+      apiVersion: 'v1',
+      hasMore: false,
+      limit: 25,
+      offset: 50,
+      sessions: [{ id: 'session-1', title: 'Existing' }],
+    });
+  };
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test/root',
+    credential,
+    fetch,
+  });
+
+  const sessions = await client.listSessions({
+    limit: 25,
+    offset: 50,
+  });
+  const renamed = await client.updateSession('session-1', {
+    title: 'Renamed',
+  });
+  const deleted = await client.deleteSession('session-1');
+  const jobs = await client.listScheduledJobs();
+
+  assert.equal(sessions.sessions[0]?.title, 'Existing');
+  assert.equal(renamed.session.title, 'Renamed');
+  assert.equal(deleted.deleted, true);
+  assert.equal(jobs.jobs[0]?.name, 'Morning briefing');
+  assert.deepEqual(requests, [
+    {
+      body: undefined,
+      method: 'GET',
+      path: '/root/v1/sessions',
+      search: '?limit=25&offset=50',
+    },
+    {
+      body: { title: 'Renamed' },
+      method: 'PATCH',
+      path: '/root/v1/sessions/session-1',
+      search: '',
+    },
+    {
+      body: undefined,
+      method: 'DELETE',
+      path: '/root/v1/sessions/session-1',
+      search: '',
+    },
+    {
+      body: undefined,
+      method: 'GET',
+      path: '/root/v1/operations/jobs',
+      search: '',
+    },
+  ]);
+});
+
 test('rejects invalid client inputs before a request can leave the app', async () => {
   let requestCount = 0;
   const client = new WaveBackendClient({

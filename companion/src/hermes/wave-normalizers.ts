@@ -4,6 +4,7 @@ import {
   WAVE_TOOL_DETAIL_MAX_CHARS,
   WAVE_API_VERSION,
   WaveConversationMessageSchema,
+  WaveScheduledJobSchema,
   WaveSessionSummarySchema,
   WaveTurnEventSchema,
   type WaveConversationMessage,
@@ -14,6 +15,7 @@ import {
 
 import type {
   HermesConversationMessage,
+  HermesScheduledJob,
   HermesSessionSummary,
   HermesStreamEvent,
 } from './hermes-types.ts';
@@ -98,6 +100,26 @@ export function normalizeHermesSession(
     ...(session.toolCallCount === undefined
       ? {}
       : { toolCallCount: Math.max(0, Math.trunc(session.toolCallCount)) }),
+  });
+}
+
+export function normalizeHermesScheduledJob(job: HermesScheduledJob) {
+  return WaveScheduledJobSchema.parse({
+    ...(job.createdAt ? { createdAt: normalizeIsoDate(job.createdAt) } : {}),
+    enabled: job.enabled,
+    id: normalizeIdentifier(job.id, 'job'),
+    ...(job.lastRunAt
+      ? { lastRunAt: normalizeIsoDate(job.lastRunAt) }
+      : {}),
+    ...(job.lastStatus
+      ? { lastStatus: job.lastStatus.slice(0, 100) }
+      : {}),
+    name: job.name.slice(0, 200),
+    ...(job.nextRunAt
+      ? { nextRunAt: normalizeIsoDate(job.nextRunAt) }
+      : {}),
+    schedule: job.schedule.slice(0, 300),
+    state: job.state.slice(0, 100),
   });
 }
 
@@ -317,6 +339,14 @@ function timestampToIso(value: number) {
   const date = new Date(milliseconds);
   if (!Number.isFinite(date.getTime())) {
     throw new Error('Hermes returned an invalid timestamp.');
+  }
+  return date.toISOString();
+}
+
+function normalizeIsoDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error('Hermes returned an invalid date.');
   }
   return date.toISOString();
 }

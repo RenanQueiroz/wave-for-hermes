@@ -2,31 +2,40 @@ import {
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
+  WaveDeleteSessionResponseSchema,
   WaveErrorResponseSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveIdentifierSchema,
+  WaveListSessionsRequestSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
+  WaveScheduledJobListResponseSchema,
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
+  WaveUpdateSessionRequestSchema,
   type WaveTurnEvent,
   type WaveCancelTurnResponse,
   type WaveCompatibilityResponse,
   type WaveCreateSessionRequest,
+  type WaveDeleteSessionResponse,
   type WaveErrorCode,
   type WaveEndRealtimeCallResponse,
   type WaveRedeemPairingRequest,
   type WaveRedeemPairingResponse,
+  type WaveScheduledJobListResponse,
   type WaveSessionHistoryResponse,
   type WaveSessionListResponse,
   type WaveSessionResponse,
+  type WaveListSessionsRequest,
   type WaveStatusResponse,
   type WaveStartRealtimeCallResponse,
+  type WaveTurnInput,
+  type WaveUpdateSessionRequest,
 } from '@wave/contracts';
 
 import {
@@ -160,6 +169,26 @@ export class WaveBackendClient {
     });
   }
 
+  deleteSession(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<WaveDeleteSessionResponse> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    return this.request(
+      WaveDeleteSessionResponseSchema,
+      `/v1/sessions/${encodeURIComponent(validSessionId)}`,
+      {
+        authenticated: true,
+        method: 'DELETE',
+        signal,
+      },
+    );
+  }
+
   getCompatibility(signal?: AbortSignal): Promise<WaveCompatibilityResponse> {
     return this.request(
       WaveCompatibilityResponseSchema,
@@ -194,6 +223,19 @@ export class WaveBackendClient {
     return this.request(WaveStatusResponseSchema, '/v1/status', { signal });
   }
 
+  listScheduledJobs(
+    signal?: AbortSignal,
+  ): Promise<WaveScheduledJobListResponse> {
+    return this.request(
+      WaveScheduledJobListResponseSchema,
+      '/v1/operations/jobs',
+      {
+        authenticated: true,
+        signal,
+      },
+    );
+  }
+
   endRealtimeCall(
     callId: string,
     signal?: AbortSignal,
@@ -214,23 +256,27 @@ export class WaveBackendClient {
     );
   }
 
-  importSessions(signal?: AbortSignal): Promise<WaveSessionListResponse> {
+  listSessions(
+    input: Partial<WaveListSessionsRequest> = {},
+    signal?: AbortSignal,
+  ): Promise<WaveSessionListResponse> {
+    const query = parseClientInput(
+      WaveListSessionsRequestSchema,
+      input,
+      'Enter valid conversation pagination.',
+    );
+    const search = new URLSearchParams({
+      limit: String(query.limit),
+      offset: String(query.offset),
+    });
     return this.request(
       WaveSessionListResponseSchema,
-      '/v1/sessions/import',
+      `/v1/sessions?${search.toString()}`,
       {
         authenticated: true,
-        method: 'POST',
         signal,
       },
     );
-  }
-
-  listSessions(signal?: AbortSignal): Promise<WaveSessionListResponse> {
-    return this.request(WaveSessionListResponseSchema, '/v1/sessions', {
-      authenticated: true,
-      signal,
-    });
   }
 
   redeemPairing(
@@ -283,7 +329,7 @@ export class WaveBackendClient {
 
   async *streamTurn(
     sessionId: string,
-    input: string,
+    input: WaveTurnInput,
     signal?: AbortSignal,
   ): AsyncGenerator<WaveTurnEvent> {
     const validSessionId = parseClientInput(
@@ -443,13 +489,40 @@ export class WaveBackendClient {
     }
   }
 
+  updateSession(
+    sessionId: string,
+    input: WaveUpdateSessionRequest,
+    signal?: AbortSignal,
+  ): Promise<WaveSessionResponse> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    const body = parseClientInput(
+      WaveUpdateSessionRequestSchema,
+      input,
+      'Enter a valid conversation title.',
+    );
+    return this.request(
+      WaveSessionResponseSchema,
+      `/v1/sessions/${encodeURIComponent(validSessionId)}`,
+      {
+        authenticated: true,
+        body,
+        method: 'PATCH',
+        signal,
+      },
+    );
+  }
+
   private async request<T>(
     schema: RuntimeSchema<T>,
     path: string,
     options: {
       authenticated?: boolean;
       body?: unknown;
-      method?: 'GET' | 'POST';
+      method?: 'DELETE' | 'GET' | 'PATCH' | 'POST';
       signal?: AbortSignal;
       timeoutMs?: number;
     },
@@ -542,7 +615,9 @@ export class WaveBackendClient {
 
   private buildUrl(path: string) {
     const url = new URL(this.baseUrl);
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}${path}`;
+    const [pathWithoutQuery, query = ''] = path.split('?', 2);
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}${pathWithoutQuery}`;
+    url.search = query;
     return url.toString();
   }
 }

@@ -11,8 +11,10 @@ import {
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
+  WaveDeleteSessionResponseSchema,
   WaveIdentifierSchema,
-  WaveImportSessionsRequestSchema,
+  WaveListSessionsRequestSchema,
+  WaveScheduledJobListResponseSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
@@ -23,7 +25,9 @@ import {
   WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
+  WaveUpdateSessionRequestSchema,
   type WaveErrorCode,
+  type WaveTurnInput,
   type WaveTurnEvent,
 } from '@wave/contracts';
 
@@ -39,6 +43,7 @@ import type { HermesClient } from '../hermes/hermes-types.ts';
 import {
   formatWaveSseEvent,
   normalizeHermesMessages,
+  normalizeHermesScheduledJob,
   normalizeHermesSession,
   WaveTurnEventFactory,
 } from '../hermes/wave-normalizers.ts';
@@ -52,6 +57,17 @@ const SERVICE_VERSION = '0.1.0';
 const SessionParamsSchema = z
   .object({
     sessionId: WaveIdentifierSchema,
+  })
+  .strict();
+const SessionListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    offset: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .max(1_000_000)
+      .default(0),
   })
   .strict();
 const TurnParamsSchema = SessionParamsSchema.extend({
@@ -156,44 +172,36 @@ export function registerWaveApi(
   );
 
   app.get(
-    '/v1/sessions',
+    '/v1/operations/jobs',
     { onRequest: authenticateDevice },
     async (request, reply) => {
-      const device = requireAuthenticatedDevice(request);
-      const authorizedIds = new Set(
-        services.deviceStore.listSessionIds(device.id),
-      );
-      const sessions =
-        authorizedIds.size === 0
-          ? []
-          : (await services.hermesClient.listSessions({ limit: 200 }))
-              .filter((session) => authorizedIds.has(session.id))
-              .map(normalizeHermesSession);
+      const jobs = await services.hermesClient.listScheduledJobs({
+        signal: request.signal,
+      });
       return reply.send(
-        WaveSessionListResponseSchema.parse({
+        WaveScheduledJobListResponseSchema.parse({
           ...responseMetadata(request),
-          sessions,
+          jobs: jobs.map(normalizeHermesScheduledJob),
         }),
       );
     },
   );
 
-  app.post(
-    '/v1/sessions/import',
+  app.get(
+    '/v1/sessions',
     { onRequest: authenticateDevice },
     async (request, reply) => {
-      const device = requireAuthenticatedDevice(request);
-      WaveImportSessionsRequestSchema.parse(request.body ?? {});
-      const sessions = (await services.hermesClient.listSessions({
-        limit: 200,
-      })).map(normalizeHermesSession);
-      for (const session of sessions) {
-        services.deviceStore.bindSession(device.id, session.id);
-      }
+      const input = WaveListSessionsRequestSchema.parse(
+        SessionListQuerySchema.parse(request.query),
+      );
+      const page = await services.hermesClient.listSessions(input);
       return reply.send(
         WaveSessionListResponseSchema.parse({
           ...responseMetadata(request),
-          sessions,
+          hasMore: page.hasMore,
+          limit: page.limit,
+          offset: page.offset,
+          sessions: page.sessions.map(normalizeHermesSession),
         }),
       );
     },
@@ -203,14 +211,12 @@ export function registerWaveApi(
     '/v1/sessions',
     { onRequest: authenticateDevice },
     async (request, reply) => {
-      const device = requireAuthenticatedDevice(request);
       const input = WaveCreateSessionRequestSchema.parse(request.body ?? {});
       const session = normalizeHermesSession(
         await services.hermesClient.createSession({
           ...(input.title ? { title: input.title } : {}),
         }),
       );
-      services.deviceStore.bindSession(device.id, session.id);
       return reply.code(201).send(
         WaveSessionResponseSchema.parse({
           ...responseMetadata(request),
@@ -220,13 +226,85 @@ export function registerWaveApi(
     },
   );
 
+  app.patch(
+    '/v1/sessions/:sessionId',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      const input = WaveUpdateSessionRequestSchema.parse(request.body);
+      const session = normalizeHermesSession(
+        await services.hermesClient.updateSession(sessionId, input),
+      );
+      return reply.send(
+        WaveSessionResponseSchema.parse({
+          ...responseMetadata(request),
+          session,
+        }),
+      );
+    },
+  );
+
+  app.delete(
+    '/v1/sessions/:sessionId',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      if (!services.turnRegistry.reserveSessionDeletion(sessionId)) {
+        throw new WaveHttpError(
+          'End the active Hermes turn or live call before deleting this conversation.',
+          {
+            code: 'conflict',
+            statusCode: 409,
+          },
+        );
+      }
+      const realtimeReserved =
+        services.realtimeCallRegistry?.reserveSessionDeletion(
+          sessionId,
+        ) ?? true;
+      if (!realtimeReserved) {
+        services.turnRegistry.releaseSessionDeletion(sessionId);
+        throw new WaveHttpError(
+          'End the active Hermes turn or live call before deleting this conversation.',
+          {
+            code: 'conflict',
+            statusCode: 409,
+          },
+        );
+      }
+      try {
+        const deleted =
+          await services.hermesClient.deleteSession(sessionId);
+        if (!deleted) {
+          throw new WaveHttpError(
+            'The requested Hermes session was not found.',
+            {
+              code: 'not_found',
+              statusCode: 404,
+            },
+          );
+        }
+        return reply.send(
+          WaveDeleteSessionResponseSchema.parse({
+            ...responseMetadata(request),
+            deleted: true,
+            sessionId,
+          }),
+        );
+      } finally {
+        services.turnRegistry.releaseSessionDeletion(sessionId);
+        services.realtimeCallRegistry?.releaseSessionDeletion(
+          sessionId,
+        );
+      }
+    },
+  );
+
   app.get(
     '/v1/sessions/:sessionId/messages',
     { onRequest: authenticateDevice },
     async (request, reply) => {
-      const device = requireAuthenticatedDevice(request);
       const { sessionId } = SessionParamsSchema.parse(request.params);
-      requireSessionAccess(services.deviceStore, device.id, sessionId);
       const messages = normalizeHermesMessages(
         await services.hermesClient.getSessionMessages(sessionId),
       );
@@ -299,7 +377,7 @@ export function registerWaveApi(
       const device = requireAuthenticatedDevice(request);
       const { sessionId } = SessionParamsSchema.parse(request.params);
       const input = WaveStartTurnRequestSchema.parse(request.body);
-      requireSessionAccess(services.deviceStore, device.id, sessionId);
+      await services.hermesClient.getSession(sessionId);
       const turn = services.turnRegistry.start(device.id, sessionId);
       await streamTurn(
         request,
@@ -320,7 +398,6 @@ export function registerWaveApi(
     async (request, reply) => {
       const device = requireAuthenticatedDevice(request);
       const { sessionId, turnId } = TurnParamsSchema.parse(request.params);
-      requireSessionAccess(services.deviceStore, device.id, sessionId);
       if (!services.turnRegistry.cancel(device.id, sessionId, turnId)) {
         throw new WaveHttpError('The active Wave turn was not found.', {
           code: 'not_found',
@@ -360,7 +437,7 @@ async function streamTurn(
   hermesClient: HermesClient,
   turnRegistry: ActiveTurnRegistry,
   turn: ReturnType<ActiveTurnRegistry['start']>,
-  input: string,
+  input: WaveTurnInput,
   now: () => Date,
 ) {
   const events = new WaveTurnEventFactory(
@@ -403,7 +480,7 @@ async function streamTurn(
 
   try {
     for await (const event of hermesClient.streamChat(turn.sessionId, {
-      input,
+      input: toHermesChatContent(input),
       signal: turn.controller.signal,
     })) {
       resetIdleTimer(false);
@@ -431,6 +508,39 @@ async function streamTurn(
       reply.raw.end();
     }
   }
+}
+
+function toHermesChatContent(input: WaveTurnInput) {
+  if (typeof input === 'string') return input;
+  return input.flatMap((part) => {
+    switch (part.type) {
+      case 'text':
+        return [{ text: part.text, type: 'text' as const }];
+      case 'image':
+        return [
+          {
+            text: `[Attached image: ${part.name}]`,
+            type: 'text' as const,
+          },
+          {
+            image_url: {
+              detail: 'auto' as const,
+              url: part.dataUrl,
+            },
+            type: 'image_url' as const,
+          },
+        ];
+      case 'text_file':
+        return [
+          {
+            text:
+              `[Attached text file: ${part.name} (${part.mimeType})]\n\n` +
+              part.text,
+            type: 'text' as const,
+          },
+        ];
+    }
+  });
 }
 
 function streamFailureEvent(
@@ -507,19 +617,6 @@ function writeEvent(reply: FastifyReply, event: WaveTurnEvent) {
 
 function canWrite(reply: FastifyReply) {
   return !reply.raw.destroyed && !reply.raw.writableEnded;
-}
-
-function requireSessionAccess(
-  store: DeviceStore,
-  deviceId: string,
-  sessionId: string,
-) {
-  if (!store.hasSession(deviceId, sessionId)) {
-    throw new WaveHttpError('The Hermes session was not found.', {
-      code: 'not_found',
-      statusCode: 404,
-    });
-  }
 }
 
 function responseMetadata(request: FastifyRequest) {

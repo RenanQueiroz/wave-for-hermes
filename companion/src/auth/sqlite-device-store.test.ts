@@ -28,7 +28,7 @@ test('redeems a short-lived pairing code exactly once', () => {
   store.close();
 });
 
-test('authenticates, binds, lists, and revokes device access', () => {
+test('authenticates and revokes account-scoped device access', () => {
   const store = new SqliteDeviceStore(':memory:', {
     now: () => NOW,
   });
@@ -43,12 +43,8 @@ test('authenticates, binds, lists, and revokes device access', () => {
     redeemed.device,
   );
   assert.equal(store.authenticateDevice('not-a-credential'), undefined);
-  store.bindSession(redeemed.device.id, 'session-1');
-  store.bindSession(redeemed.device.id, 'session-1');
-  assert.equal(store.hasSession(redeemed.device.id, 'session-1'), true);
   assert.equal(store.isDeviceActive(redeemed.device.id), true);
   assert.equal(store.isDeviceActive('missing-device'), false);
-  assert.deepEqual(store.listSessionIds(redeemed.device.id), ['session-1']);
 
   const listed = store.listDevices();
   assert.equal(listed.length, 1);

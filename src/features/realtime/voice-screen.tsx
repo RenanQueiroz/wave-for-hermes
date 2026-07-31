@@ -34,7 +34,7 @@ export function VoiceScreen({ sessionId }: VoiceScreenProps) {
   const { client, state: connection } = useWaveConnection();
 
   if (connection.phase !== 'connected' || !client || !sessionId) {
-    return <Redirect href={sessionId ? '/' : '/sessions'} />;
+    return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (
     <ConnectedVoiceScreen

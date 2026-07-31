@@ -10,10 +10,12 @@ import type {
   HermesListSessionsOptions,
   HermesMessageRole,
   HermesRequestOptions,
+  HermesScheduledJob,
   HermesSessionSummary,
   HermesStreamChatInput,
   HermesStreamEvent,
   HermesToolCall,
+  HermesUpdateSessionInput,
 } from './hermes-types.ts';
 
 type HermesFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -33,7 +35,7 @@ interface RequestContext {
 
 interface JsonRequestOptions {
   body?: unknown;
-  method?: 'GET' | 'POST';
+  method?: 'DELETE' | 'GET' | 'PATCH' | 'POST';
   signal?: AbortSignal;
 }
 
@@ -98,6 +100,17 @@ function requiredNumber(value: unknown, field: string) {
     });
   }
   return value;
+}
+
+function requiredNonnegativeInteger(value: unknown, field: string) {
+  const number = requiredNumber(value, field);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new HermesClientError(`Hermes response has invalid ${field}.`, {
+      code: 'invalid_session_list',
+      kind: 'protocol',
+    });
+  }
+  return number;
 }
 
 function normalizeMessageRole(value: unknown): HermesMessageRole {
@@ -184,6 +197,52 @@ function parseSession(value: unknown): HermesSessionSummary {
     startedAt: optionalNumber(value.started_at),
     title: optionalString(value.title),
     toolCallCount: optionalNumber(value.tool_call_count),
+  };
+}
+
+function parseScheduledJob(value: unknown): HermesScheduledJob {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    !value.id ||
+    typeof value.name !== 'string' ||
+    !value.name.trim()
+  ) {
+    throw new HermesClientError('Hermes returned an invalid scheduled job.', {
+      code: 'invalid_scheduled_job',
+      kind: 'protocol',
+    });
+  }
+  const schedule =
+    optionalString(value.schedule_display) ??
+    (isRecord(value.schedule)
+      ? optionalString(value.schedule.display)
+      : undefined);
+  if (!schedule) {
+    throw new HermesClientError(
+      'Hermes returned an invalid scheduled job schedule.',
+      {
+        code: 'invalid_scheduled_job',
+        kind: 'protocol',
+      },
+    );
+  }
+  const createdAt = optionalString(value.created_at);
+  const lastRunAt = optionalString(value.last_run_at);
+  const lastStatus = optionalString(value.last_status);
+  const nextRunAt = optionalString(value.next_run_at);
+  return {
+    ...(createdAt ? { createdAt } : {}),
+    enabled: value.enabled !== false,
+    id: value.id,
+    ...(lastRunAt ? { lastRunAt } : {}),
+    ...(lastStatus ? { lastStatus } : {}),
+    name: value.name.trim(),
+    ...(nextRunAt ? { nextRunAt } : {}),
+    schedule,
+    state:
+      optionalString(value.state) ??
+      (value.enabled === false ? 'disabled' : 'scheduled'),
   };
 }
 
@@ -513,6 +572,52 @@ export class HttpHermesClient implements HermesClient {
     return parseSession(payload.session);
   }
 
+  async deleteSession(
+    sessionId: string,
+    options: HermesRequestOptions = {},
+  ) {
+    validateIdentifier(sessionId, 'Session ID');
+    const payload = await this.requestJson(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: 'DELETE',
+        signal: options.signal,
+      },
+    );
+    if (
+      !isRecord(payload) ||
+      payload.id !== sessionId ||
+      typeof payload.deleted !== 'boolean'
+    ) {
+      throw new HermesClientError(
+        'Hermes returned an invalid session deletion response.',
+        {
+          code: 'invalid_session_deletion',
+          kind: 'protocol',
+        },
+      );
+    }
+    return payload.deleted;
+  }
+
+  async getSession(
+    sessionId: string,
+    options: HermesRequestOptions = {},
+  ) {
+    validateIdentifier(sessionId, 'Session ID');
+    const payload = await this.requestJson(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { signal: options.signal },
+    );
+    if (!isRecord(payload) || !isRecord(payload.session)) {
+      throw new HermesClientError('Hermes returned an invalid session.', {
+        code: 'invalid_session',
+        kind: 'protocol',
+      });
+    }
+    return parseSession(payload.session);
+  }
+
   async getSessionMessages(sessionId: string, options: HermesRequestOptions = {}) {
     validateIdentifier(sessionId, 'Session ID');
     const payload = await this.requestJson(
@@ -527,6 +632,27 @@ export class HttpHermesClient implements HermesClient {
     }
     const resolvedSessionId = optionalString(payload.session_id) ?? sessionId;
     return payload.data.map((message) => parseMessage(message, resolvedSessionId));
+  }
+
+  async listScheduledJobs(options: HermesRequestOptions = {}) {
+    const payload = await this.requestJson(
+      '/api/jobs?include_disabled=true',
+      { signal: options.signal },
+    );
+    if (
+      !isRecord(payload) ||
+      !Array.isArray(payload.jobs) ||
+      payload.jobs.length > 10_000
+    ) {
+      throw new HermesClientError(
+        'Hermes returned an invalid scheduled job list.',
+        {
+          code: 'invalid_scheduled_job_list',
+          kind: 'protocol',
+        },
+      );
+    }
+    return payload.jobs.map(parseScheduledJob);
   }
 
   async listSessions(options: HermesListSessionsOptions = {}) {
@@ -550,7 +676,38 @@ export class HttpHermesClient implements HermesClient {
         kind: 'protocol',
       });
     }
-    return payload.data.map(parseSession);
+    const responseLimit = requiredNonnegativeInteger(
+      payload.limit,
+      'session list limit',
+    );
+    if (responseLimit < 1 || responseLimit > MAX_LIST_LIMIT) {
+      throw new HermesClientError(
+        'Hermes returned an invalid session list limit.',
+        {
+          code: 'invalid_session_list',
+          kind: 'protocol',
+        },
+      );
+    }
+    const responseOffset = requiredNonnegativeInteger(
+      payload.offset,
+      'session list offset',
+    );
+    if (typeof payload.has_more !== 'boolean') {
+      throw new HermesClientError(
+        'Hermes returned invalid session pagination.',
+        {
+          code: 'invalid_session_list',
+          kind: 'protocol',
+        },
+      );
+    }
+    return {
+      hasMore: payload.has_more,
+      limit: responseLimit,
+      offset: responseOffset,
+      sessions: payload.data.map(parseSession),
+    };
   }
 
   async probeCapabilities(options: HermesRequestOptions = {}): Promise<HermesCapabilityReport> {
@@ -569,12 +726,47 @@ export class HttpHermesClient implements HermesClient {
     });
   }
 
+  async updateSession(
+    sessionId: string,
+    input: HermesUpdateSessionInput,
+  ) {
+    validateIdentifier(sessionId, 'Session ID');
+    const title = input.title.trim();
+    if (!title) {
+      throw new HermesClientError('Session title cannot be empty.', {
+        code: 'invalid_session_title',
+        kind: 'configuration',
+      });
+    }
+    const payload = await this.requestJson(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        body: { title },
+        method: 'PATCH',
+        signal: input.signal,
+      },
+    );
+    if (!isRecord(payload) || !isRecord(payload.session)) {
+      throw new HermesClientError(
+        'Hermes returned an invalid updated session.',
+        {
+          code: 'invalid_session',
+          kind: 'protocol',
+        },
+      );
+    }
+    return parseSession(payload.session);
+  }
+
   async *streamChat(
     sessionId: string,
     input: HermesStreamChatInput,
   ): AsyncGenerator<HermesStreamEvent> {
     validateIdentifier(sessionId, 'Session ID');
-    if (!input.input.trim()) {
+    if (
+      (typeof input.input === 'string' && !input.input.trim()) ||
+      (Array.isArray(input.input) && input.input.length === 0)
+    ) {
       throw new HermesClientError('A Hermes chat message cannot be empty.', {
         code: 'missing_message',
         kind: 'configuration',

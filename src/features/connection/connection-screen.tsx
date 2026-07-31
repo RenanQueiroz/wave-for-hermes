@@ -36,7 +36,7 @@ export function ConnectionScreen() {
   );
 
   if (state.phase === 'connected') {
-    return <Redirect href="/sessions" />;
+    return <Redirect href="/new" />;
   }
 
   const savedConnectionError =

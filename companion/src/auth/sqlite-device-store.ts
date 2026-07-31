@@ -23,7 +23,7 @@ import type {
   RedeemedDevice,
 } from './device-store.ts';
 
-const DATABASE_SCHEMA_VERSION = 1;
+const DATABASE_SCHEMA_VERSION = 2;
 
 interface SqliteDeviceStoreOptions {
   now?: () => Date;
@@ -87,32 +87,10 @@ export class SqliteDeviceStore implements DeviceStore {
     return toAuthenticatedDevice(row);
   }
 
-  bindSession(deviceId: string, sessionId: string) {
-    WaveIdentifierSchema.parse(deviceId);
-    WaveIdentifierSchema.parse(sessionId);
-    this.database
-      .prepare(
-        `INSERT OR IGNORE INTO device_sessions (device_id, session_id, created_at)
-         VALUES (?, ?, ?)`,
-      )
-      .run(deviceId, sessionId, this.now().toISOString());
-  }
-
   close() {
     if (this.database.isOpen) {
       this.database.close();
     }
-  }
-
-  hasSession(deviceId: string, sessionId: string) {
-    const row = this.database
-      .prepare(
-        `SELECT 1 AS found
-         FROM device_sessions
-         WHERE device_id = ? AND session_id = ?`,
-      )
-      .get(deviceId, sessionId) as { found: number } | undefined;
-    return row?.found === 1;
   }
 
   isDeviceActive(deviceId: string) {
@@ -169,18 +147,6 @@ export class SqliteDeviceStore implements DeviceStore {
       ...(row.last_used_at ? { lastUsedAt: row.last_used_at } : {}),
       ...(row.revoked_at ? { revokedAt: row.revoked_at } : {}),
     }));
-  }
-
-  listSessionIds(deviceId: string) {
-    const rows = this.database
-      .prepare(
-        `SELECT session_id
-         FROM device_sessions
-         WHERE device_id = ?
-         ORDER BY created_at ASC`,
-      )
-      .all(deviceId) as unknown as { session_id: string }[];
-    return rows.map((row) => row.session_id);
   }
 
   redeemPairingCode(
@@ -268,6 +234,15 @@ export class SqliteDeviceStore implements DeviceStore {
     if (version === DATABASE_SCHEMA_VERSION) {
       return;
     }
+    if (version === 1) {
+      this.database.exec(`
+        BEGIN IMMEDIATE;
+        DROP TABLE device_sessions;
+        PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
+        COMMIT;
+      `);
+      return;
+    }
     if (version !== 0) {
       throw new Error(
         `Unsupported Wave Companion database schema version ${version}. Expected ${DATABASE_SCHEMA_VERSION}.`,
@@ -290,12 +265,6 @@ export class SqliteDeviceStore implements DeviceStore {
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         consumed_at TEXT
-      ) STRICT;
-      CREATE TABLE device_sessions (
-        device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-        session_id TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        PRIMARY KEY (device_id, session_id)
       ) STRICT;
       CREATE INDEX pairing_codes_expiry_index
         ON pairing_codes (expires_at);

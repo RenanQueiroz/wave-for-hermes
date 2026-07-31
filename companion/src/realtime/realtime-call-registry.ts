@@ -63,6 +63,7 @@ export interface StartedRealtimeCall {
 export class RealtimeCallRegistry {
   private readonly calls = new Map<string, RealtimeCallState>();
   private readonly config: RealtimeCallRegistryConfig;
+  private readonly deletingSessionIds = new Set<string>();
   private readonly options: {
     createId?: () => string;
     now?: () => Date;
@@ -110,13 +111,54 @@ export class RealtimeCallRegistry {
     await this.release(call, true);
   }
 
+  hasSession(sessionId: string) {
+    if (this.reservedSessionIds.has(sessionId)) return true;
+    for (const call of this.calls.values()) {
+      if (call.sessionId === sessionId) return true;
+    }
+    return false;
+  }
+
+  releaseSessionDeletion(sessionId: string) {
+    this.deletingSessionIds.delete(sessionId);
+  }
+
+  reserveSessionDeletion(sessionId: string) {
+    if (
+      this.deletingSessionIds.has(sessionId) ||
+      this.hasSession(sessionId)
+    ) {
+      return false;
+    }
+    this.deletingSessionIds.add(sessionId);
+    return true;
+  }
+
   async start(input: {
     deviceId: string;
     sdpOffer: string;
     sessionId: string;
     signal?: AbortSignal;
   }): Promise<StartedRealtimeCall> {
-    this.requireAuthorizedSession(input.deviceId, input.sessionId);
+    if (this.deletingSessionIds.has(input.sessionId)) {
+      throw new WaveHttpError(
+        'This Hermes session is being deleted.',
+        {
+          code: 'conflict',
+          statusCode: 409,
+        },
+      );
+    }
+    await this.requireAuthorizedSession(input.deviceId, input.sessionId);
+    if (this.deletingSessionIds.has(input.sessionId)) {
+      throw new WaveHttpError(
+        'This Hermes session is being deleted.',
+        {
+          code: 'conflict',
+          statusCode: 409,
+        },
+      );
+    }
     this.reserve(input.deviceId, input.sessionId);
 
     let providerCall: RealtimeProviderCall;
@@ -457,13 +499,7 @@ export class RealtimeCallRegistry {
   }
 
   private isCallAuthorized(call: RealtimeCallState) {
-    return (
-      this.services.deviceStore.isDeviceActive(call.deviceId) &&
-      this.services.deviceStore.hasSession(
-        call.deviceId,
-        call.sessionId,
-      )
-    );
+    return this.services.deviceStore.isDeviceActive(call.deviceId);
   }
 
   private async release(call: RealtimeCallState, endProviderCall: boolean) {
@@ -485,16 +521,17 @@ export class RealtimeCallRegistry {
     this.reservedSessionIds.delete(sessionId);
   }
 
-  private requireAuthorizedSession(deviceId: string, sessionId: string) {
-    if (
-      !this.services.deviceStore.isDeviceActive(deviceId) ||
-      !this.services.deviceStore.hasSession(deviceId, sessionId)
-    ) {
+  private async requireAuthorizedSession(
+    deviceId: string,
+    sessionId: string,
+  ) {
+    if (!this.services.deviceStore.isDeviceActive(deviceId)) {
       throw new WaveHttpError('The Hermes session was not found.', {
         code: 'not_found',
         statusCode: 404,
       });
     }
+    await this.services.hermesClient.getSession(sessionId);
   }
 
   private reserve(deviceId: string, sessionId: string) {

@@ -1,18 +1,30 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Redirect, useRouter } from 'expo-router';
+import type { WaveTurnInput } from '@wave/contracts';
+import {
+  Redirect,
+  useNavigation,
+  useRouter,
+} from 'expo-router';
 import {
   Alert,
+  Attachment,
   Avatar,
+  BottomSheet,
   Button,
   CodeBlock,
-  Input,
+  FileIcon,
+  ImageIcon,
+  InputGroup,
+  Item,
   KeyboardAvoider,
   Message,
-  MicIcon,
+  PlusIcon,
   SendIcon,
   Shimmer,
+  Soundwave,
   Task,
   Typography,
+  XIcon,
 } from 'panelui-native';
 import {
   memo,
@@ -24,17 +36,26 @@ import {
 import { FlatList, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MenuButton } from '@/components/navigation/menu-button';
+import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
   historyToWaveChatMessages,
   type WaveChatPart,
   type WaveChatMessage,
 } from '@/features/chat/chat-state';
+import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { refreshWaveSessionHistory } from '@/features/sessions/refresh-session-history';
-import { waveHistoryQueryKey } from '@/features/sessions/session-query-keys';
+import {
+  waveHistoryQueryKey,
+  waveSessionQueryKey,
+} from '@/features/sessions/session-query-keys';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
-import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
+import {
+  WaveBackendError,
+  type WaveBackendClient,
+} from '@/services/wave/wave-backend-client';
 
 interface ChatScreenProps {
   sessionId: string;
@@ -44,7 +65,7 @@ export function ChatScreen({ sessionId }: ChatScreenProps) {
   const { client, state: connection } = useWaveConnection();
 
   if (connection.phase !== 'connected' || !client || !sessionId) {
-    return <Redirect href={sessionId ? '/' : '/sessions'} />;
+    return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (
     <ConnectedChatScreen
@@ -68,9 +89,13 @@ function ConnectedChatScreen({
   sessionId: string;
 }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
+  const [attachmentSheetOpen, setAttachmentSheetOpen] =
+    useState(false);
+  const attachmentState = useChatAttachments();
   const activeSessionStore = useMemo(
     () => new ActiveSessionStore(),
     [],
@@ -85,15 +110,20 @@ function ConnectedChatScreen({
     queryKey: historyKey,
   });
   const reconcileHistory = useCallback(
-    () =>
-      refreshWaveSessionHistory({
+    async () => {
+      const result = await refreshWaveSessionHistory({
         baseUrl,
         connectionId,
         load: (signal) =>
           client.getSessionHistory(sessionId, signal),
         queryClient,
         sessionId,
-      }),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: waveSessionQueryKey(connectionId, baseUrl),
+      });
+      return result;
+    },
     [
       baseUrl,
       client,
@@ -109,10 +139,45 @@ function ConnectedChatScreen({
   });
 
   useEffect(() => {
+    if (!__DEV__) return;
+    return registerMobileAgentStateProvider({
+      name: 'wave-chat',
+      read: () => ({
+        sessionId,
+        status: chat.state.status,
+      }),
+    });
+  }, [chat.state.status, sessionId]);
+
+  useEffect(() => {
     void activeSessionStore
       .save(connectionId, sessionId)
       .catch(() => undefined);
   }, [activeSessionStore, connectionId, sessionId]);
+
+  useEffect(() => {
+    if (
+      !(history.error instanceof WaveBackendError) ||
+      history.error.kind !== 'not_found'
+    ) {
+      return;
+    }
+    void activeSessionStore
+      .clear()
+      .then(() =>
+        queryClient.invalidateQueries({
+          queryKey: waveSessionQueryKey(connectionId, baseUrl),
+        }),
+      )
+      .finally(() => router.replace('/new'));
+  }, [
+    activeSessionStore,
+    baseUrl,
+    connectionId,
+    history.error,
+    queryClient,
+    router,
+  ]);
 
   const historyMessages = useMemo(
     () =>
@@ -138,9 +203,36 @@ function ConnectedChatScreen({
   const send = useCallback(() => {
     const value = input.trim();
     if (!value || busy) return;
+    const attachments = attachmentState.attachments;
+    const turnInput: WaveTurnInput =
+      attachments.length === 0
+        ? value
+        : [
+            { text: value, type: 'text' },
+            ...attachments.map((attachment) => attachment.part),
+          ];
+    const optimisticText = [
+      value,
+      ...attachments.map(
+        (attachment) => `[Attached: ${attachment.part.name}]`,
+      ),
+    ].join('\n');
     setInput('');
-    void chat.send(value);
-  }, [busy, chat, input]);
+    attachmentState.clear();
+    void chat.send(turnInput, optimisticText);
+  }, [attachmentState, busy, chat, input]);
+
+  const openDrawer = useCallback(() => {
+    navigation.getParent()?.dispatch({ type: 'OPEN_DRAWER' });
+  }, [navigation]);
+
+  const selectAttachmentSource = useCallback(
+    (action: () => Promise<void>) => {
+      setAttachmentSheetOpen(false);
+      void action();
+    },
+    [],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: WaveChatMessage }) => (
@@ -158,6 +250,19 @@ function ConnectedChatScreen({
 
   return (
     <View className="flex-1 bg-background">
+      <View
+        className="flex-row items-center px-3 pb-2"
+        style={{ paddingTop: Math.max(insets.top, 10) }}>
+        <MenuButton onPress={openDrawer} />
+        <Typography.Heading
+          className="flex-1 text-center"
+          numberOfLines={1}
+          type="h4">
+          Hermes
+        </Typography.Heading>
+        <View className="h-10 w-10" />
+      </View>
+
       {history.error ? (
         <Alert
           className="mx-4 mt-3"
@@ -223,56 +328,198 @@ function ConnectedChatScreen({
 
       <KeyboardAvoider
         bottomInset={insets.bottom}
-        className="flex-row items-end gap-2 border-t border-border bg-background px-4 pt-3"
+        className="gap-2 bg-background px-4 pt-2"
         mode="dock"
         style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
-        <Input
-          multiline
-          accessibilityLabel="Message Hermes"
-          containerClassName="flex-1"
-          placeholder="Message Hermes"
-          submitBehavior="submit"
-          testID="chat-composer-input"
-          value={input}
-          onChangeText={setInput}
-          onSubmitEditing={send}
-        />
-        {busy ? (
-          <Button
-            size="icon"
-            variant="outline"
-            accessibilityLabel="Stop Hermes response"
-            disabled={chat.state.status === 'cancelling'}
-            testID="chat-stop-button"
-            onPress={() => void chat.stop()}>
-            ■
-          </Button>
-        ) : (
-          <>
+        {attachmentState.attachments.length > 0 ? (
+          <Attachment.Group
+            className="gap-1"
+            orientation="vertical"
+            testID="chat-attachments">
+            {attachmentState.attachments.map((attachment) => (
+              <Attachment
+                key={attachment.id}
+                orientation="horizontal"
+                size="sm"
+                state="done">
+                <Attachment.Media variant="icon">
+                  {attachment.part.type === 'image' ? (
+                    <ImageIcon size={16} />
+                  ) : (
+                    <FileIcon size={16} />
+                  )}
+                </Attachment.Media>
+                <Attachment.Content>
+                  <Attachment.Title numberOfLines={1}>
+                    {attachment.part.name}
+                  </Attachment.Title>
+                  <Attachment.Description>
+                    {attachment.description}
+                  </Attachment.Description>
+                </Attachment.Content>
+                <Attachment.Actions>
+                  <Attachment.Action
+                    accessibilityLabel={`Remove ${attachment.part.name}`}
+                    testID={`remove-attachment-${attachment.id}`}
+                    onPress={() =>
+                      attachmentState.remove(attachment.id)
+                    }>
+                    <XIcon size={14} />
+                  </Attachment.Action>
+                </Attachment.Actions>
+              </Attachment>
+            ))}
+          </Attachment.Group>
+        ) : null}
+
+        {attachmentState.error ? (
+          <Alert variant="destructive" testID="attachment-error">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>
+                {attachmentState.error}
+              </Alert.Description>
+            </Alert.Content>
+          </Alert>
+        ) : attachmentState.attachments.length > 0 &&
+          !input.trim() ? (
+          <Typography.Paragraph muted className="px-2 text-xs">
+            Add a message to send the selected attachments.
+          </Typography.Paragraph>
+        ) : null}
+
+        <InputGroup
+          className="rounded-[28px] bg-muted"
+          isDisabled={busy}>
+          <InputGroup.Prefix className="ps-2 pe-1">
             <Button
               size="icon"
-              variant="outline"
-              accessibilityLabel="Start live voice"
-              testID="chat-voice-button"
-              onPress={() =>
-                router.push({
-                  pathname: '/sessions/[sessionId]/voice',
-                  params: { sessionId },
-                })
-              }>
-              <MicIcon size={18} />
+              variant="ghost"
+              accessibilityLabel="Add an attachment"
+              disabled={busy}
+              className="rounded-full"
+              testID="chat-attachment-button"
+              onPress={() => setAttachmentSheetOpen(true)}>
+              <PlusIcon size={20} />
             </Button>
-            <Button
-              size="icon"
-              accessibilityLabel="Send message to Hermes"
-              disabled={!input.trim()}
-              testID="chat-send-button"
-              onPress={send}>
-              <SendIcon size={18} />
-            </Button>
-          </>
-        )}
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            multiline
+            accessibilityLabel="Message Hermes"
+            className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
+            placeholder="Message Hermes"
+            submitBehavior="submit"
+            testID="chat-composer-input"
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={send}
+          />
+          <InputGroup.Suffix className="ps-1 pe-2">
+            {busy ? (
+              <Button
+                size="icon"
+                variant="secondary"
+                accessibilityLabel="Stop Hermes response"
+                className="rounded-full"
+                disabled={chat.state.status === 'cancelling'}
+                testID="chat-stop-button"
+                onPress={() => void chat.stop()}>
+                ■
+              </Button>
+            ) : input.trim() ? (
+              <Button
+                size="icon"
+                accessibilityLabel="Send message to Hermes"
+                className="rounded-full"
+                testID="chat-send-button"
+                onPress={send}>
+                <SendIcon size={18} />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                accessibilityLabel="Start live voice"
+                className="rounded-full"
+                testID="chat-live-button"
+                onPress={() =>
+                  router.push({
+                    pathname:
+                      '/conversation/[sessionId]/voice',
+                    params: { sessionId },
+                  })
+                }>
+                <Soundwave
+                  bars={4}
+                  height={18}
+                  state="idle"
+                  variant="pills"
+                />
+              </Button>
+            )}
+          </InputGroup.Suffix>
+        </InputGroup>
       </KeyboardAvoider>
+
+      <BottomSheet
+        open={attachmentSheetOpen}
+        onOpenChange={setAttachmentSheetOpen}>
+        <BottomSheet.Content detached blur>
+          <BottomSheet.Header
+            title="Add to your message"
+            description="Images are sent inline. Supported text files are added as text."
+          />
+          <BottomSheet.Body
+            className="gap-2"
+            contentContainerClassName="gap-2 py-2">
+            <Item
+              accessibilityLabel="Take a photo"
+              testID="attachment-source-camera"
+              onPress={() =>
+                selectAttachmentSource(attachmentState.takePhoto)
+              }>
+              <Item.Media variant="icon">
+                <ImageIcon size={20} />
+              </Item.Media>
+              <Item.Content>
+                <Item.Title>Camera</Item.Title>
+                <Item.Description>Take a new photo</Item.Description>
+              </Item.Content>
+            </Item>
+            <Item
+              accessibilityLabel="Choose a photo"
+              testID="attachment-source-photos"
+              onPress={() =>
+                selectAttachmentSource(attachmentState.pickImage)
+              }>
+              <Item.Media variant="icon">
+                <ImageIcon size={20} />
+              </Item.Media>
+              <Item.Content>
+                <Item.Title>Photos</Item.Title>
+                <Item.Description>
+                  Choose an image from your library
+                </Item.Description>
+              </Item.Content>
+            </Item>
+            <Item
+              accessibilityLabel="Choose a text file"
+              testID="attachment-source-files"
+              onPress={() =>
+                selectAttachmentSource(attachmentState.pickFile)
+              }>
+              <Item.Media variant="icon">
+                <FileIcon size={20} />
+              </Item.Media>
+              <Item.Content>
+                <Item.Title>Files</Item.Title>
+                <Item.Description>
+                  Add text, code, JSON, CSV, XML, or Markdown
+                </Item.Description>
+              </Item.Content>
+            </Item>
+          </BottomSheet.Body>
+        </BottomSheet.Content>
+      </BottomSheet>
     </View>
   );
 }

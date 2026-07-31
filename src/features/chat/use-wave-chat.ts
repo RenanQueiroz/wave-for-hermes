@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
+import type { WaveTurnInput } from '@wave/contracts';
 
 import {
   initialWaveChatState,
@@ -43,9 +44,17 @@ export function useWaveChat({
   }, []);
 
   const send = useCallback(
-    async (rawInput: string) => {
-      const input = rawInput.trim();
-      if (!input || busyRef.current || !mountedRef.current) return;
+    async (input: WaveTurnInput, optimisticText?: string) => {
+      const displayText =
+        optimisticText?.trim() ??
+        (typeof input === 'string' ? input.trim() : '');
+      if (
+        !displayText ||
+        busyRef.current ||
+        !mountedRef.current
+      ) {
+        return;
+      }
       busyRef.current = true;
       cancellingRef.current = false;
       const controller = new AbortController();
@@ -54,7 +63,7 @@ export function useWaveChat({
       const localId = `${Date.now()}-${idRef.current}`;
       dispatch({
         assistantId: `assistant-${localId}`,
-        input,
+        input: displayText,
         type: 'send',
         userId: `user-${localId}`,
       });

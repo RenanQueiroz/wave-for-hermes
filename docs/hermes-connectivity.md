@@ -9,9 +9,10 @@ dashboard's PTY or WebSocket protocol.
 The Hermes adapter is server-only under `companion/src/hermes` and currently provides:
 
 - bearer-authenticated capability probing;
-- session creation and listing;
+- paginated top-level session listing plus create, load, rename, and delete;
 - normalized session history;
-- streamed session chat;
+- streamed text and bounded multimodal session chat;
+- normalized read-only scheduled-job status;
 - typed assistant, tool-lifecycle, completion, and error events;
 - `AbortController` cancellation;
 - normalized configuration, authentication, network, timeout, server, and protocol errors;
@@ -25,7 +26,8 @@ application will instead use `WaveBackendClient` and Wave-owned normalized contr
 `packages/contracts`.
 
 The companion exposes a non-sensitive `GET /v1/status` plus authenticated Wave-owned compatibility,
-session, history, streamed-turn, cancellation, and Realtime call routes. The authenticated
+paginated session lifecycle, history, attachment-aware streamed-turn, cancellation, read-only
+scheduled-job, and Realtime call routes. The authenticated
 `GET /v1/compatibility` route performs a live Hermes capability probe. Mobile does not call Hermes
 routes directly: its contract-validating `WaveBackendClient` calls only the normalized Wave API,
 and pairing/bootstrap require the live compatibility probe before showing the connected route.
@@ -54,9 +56,12 @@ It also requires these advertised endpoints:
 
 ```text
 run_stop
+session
 session_chat_stream
 session_create
+session_delete
 session_messages
+session_update
 sessions
 ```
 
@@ -65,6 +70,27 @@ The sanitized fixture is
 values match the live response; only the deployment-specific `model` value is normalized to
 `hermes-agent` so a local provider choice does not enter the repository. Revalidate it whenever
 the pinned Hermes image changes.
+
+The pinned release also exposes `GET /api/jobs?include_disabled=true`, although that route is not
+advertised by the capability response. Wave treats it as optional: the scheduled-jobs screen shows
+a safe unavailable state if the exact read-only route is absent. The Companion normalizes only job
+identity, name, schedule, enabled/state, and run timestamps/status. Prompts, outputs, errors, and
+mutation controls do not cross the Wave boundary.
+
+## Attachments
+
+The pinned session streaming route accepts OpenAI-style text parts and `image_url` parts, including
+bounded image data URLs; it rejects generic file parts. Wave therefore supports two explicit
+attachment mappings:
+
+- Camera and Photos become validated inline JPEG data URLs, capped at 4,000,000 decoded bytes per
+  image.
+- Supported text/code documents become one labeled inert text part, capped at 128,000 characters.
+
+Every attachment turn also requires non-empty message text and permits at most four attachments.
+Unsupported binary documents are rejected in the mobile client, and the Companion revalidates the
+same strict schema before reaching Hermes. Wave does not expose Hermes file upload, path, or
+filesystem access.
 
 ## Streaming and cancellation
 
@@ -95,7 +121,7 @@ model cannot provide or replace that session ID.
 When OpenAI requests `ask_hermes`, the Companion:
 
 1. accepts only the strict bounded `{ instruction }` schema;
-2. rechecks that the device is active and still authorized for the call's trusted session;
+2. rechecks that the device is active and uses the immutable session bound during call setup;
 3. permits only one active Hermes tool request for that call;
 4. streams the instruction through `HermesClient.streamChat`;
 5. returns only a bounded structured answer or safe error through the original Realtime tool call;

@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
   WAVE_TOOL_DETAIL_MAX_CHARS,
+  WAVE_MAX_IMAGE_ATTACHMENT_BYTES,
   WAVE_API_VERSION,
   WaveAssistantDeltaEventSchema,
   WaveCreateSessionRequestSchema,
@@ -18,6 +19,8 @@ import {
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveSessionHistoryResponseSchema,
+  WaveScheduledJobListResponseSchema,
+  WaveStartTurnRequestSchema,
   WaveToolDetailSchema,
   WaveTurnEventSchema,
   WaveStatusResponseSchema,
@@ -137,6 +140,86 @@ test('bounds session inputs and strips no unknown fields', () => {
         },
       ],
       sessionId: 'session-1',
+    }).success,
+    false,
+  );
+});
+
+test('accepts bounded attachment turns and normalized read-only jobs', () => {
+  const input = WaveStartTurnRequestSchema.parse({
+    input: [
+      { text: 'Review these', type: 'text' },
+      {
+        dataUrl: 'data:image/jpeg;base64,aGVsbG8=',
+        mimeType: 'image/jpeg',
+        name: 'photo.jpg',
+        type: 'image',
+      },
+      {
+        mimeType: 'text/markdown',
+        name: 'notes.md',
+        text: '# Notes',
+        type: 'text_file',
+      },
+    ],
+  });
+  assert.equal(Array.isArray(input.input), true);
+  assert.equal(
+    WaveStartTurnRequestSchema.safeParse({
+      input: [
+        {
+          dataUrl: 'data:image/jpeg;base64,aGVsbG8=',
+          mimeType: 'image/png',
+          name: 'photo.jpg',
+          type: 'image',
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveStartTurnRequestSchema.safeParse({
+      input: [
+        { text: 'Review', type: 'text' },
+        {
+          dataUrl: 'data:image/jpeg;base64,A',
+          mimeType: 'image/jpeg',
+          name: 'invalid.jpg',
+          type: 'image',
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveStartTurnRequestSchema.safeParse({
+      input: [
+        { text: 'Review', type: 'text' },
+        {
+          dataUrl: `data:image/jpeg;base64,${'a'.repeat(
+            Math.ceil((WAVE_MAX_IMAGE_ATTACHMENT_BYTES * 4) / 3) + 4,
+          )}`,
+          mimeType: 'image/jpeg',
+          name: 'large.jpg',
+          type: 'image',
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveScheduledJobListResponseSchema.safeParse({
+      apiVersion: WAVE_API_VERSION,
+      jobs: [
+        {
+          enabled: true,
+          id: 'job-1',
+          name: 'Morning briefing',
+          prompt: 'must not cross',
+          schedule: 'Every day at 9:00 AM',
+          state: 'scheduled',
+        },
+      ],
     }).success,
     false,
   );

@@ -21,7 +21,8 @@ Radon-managed iOS and Android simulators.
 - iOS declares a product-specific `NSMicrophoneUsageDescription`.
 - Android declares the network, audio-routing, and microphone permissions required by the native
   WebRTC library.
-- Android explicitly blocks `android.permission.CAMERA`; Wave's live mode is audio-only.
+- Wave's live mode is audio-only and never requests video. Android camera permission is enabled
+  separately for the user-invoked chat attachment Camera action.
 
 The generated `ios/` and `android/` directories remain ignored and require no manual edits.
 `react-native-webrtc` autolinks its native module. Wave does not install

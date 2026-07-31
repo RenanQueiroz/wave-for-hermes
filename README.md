@@ -13,12 +13,17 @@ request to the user's Hermes agent, and returns the result to the conversation.
 Wave is intended to support:
 
 - text chat with a Hermes agent;
+- browsing, searching, continuing, renaming, and deleting the user's Hermes conversation history;
+- sending bounded images and text-based files with a message;
 - a natural, interruptible live voice conversation;
 - explicit tool calls that let the Realtime session ask Hermes to perform work;
+- focused read-only Hermes status surfaces, beginning with scheduled jobs;
 - iOS and Android, with shared behavior where the platforms allow it.
 
 Wave is not intended to manage Hermes configuration, providers, models, skills, or server
-administration. It must never ship a long-lived OpenAI API key in the app bundle.
+administration. Read-only operational status crosses only explicit normalized Wave contracts; Wave
+does not expose a generic Hermes proxy or operational mutations. It must never ship a long-lived
+OpenAI API key in the app bundle.
 
 The Hermes transport targets the authenticated Sessions API exposed by Hermes's API Server. A
 self-hosted Wave Companion is the application's only production backend: it holds the long-lived
@@ -49,15 +54,16 @@ currently includes:
   an audio-only development proof validated on iOS and Android;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
-- a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable device
-  credentials, device/session authorization, bounded streamed chat, normalized errors, redacted
-  logs, and graceful shutdown;
+- a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable
+  account-scoped device credentials, paginated Hermes conversation lifecycle routes, bounded
+  streamed chat and attachments, normalized errors, redacted logs, and graceful shutdown;
 - the official OpenAI JavaScript SDK in the Companion only for unified WebRTC call setup and
   lifecycle requests, plus the documented authenticated `ws` sideband connection, opaque
   Wave-owned call identifiers, bounded call state, background Hermes request serialization,
   exact-instruction coalescing, response-safe result delivery, and cleanup;
-- runtime-neutral Wave pairing, session, history, cancellation, error, normalized turn-event,
-  Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
+- runtime-neutral Wave pairing, paginated session lifecycle, history, attachment, read-only
+  scheduled-job, cancellation, error, normalized turn-event, Realtime call, and strict
+  `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
   strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
   limits, authenticated Realtime call start/end methods, safe normalized errors, and no direct
@@ -74,11 +80,15 @@ currently includes:
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
-- TanStack Query-backed session/history state plus PanelUI conversation list and chat routes with
+- a ChatGPT-style chat-first shell that creates a new conversation on connected launch, opens
+  account-wide history from a side drawer, searches titles, renames/deletes sessions, keeps
+  Settings and Disconnect fixed at the bottom, and exposes scheduled jobs as read-only status;
+- TanStack Query-backed paginated session/history state plus PanelUI conversation and chat routes with
   batched assistant deltas, lifecycle-safe prompt cancellation, assistant/tool history records
   grouped into coherent Hermes turns, bottom-aligned Hermes avatars, collapsed named tool rows
-  whose disclosures render bounded raw input/output as inert code, active-session restoration, and
-  a keyboard-sticky native composer that keeps Send and Stop controls reachable;
+  whose disclosures render bounded raw input/output as inert code, current-session tracking, and
+  a keyboard-sticky rounded composer with an internal attachment control and exactly one trailing
+  action: Send when text is present, live voice when it is empty, or Stop during an active turn;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - a live Homelab deployment with unpublished Hermes/Companion ports, Tailscale-only HTTPS ingress
@@ -89,9 +99,13 @@ currently includes:
   the final model response, and cleanup without printing secrets or conversation content;
 - automated dependency, import, configuration, and production-bundle boundary checks.
 
-The visible app begins with the real connection flow, then opens the user's authorized Hermes
-conversations and streams normalized text turns. From an active chat, the microphone control opens
-the live-voice route, establishes a native WebRTC call through the Companion, and can automatically
+The visible app begins with the connection flow, then opens a newly created Hermes conversation.
+The hamburger drawer provides the full top-level Hermes history, title search, conversation
+lifecycle actions, Settings, Disconnect, and focused read-only scheduled-job status. The composer
+can attach bounded images and supported text files. Its trailing action changes between Send and a
+live-wave control based on whether trimmed text is present, so both are never shown together. From
+an active chat, the live-wave control opens the live-voice route, establishes a native WebRTC call
+through the Companion, and can automatically
 dispatch a strictly validated `ask_hermes({ instruction })` call against the trusted active Hermes
 session. Physical iOS, audio-route, interruption, barge-in, release-build, and realistic network
 validation remain before live voice is production-ready. See the tracked
@@ -165,8 +179,9 @@ private network, persistent authorization database, Tailscale-only `/wave/` Ngin
 secrets, pairing/revocation commands, and live integration validation.
 
 Create and run a local development build when native dependencies change. The current client
-requires `react-native-webrtc`, `expo-secure-store`, and `react-native-keyboard-controller`, so an
-older installed development client cannot run it:
+requires `react-native-webrtc`, `expo-secure-store`, `react-native-keyboard-controller`,
+`expo-image-picker`, `expo-document-picker`, and `expo-file-system`, so an older installed
+development client cannot run it:
 
 ```bash
 npx expo prebuild --clean
@@ -200,13 +215,20 @@ check. **Disconnect this device** removes only the phone's local credential; use
 `npm run companion:revoke -- <device-id>` when the credential must also be invalidated server-side.
 The full operator workflow is in [`companion/README.md`](./companion/README.md).
 
-After pairing, Wave lists only sessions authorized for that device. Start a new conversation or
-explicitly import existing Hermes sessions, then send text from the chat route. Hermes remains the
-durable history source; Wave stores only the active session identifier so it can resume that
-conversation after process restart. Tool calls are collapsed by default. A user can expand one to
-inspect its raw input and output as inert, copyable text; Wave does not parse it as Markdown or
-execute it. Each field is limited to 64,000 characters, tool details share a 512,000-character
-history-response budget, and a visible label identifies truncated values.
+After pairing, Wave creates and opens a new Hermes conversation. The drawer pages through every
+top-level session returned by the Hermes account and supports title search, continue, rename, and
+delete. Hermes remains the durable history source; clearing history on Hermes is reflected after
+the next query refresh, and opening a deleted session returns the app to a new conversation. Tool
+calls are collapsed by default. A user can expand one to inspect its raw input and output as inert,
+copyable text; Wave does not parse it as Markdown or execute it. Each field is limited to 64,000
+characters, tool details share a 512,000-character history-response budget, and a visible label
+identifies truncated values.
+
+The composer accepts up to four attachments with a non-empty message. Camera and Photos are
+converted to bounded inline JPEG data (4 MB per image). Files are restricted to supported
+text/code/JSON/CSV/XML/Markdown content and 128,000 characters. Unsupported binary documents are
+rejected locally. The Companion validates the same strict turn schema before translating it to the
+pinned Hermes multimodal chat format.
 
 For UI development before the private Hermes API is available, the companion also provides an
 explicitly development-only, in-memory fixture:
@@ -226,8 +248,9 @@ state disappears when it stops.
 After installing `react-native-webrtc` or changing microphone permissions, rebuild the native
 development client; a JavaScript reload alone cannot add native code. In a paired development
 build, open **Development tools** and select **Start proof** to verify microphone acquisition, a
-local peer negotiation, a remote audio track, a data-channel echo, and cleanup. Wave requests
-microphone access only and explicitly blocks the Android camera permission.
+local peer negotiation, a remote audio track, a data-channel echo, and cleanup. Realtime remains
+audio-only. Camera access is requested separately and only after the user chooses the chat
+attachment Camera action.
 
 The proof remains a small local diagnostic separate from the production OpenAI Realtime transport.
 See

@@ -1,31 +1,30 @@
-import { Stack } from 'expo-router';
+import { Drawer } from 'expo-router/drawer';
+
+import { WaveDrawerContent } from '@/features/navigation/wave-drawer-content';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function AppLayout() {
+  const theme = useTheme();
+
   return (
-    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
-      <Stack.Screen
-        name="sessions"
-        options={{
-          gestureEnabled: false,
-          headerBackVisible: false,
-          title: 'Wave',
-        }}
-      />
-      <Stack.Screen
-        name="sessions/[sessionId]"
-        options={{ title: 'Hermes' }}
-      />
-      <Stack.Screen
-        name="sessions/[sessionId]/voice"
-        options={{
-          presentation: 'modal',
-          title: 'Live voice',
-        }}
-      />
-      <Stack.Screen
-        name="development"
-        options={{ title: 'Development' }}
-      />
-    </Stack>
+    <Drawer
+      drawerContent={(props) => <WaveDrawerContent {...props} />}
+      screenOptions={{
+        drawerStyle: {
+          backgroundColor: theme.background,
+          borderRightColor: theme.backgroundElement,
+          width: '88%',
+        },
+        headerShown: false,
+        overlayColor: 'rgba(0, 0, 0, 0.36)',
+        swipeEdgeWidth: 36,
+      }}>
+      <Drawer.Screen name="new" />
+      <Drawer.Screen name="conversation" />
+      <Drawer.Screen name="search" />
+      <Drawer.Screen name="operations/jobs" />
+      <Drawer.Screen name="settings" />
+      <Drawer.Screen name="development" />
+    </Drawer>
   );
 }

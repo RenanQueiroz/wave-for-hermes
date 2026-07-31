@@ -99,7 +99,15 @@ test('streams authenticated ordered turns and cancels an abandoned reader', asyn
       `Bearer ${credential}`,
     );
     assert.deepEqual(JSON.parse(String(init?.body)), {
-      input: 'Hello Hermes',
+      input: [
+        { text: 'Hello Hermes', type: 'text' },
+        {
+          mimeType: 'text/plain',
+          name: 'note.txt',
+          text: 'A note',
+          type: 'text_file',
+        },
+      ],
     });
     const body = new ReadableStream<Uint8Array>({
       cancel() {
@@ -120,7 +128,15 @@ test('streams authenticated ordered turns and cancels an abandoned reader', asyn
     credential,
     fetch,
   });
-  const stream = client.streamTurn('session-1', ' Hello Hermes ');
+  const stream = client.streamTurn('session-1', [
+    { text: ' Hello Hermes ', type: 'text' },
+    {
+      mimeType: 'text/plain',
+      name: 'note.txt',
+      text: 'A note',
+      type: 'text_file',
+    },
+  ]);
 
   assert.equal((await stream.next()).value?.type, 'turn.started');
   await stream.return(undefined);

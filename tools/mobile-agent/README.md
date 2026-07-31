@@ -185,12 +185,14 @@ npm run smoke:pairing -- --platform android
 Use a fresh fixture/code for each platform because a code can be redeemed only once. See
 [`companion/README.md`](../../companion/README.md) for the fixture's trust boundary.
 
-`smoke:chat` uses the same environment variables and one-time-code rule. It pairs, creates a
-conversation, cancels a deliberately suspended fixture turn and proves the composer is reusable,
+`smoke:chat` uses the same environment variables and one-time-code rule. Pairing now lands directly
+in a newly created conversation. The smoke cancels a deliberately suspended fixture turn and
+proves the composer is reusable,
 sends a completed fixture message, waits for the assistant text and sanitized tool task, confirms
 raw fixture input/output is absent while collapsed, expands and collapses the disclosure through
 its accessibility actions, verifies the inert raw detail text while open, terminates and relaunches
-Wave to verify active-session/history restoration, then navigates back and disconnects. It also
+Wave, opens the drawer, returns to the original conversation by its development-state session ID,
+verifies canonical history restoration, then disconnects from the drawer. It also
 disables action traces for text and lifecycle operations and deletes the owned Appium session. The
 runner prints secret-free progress, clears and verifies every controlled input before submission,
 waits for the fixture's first cancellation delta before tapping Stop, and uses stable iOS

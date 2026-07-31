@@ -15,6 +15,7 @@ import type {
   HermesClient,
   HermesStreamEvent,
 } from '../src/hermes/hermes-types.ts';
+import { HermesClientError } from '../src/hermes/hermes-errors.ts';
 import { RealtimeCallRegistry } from '../src/realtime/realtime-call-registry.ts';
 import type {
   RealtimeFunctionCall,
@@ -71,7 +72,6 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
   });
   const first = pairDevice(store, 'First Realtime device');
   const second = pairDevice(store, 'Second Realtime device');
-  store.bindSession(first.device.id, 'hermes-session-1');
 
   const status = WaveStatusResponseSchema.parse(
     (
@@ -227,10 +227,30 @@ function createHermesClient(): HermesClient {
     async createSession() {
       return { id: 'unused' };
     },
+    async deleteSession() {
+      return false;
+    },
+    async getSession(sessionId) {
+      if (sessionId !== 'hermes-session-1') {
+        throw new HermesClientError('Session not found.', {
+          kind: 'not_found',
+          status: 404,
+        });
+      }
+      return { id: sessionId };
+    },
     async getSessionMessages() {
       return [];
     },
     async listSessions() {
+      return {
+        hasMore: false,
+        limit: 50,
+        offset: 0,
+        sessions: [],
+      };
+    },
+    async listScheduledJobs() {
       return [];
     },
     async probeCapabilities() {
@@ -251,6 +271,9 @@ function createHermesClient(): HermesClient {
     async stopRun() {},
     streamChat() {
       return emptyHermesStream();
+    },
+    async updateSession() {
+      return { id: 'unused' };
     },
   };
 }

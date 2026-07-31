@@ -9,6 +9,10 @@ user's Hermes agent to perform work.
 Keep the product focused:
 
 - Build conversation and live-voice experiences.
+- Let the paired user browse, search, rename, delete, and continue every top-level conversation
+  exposed by their Hermes server.
+- Focused read-only operational status, such as scheduled-job state, may be shown through an
+  explicit normalized Wave contract. Do not add generic proxying or operational mutations.
 - Do not add Hermes configuration, provider/model management, skill administration, or server
   administration.
 - Treat all external tool arguments and responses as untrusted data.
@@ -106,7 +110,8 @@ documentation before implementing UI.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
 - Wave does not add a separate user-approval prompt before `ask_hermes`. Dispatch it automatically
-  only after strict schema validation, device/session authorization, and rate/concurrency checks;
+  only after strict schema validation, active-device authorization, trusted session binding, and
+  rate/concurrency checks;
   Hermes's own tool safety policy remains authoritative.
 - Bind the active Hermes session to trusted companion call state. Do not accept a model-controlled
   Hermes session ID in `ask_hermes` arguments.
@@ -121,6 +126,14 @@ documentation before implementing UI.
   returning to text chat. Keep casual Realtime-only speech ephemeral rather than inventing a second
   durable transcript.
 - Do not silently broaden a chat tool into arbitrary administration access.
+- Device credentials authorize the paired user to the Wave Gateway account. They do not create
+  per-device copies or allowlists of Hermes sessions. Session IDs must still be validated and
+  resolved by Hermes, and active turn/call conflicts must be enforced before destructive changes.
+- Keep conversation listing paginated. Rename and delete through typed Wave lifecycle routes;
+  deleting a session with an active turn or Realtime call must fail explicitly.
+- Turn attachments use strict Wave parts. Mobile may send up to four bounded inline images or
+  bounded text-file contents with a non-empty message. Reject unsupported binary documents before
+  dispatch and never expose a generic Hermes upload or filesystem endpoint.
 
 ## Chat tool presentation
 
@@ -140,8 +153,8 @@ documentation before implementing UI.
   behind a focused `RealtimeTransport`/controller boundary; React components render snapshots and
   do not own raw WebRTC objects.
 - Wave live voice is audio-only. Keep product-specific microphone configuration in `app.json` and
-  keep Android camera permission explicitly blocked unless the product contract deliberately
-  changes.
+  do not request video for Realtime. Camera permission is deliberately enabled only for the
+  user-invoked chat attachment flow; do not make it part of voice setup or background capture.
 - Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
   SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
   native edits or repository-owned config plugin.

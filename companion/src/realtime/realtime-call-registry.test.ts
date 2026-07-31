@@ -11,6 +11,7 @@ import type {
   HermesCreateSessionInput,
   HermesListSessionsOptions,
   HermesRequestOptions,
+  HermesSessionPage,
   HermesSessionSummary,
   HermesStreamChatInput,
   HermesStreamEvent,
@@ -117,6 +118,14 @@ class FakeHermesClient implements HermesClient {
     throw new Error('Not implemented for this test.');
   }
 
+  async deleteSession(): Promise<boolean> {
+    throw new Error('Not implemented for this test.');
+  }
+
+  async getSession(sessionId: string): Promise<HermesSessionSummary> {
+    return { id: sessionId };
+  }
+
   async getSessionMessages(
     _sessionId: string,
     _options: HermesRequestOptions = {},
@@ -126,7 +135,16 @@ class FakeHermesClient implements HermesClient {
 
   async listSessions(
     _options: HermesListSessionsOptions = {},
-  ): Promise<HermesSessionSummary[]> {
+  ): Promise<HermesSessionPage> {
+    return {
+      hasMore: false,
+      limit: 50,
+      offset: 0,
+      sessions: [],
+    };
+  }
+
+  async listScheduledJobs() {
     return [];
   }
 
@@ -140,8 +158,16 @@ class FakeHermesClient implements HermesClient {
     sessionId: string,
     input: HermesStreamChatInput,
   ): AsyncGenerator<HermesStreamEvent> {
-    this.instructions.push(input.input);
+    this.instructions.push(
+      typeof input.input === 'string'
+        ? input.input
+        : JSON.stringify(input.input),
+    );
     return this.stream?.(input) ?? completedStream(sessionId);
+  }
+
+  async updateSession(): Promise<HermesSessionSummary> {
+    throw new Error('Not implemented for this test.');
   }
 }
 
@@ -191,6 +217,45 @@ test('binds a Realtime call to trusted device and session state', async () => {
   );
   await context.registry.end(context.deviceId, started.id);
   assert.equal(context.provider.calls[0]?.ended, true);
+  closeContext(context);
+});
+
+test('makes session deletion mutually exclusive with Realtime setup', async () => {
+  const context = createContext();
+
+  assert.equal(
+    context.registry.reserveSessionDeletion(context.sessionId),
+    true,
+  );
+  assert.equal(
+    context.registry.reserveSessionDeletion(context.sessionId),
+    false,
+  );
+  await assert.rejects(
+    context.registry.start({
+      deviceId: context.deviceId,
+      sdpOffer: SDP_OFFER,
+      sessionId: context.sessionId,
+    }),
+    /being deleted/,
+  );
+
+  context.registry.releaseSessionDeletion(context.sessionId);
+  const started = await context.registry.start({
+    deviceId: context.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: context.sessionId,
+  });
+  assert.equal(
+    context.registry.reserveSessionDeletion(context.sessionId),
+    false,
+  );
+  await context.registry.end(context.deviceId, started.id);
+  assert.equal(
+    context.registry.reserveSessionDeletion(context.sessionId),
+    true,
+  );
+  context.registry.releaseSessionDeletion(context.sessionId);
   closeContext(context);
 });
 
@@ -570,7 +635,6 @@ function createContext(
   );
   assert.ok(redeemed);
   const sessionId = 'hermes-session-1';
-  store.bindSession(redeemed.device.id, sessionId);
   const provider = new FakeRealtimeProvider();
   const hermes = new FakeHermesClient();
   const registry = new RealtimeCallRegistry(

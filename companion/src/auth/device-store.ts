@@ -21,13 +21,10 @@ export interface RedeemedDevice {
 
 export interface DeviceStore {
   authenticateDevice(credential: string): AuthenticatedDevice | undefined;
-  bindSession(deviceId: string, sessionId: string): void;
   close(): void;
-  hasSession(deviceId: string, sessionId: string): boolean;
   isDeviceActive(deviceId: string): boolean;
   issuePairingCode(expiresAt: Date): IssuedPairingCode;
   listDevices(): DeviceRecord[];
-  listSessionIds(deviceId: string): string[];
   redeemPairingCode(
     code: string,
     deviceName: string,

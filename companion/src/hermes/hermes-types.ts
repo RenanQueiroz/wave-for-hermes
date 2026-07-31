@@ -46,6 +46,25 @@ export interface HermesSessionSummary {
   toolCallCount?: number;
 }
 
+export interface HermesSessionPage {
+  hasMore: boolean;
+  limit: number;
+  offset: number;
+  sessions: HermesSessionSummary[];
+}
+
+export interface HermesScheduledJob {
+  createdAt?: string;
+  enabled: boolean;
+  id: string;
+  lastRunAt?: string;
+  lastStatus?: string;
+  name: string;
+  nextRunAt?: string;
+  schedule: string;
+  state: string;
+}
+
 export type HermesMessageRole = 'assistant' | 'system' | 'tool' | 'unknown' | 'user';
 
 export interface HermesToolCall {
@@ -145,8 +164,29 @@ export interface HermesCreateSessionInput {
   title?: string;
 }
 
+export interface HermesUpdateSessionInput {
+  signal?: AbortSignal;
+  title: string;
+}
+
+export type HermesChatContent =
+  | string
+  | (
+      | {
+          text: string;
+          type: 'text';
+        }
+      | {
+          image_url: {
+            detail: 'auto';
+            url: string;
+          };
+          type: 'image_url';
+        }
+    )[];
+
 export interface HermesStreamChatInput {
-  input: string;
+  input: HermesChatContent;
   instructions?: string;
   signal?: AbortSignal;
 }
@@ -157,12 +197,27 @@ export interface HermesRequestOptions {
 
 export interface HermesClient {
   createSession(input?: HermesCreateSessionInput): Promise<HermesSessionSummary>;
+  deleteSession(
+    sessionId: string,
+    options?: HermesRequestOptions,
+  ): Promise<boolean>;
+  getSession(
+    sessionId: string,
+    options?: HermesRequestOptions,
+  ): Promise<HermesSessionSummary>;
   getSessionMessages(
     sessionId: string,
     options?: HermesRequestOptions,
   ): Promise<HermesConversationMessage[]>;
-  listSessions(options?: HermesListSessionsOptions): Promise<HermesSessionSummary[]>;
+  listScheduledJobs(
+    options?: HermesRequestOptions,
+  ): Promise<HermesScheduledJob[]>;
+  listSessions(options?: HermesListSessionsOptions): Promise<HermesSessionPage>;
   probeCapabilities(options?: HermesRequestOptions): Promise<HermesCapabilityReport>;
   stopRun(runId: string, options?: HermesRequestOptions): Promise<void>;
   streamChat(sessionId: string, input: HermesStreamChatInput): AsyncGenerator<HermesStreamEvent>;
+  updateSession(
+    sessionId: string,
+    input: HermesUpdateSessionInput,
+  ): Promise<HermesSessionSummary>;
 }

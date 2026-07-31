@@ -94,13 +94,36 @@ function createFixtureHermesClient(): HermesClient {
       messages.set(session.id, []);
       return session;
     },
+    async deleteSession(sessionId: string): Promise<boolean> {
+      const index = sessions.findIndex((session) => session.id === sessionId);
+      if (index < 0) return false;
+      sessions.splice(index, 1);
+      messages.delete(sessionId);
+      return true;
+    },
+    async getSession(sessionId: string): Promise<HermesSessionSummary> {
+      const session = sessions.find((candidate) => candidate.id === sessionId);
+      if (!session) throw new Error('Fixture session not found.');
+      return session;
+    },
     async getSessionMessages(
       sessionId: string,
     ): Promise<HermesConversationMessage[]> {
       return [...(messages.get(sessionId) ?? [])];
     },
-    async listSessions(): Promise<HermesSessionSummary[]> {
-      return sessions;
+    async listScheduledJobs() {
+      return [];
+    },
+    async listSessions(options = {}) {
+      const limit = options.limit ?? 50;
+      const offset = options.offset ?? 0;
+      const page = sessions.slice(offset, offset + limit);
+      return {
+        hasMore: offset + page.length < sessions.length,
+        limit,
+        offset,
+        sessions: page,
+      };
     },
     async probeCapabilities(): Promise<HermesCapabilityReport> {
       return {
@@ -221,7 +244,14 @@ function createFixtureHermesClient(): HermesClient {
       const history = messages.get(sessionId) ?? [];
       history.push(
         {
-          content: input.input,
+          content:
+            typeof input.input === 'string'
+              ? input.input
+              : input.input
+                  .flatMap((part) =>
+                    part.type === 'text' ? [part.text] : [],
+                  )
+                  .join('\n'),
           id: `fixture-user-${turnCount}`,
           role: 'user',
           sessionId,
@@ -274,6 +304,12 @@ function createFixtureHermesClient(): HermesClient {
         sequence: 7,
         type: 'done',
       };
+    },
+    async updateSession(sessionId, input) {
+      const session = sessions.find((candidate) => candidate.id === sessionId);
+      if (!session) throw new Error('Fixture session not found.');
+      session.title = input.title;
+      return session;
     },
   };
 }

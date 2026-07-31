@@ -21,7 +21,7 @@ export function ConnectionGate() {
     <Redirect
       href={
         state.phase === 'connected'
-          ? '/sessions'
+          ? '/new'
           : '/connect'
       }
     />

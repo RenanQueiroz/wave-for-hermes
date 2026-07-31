@@ -20,6 +20,7 @@ export interface ActiveTurn {
 }
 
 export class ActiveTurnRegistry {
+  private readonly deletingSessionIds = new Set<string>();
   private readonly maxActiveTurns: number;
   private readonly turns = new Map<string, ActiveTurn>();
 
@@ -50,7 +51,38 @@ export class ActiveTurnRegistry {
     this.turns.delete(turnId);
   }
 
+  hasSession(sessionId: string) {
+    for (const turn of this.turns.values()) {
+      if (turn.sessionId === sessionId) return true;
+    }
+    return false;
+  }
+
+  releaseSessionDeletion(sessionId: string) {
+    this.deletingSessionIds.delete(sessionId);
+  }
+
+  reserveSessionDeletion(sessionId: string) {
+    if (
+      this.deletingSessionIds.has(sessionId) ||
+      this.hasSession(sessionId)
+    ) {
+      return false;
+    }
+    this.deletingSessionIds.add(sessionId);
+    return true;
+  }
+
   start(deviceId: string, sessionId: string): ActiveTurn {
+    if (this.deletingSessionIds.has(sessionId)) {
+      throw new WaveHttpError(
+        'This Hermes session is being deleted.',
+        {
+          code: 'conflict',
+          statusCode: 409,
+        },
+      );
+    }
     if (this.turns.size >= this.maxActiveTurns) {
       throw new WaveHttpError(
         'Wave Companion is already handling its maximum number of active turns.',

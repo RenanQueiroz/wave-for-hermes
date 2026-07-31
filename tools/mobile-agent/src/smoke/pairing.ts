@@ -25,10 +25,9 @@ const CHAT_TOOL_NAME = 'fixture_lookup';
 const CHAT_TOOL_OUTPUT = JSON.stringify({
   result: 'Development fixture lookup completed.',
 });
-const CONNECTION_SUCCESS_ID = 'connection-success';
 const CONNECTION_DISCONNECT_BUTTON_ID = 'connection-disconnect-button';
-const CREATE_SESSION_BUTTON_ID = 'create-session-button';
-const DISCONNECT_BUTTON_ID = 'disconnect-device-button';
+const DRAWER_DISCONNECT_BUTTON_ID = 'drawer-disconnect';
+const OPEN_DRAWER_BUTTON_ID = 'open-navigation-menu';
 const PAIR_BUTTON_ID = 'pair-device-button';
 const SEND_BUTTON_ID = 'chat-send-button';
 
@@ -166,7 +165,7 @@ export async function runPairingSmoke(
       connection.client,
       sessionId,
       options.platform,
-      CONNECTION_SUCCESS_ID,
+      CHAT_COMPOSER_ID,
       false,
       60,
     );
@@ -182,7 +181,13 @@ export async function runPairingSmoke(
       connection.client,
       sessionId,
       options.platform,
-      DISCONNECT_BUTTON_ID,
+      OPEN_DRAWER_BUTTON_ID,
+    );
+    await tapNode(
+      connection.client,
+      sessionId,
+      options.platform,
+      DRAWER_DISCONNECT_BUTTON_ID,
     );
     await waitForNode(
       connection.client,
@@ -296,6 +301,16 @@ export async function runChatSmoke(
 
     await pairDevice(connection.client, sessionId, options, 'chat');
     writeSmokeProgress('chat', 'fixture pairing complete');
+    const chatState = await callToolText(
+      connection.client,
+      'mobile_read_state',
+      { provider: 'wave-chat' },
+    );
+    assertToolSucceeded('read-chat-state', chatState);
+    const fixtureConversationId = readString(
+      parseJsonObject(chatState.text, 'wave-chat state'),
+      'sessionId',
+    );
     report.steps.push({
       detail:
         'Paired with the development fixture and passed the authenticated compatibility check.',
@@ -303,12 +318,6 @@ export async function runChatSmoke(
       ok: true,
     });
 
-    await tapNode(
-      connection.client,
-      sessionId,
-      options.platform,
-      CREATE_SESSION_BUTTON_ID,
-    );
     await waitForNode(
       connection.client,
       sessionId,
@@ -453,6 +462,26 @@ export async function runChatSmoke(
 
     await lifecycle(connection.client, sessionId, 'terminate');
     await lifecycle(connection.client, sessionId, 'activate');
+    await waitForNode(
+      connection.client,
+      sessionId,
+      options.platform,
+      CHAT_COMPOSER_ID,
+      false,
+      120,
+    );
+    await tapNode(
+      connection.client,
+      sessionId,
+      options.platform,
+      OPEN_DRAWER_BUTTON_ID,
+    );
+    await tapNode(
+      connection.client,
+      sessionId,
+      options.platform,
+      `drawer-session-${fixtureConversationId}`,
+    );
     await waitForText(
       connection.client,
       sessionId,
@@ -478,17 +507,17 @@ export async function runChatSmoke(
       ok: true,
     });
 
-    const back = await callToolText(connection.client, 'mobile_press_key', {
-      captureTrace: false,
-      key: 'back',
-      sessionId,
-    });
-    assertToolSucceeded('navigate-back', back);
     await tapNode(
       connection.client,
       sessionId,
       options.platform,
-      DISCONNECT_BUTTON_ID,
+      OPEN_DRAWER_BUTTON_ID,
+    );
+    await tapNode(
+      connection.client,
+      sessionId,
+      options.platform,
+      DRAWER_DISCONNECT_BUTTON_ID,
     );
     await waitForNode(
       connection.client,
@@ -499,7 +528,7 @@ export async function runChatSmoke(
     report.localDisconnectVerified = true;
     report.steps.push({
       detail:
-        'Returned to the conversation list, cleared the local credential, and reached pairing.',
+        'Opened the conversation drawer, cleared the local credential, and reached pairing.',
       name: 'local-disconnect',
       ok: true,
     });
@@ -590,9 +619,9 @@ async function pairDevice(
     client,
     sessionId,
     options.platform,
-    CONNECTION_SUCCESS_ID,
+    CHAT_COMPOSER_ID,
     false,
-    60,
+    120,
   );
 }
 
@@ -893,6 +922,37 @@ async function ensurePairingScreen(
         sessionId,
         platform,
         CONNECTION_DISCONNECT_BUTTON_ID,
+      );
+      await waitForNode(
+        client,
+        sessionId,
+        platform,
+        PAIR_BUTTON_ID,
+        true,
+        60,
+      );
+      return;
+    }
+
+    const menuButton = await findNode(
+      client,
+      sessionId,
+      platform,
+      OPEN_DRAWER_BUTTON_ID,
+      true,
+    );
+    if (menuButton) {
+      await tapNode(
+        client,
+        sessionId,
+        platform,
+        OPEN_DRAWER_BUTTON_ID,
+      );
+      await tapNode(
+        client,
+        sessionId,
+        platform,
+        DRAWER_DISCONNECT_BUTTON_ID,
       );
       await waitForNode(
         client,

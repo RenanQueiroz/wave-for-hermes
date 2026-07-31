@@ -18,9 +18,12 @@ export const REQUIRED_HERMES_FEATURES = [
 
 export const REQUIRED_HERMES_ENDPOINTS = [
   'run_stop',
+  'session',
   'session_chat_stream',
   'session_create',
+  'session_delete',
   'session_messages',
+  'session_update',
   'sessions',
 ] as const;
 

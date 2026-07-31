@@ -8,6 +8,10 @@ and turn events may include explicit raw tool input/output fields for the paired
 Companion bounds each field to 64,000 characters, applies a 512,000-character aggregate budget,
 and never forwards the upstream tool-call identifier.
 
+A paired device credential represents access to this Wave Gateway account. It can browse and
+continue the same top-level Hermes conversation history as other paired devices. The Companion
+does not maintain per-device session copies or bindings.
+
 ## Run locally
 
 Use Node.js 24 and the repository's root install:
@@ -142,18 +146,26 @@ Authorization: Bearer <device-credential>
 | `GET /v1/status` | Public | Non-sensitive service and feature status |
 | `POST /v1/pairings/redeem` | One-time code | Create a named device and return its credential once |
 | `GET /v1/compatibility` | Device | Probe the live Hermes capability contract |
-| `GET /v1/sessions` | Device | List only Hermes sessions already bound to this device |
-| `POST /v1/sessions/import` | Device | Bind up to 200 existing Hermes sessions to this device |
-| `POST /v1/sessions` | Device | Create and bind a Hermes session |
-| `GET /v1/sessions/:sessionId/messages` | Device and session | Read normalized history |
-| `POST /v1/sessions/:sessionId/turns` | Device and session | Stream normalized Wave SSE events |
-| `POST /v1/sessions/:sessionId/turns/:turnId/cancel` | Device and session | Cancel that device's active turn |
-| `POST /v1/sessions/:sessionId/realtime/calls` | Device and session | Exchange a bounded SDP offer for transient Wave call state |
+| `GET /v1/operations/jobs` | Device | Read normalized scheduled-job status without prompts or controls |
+| `GET /v1/sessions?limit=&offset=` | Device | Page through top-level Hermes sessions |
+| `POST /v1/sessions` | Device | Create a Hermes session |
+| `PATCH /v1/sessions/:sessionId` | Device | Rename a Hermes session |
+| `DELETE /v1/sessions/:sessionId` | Device | Delete an idle Hermes session |
+| `GET /v1/sessions/:sessionId/messages` | Device | Read normalized history |
+| `POST /v1/sessions/:sessionId/turns` | Device | Stream normalized Wave SSE events |
+| `POST /v1/sessions/:sessionId/turns/:turnId/cancel` | Device | Cancel that device's active turn |
+| `POST /v1/sessions/:sessionId/realtime/calls` | Device | Exchange a bounded SDP offer for transient Wave call state |
 | `POST /v1/realtime/calls/:callId/end` | Device and call owner | End and discard a Wave Realtime call |
 
 The client cannot select a Hermes model, provider, endpoint, header, run ID, or arbitrary
-operation. Unknown fields fail validation. Session lookup deliberately returns `404` for both
-missing and unauthorized sessions.
+operation. Unknown fields fail validation. The scheduled-jobs route is a fixed read-only adapter,
+not a generic Hermes proxy. Hermes remains authoritative for missing sessions.
+
+Turn input is either bounded text or a strict content array containing one non-empty message plus
+up to four attachments. Images are validated data URLs capped at 4,000,000 decoded bytes each.
+Text-file content is capped at 128,000 characters. The adapter converts images to Hermes
+`image_url` content and text files to inert labeled text; it does not expose Hermes upload or
+filesystem endpoints.
 
 Turn streams use `text/event-stream` with ordered, versioned Wave events:
 
@@ -176,7 +188,7 @@ abort the upstream Hermes request.
 `features.realtime` is true only when `OPENAI_API_KEY` was available at startup. Without it, text
 chat continues normally and Realtime call creation returns a safe unavailable response.
 
-The mobile client sends a strict SDP offer for an already-authorized Hermes session. The Companion
+The mobile client sends a strict SDP offer for an existing Hermes session. The Companion
 uses the official OpenAI JavaScript SDK to perform unified WebRTC call setup, attaches its
 server-only sideband WebSocket, and returns only the SDP answer, expiry, and an opaque Wave-owned
 call ID. OpenAI's API key and call ID never cross the Wave API boundary.
@@ -188,8 +200,9 @@ do not add replicas without sticky ownership or coordinated call state.
 
 The Realtime session exposes exactly one function:
 `ask_hermes({ instruction: string })`. Its JSON Schema is generated from the same strict runtime
-schema used at dispatch. The Companion ignores model-selected session identifiers, rechecks device
-and trusted session authorization before every invocation, executes one Hermes request at a time
+schema used at dispatch. The Companion ignores model-selected session identifiers, rechecks that
+the device remains active before every invocation, keeps the server-bound session immutable, and
+executes one Hermes request at a time
 for the bound session, allows at most eight active-or-waiting requests per call, caps a call at 128
 total tool requests, and returns only bounded structured success/error results. Additional requests
 wait in order instead of cancelling the active Hermes run. Exact normalized instructions are
@@ -212,7 +225,7 @@ prompt; Hermes's own tool safety policy remains authoritative.
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1-mini` | Server-selected cost-efficient Realtime model |
 | `OPENAI_REALTIME_VOICE` | `marin` | Server-selected Realtime voice |
 | `HERMES_ALLOW_INSECURE_HTTP` | `false` | Allow explicit private/local HTTP upstream traffic |
-| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device and session authorization database |
+| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device authorization database |
 | `WAVE_HOST` | `127.0.0.1` | Listener address |
 | `WAVE_PORT` | `8787` | Listener port |
 | `WAVE_LOG_LEVEL` | `info` | Fastify/Pino log level |
@@ -228,7 +241,8 @@ prompt; Hermes's own tool safety policy remains authoritative.
 | `WAVE_REALTIME_TOOL_TIMEOUT_MS` | `120000` | Per-tool timeout, from 10 seconds through 10 minutes |
 
 The Hermes total timeout must exceed both event timeouts, and the Realtime call lifetime must
-exceed its tool timeout. Request bodies are limited to 64 KiB. The process applies a
+exceed its tool timeout. Request bodies are limited to 6,000,000 bytes; stricter turn and
+attachment limits are enforced by the shared contract. The process applies a
 120-request-per-minute client-IP limit, a five-attempt-per-minute pairing limit, and a
 five-attempt-per-minute Realtime setup limit. These counters are process-local; run one companion
 replica until shared limiters, coordinated authorization/call state, and call routing are

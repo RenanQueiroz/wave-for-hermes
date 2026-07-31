@@ -93,7 +93,10 @@ test('creates, lists, and loads normalized session history', async () => {
     ),
     jsonResponse({
       data: [{ id: 'session-1', message_count: 2, title: 'Wave' }],
+      has_more: false,
+      limit: 50,
       object: 'list',
+      offset: 0,
     }),
     jsonResponse({
       data: [
@@ -150,7 +153,8 @@ test('creates, lists, and loads normalized session history', async () => {
   const messages = await client.getSessionMessages('session-1');
 
   assert.equal(created.id, 'session-1');
-  assert.equal(sessions[0]?.messageCount, 2);
+  assert.equal(sessions.sessions[0]?.messageCount, 2);
+  assert.equal(sessions.hasMore, false);
   assert.deepEqual(
     messages.map(({ content, role }) => ({ content, role })),
     [
@@ -170,6 +174,107 @@ test('creates, lists, and loads normalized session history', async () => {
   assert.equal(messages[2]?.toolCallId, 'call-1');
   assert.deepEqual(JSON.parse(requests[0]?.body ?? '{}'), { id: 'session-1', title: 'Wave' });
   assert.equal(requests[1]?.url.includes('include_children=false'), true);
+});
+
+test('loads, renames, deletes sessions and reads scheduled jobs through exact pinned routes', async () => {
+  const requests: { body?: string; method?: string; url: string }[] = [];
+  const responses = [
+    jsonResponse({
+      object: 'hermes.session',
+      session: { id: 'session-1', title: 'Existing' },
+    }),
+    jsonResponse({
+      object: 'hermes.session',
+      session: { id: 'session-1', title: 'Renamed' },
+    }),
+    jsonResponse({
+      deleted: true,
+      id: 'session-1',
+      object: 'hermes.session.deleted',
+    }),
+    jsonResponse({
+      jobs: [
+        {
+          created_at: '2026-07-30T01:00:00-04:00',
+          enabled: true,
+          id: 'job-1',
+          last_status: 'success',
+          name: 'Morning briefing',
+          next_run_at: '2026-07-31T09:00:00-04:00',
+          prompt: 'must remain server-side',
+          schedule_display: 'Every day at 9:00 AM',
+          state: 'scheduled',
+        },
+      ],
+    }),
+  ];
+  const fetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    requests.push({
+      body: init?.body as string | undefined,
+      method: init?.method,
+      url: String(input),
+    });
+    const response = responses.shift();
+    assert.ok(response);
+    return response;
+  };
+  const client = createClient(fetch);
+
+  assert.equal((await client.getSession('session-1')).title, 'Existing');
+  assert.equal(
+    (
+      await client.updateSession('session-1', {
+        title: ' Renamed ',
+      })
+    ).title,
+    'Renamed',
+  );
+  assert.equal(await client.deleteSession('session-1'), true);
+  assert.deepEqual(await client.listScheduledJobs(), [
+    {
+      createdAt: '2026-07-30T01:00:00-04:00',
+      enabled: true,
+      id: 'job-1',
+      lastStatus: 'success',
+      name: 'Morning briefing',
+      nextRunAt: '2026-07-31T09:00:00-04:00',
+      schedule: 'Every day at 9:00 AM',
+      state: 'scheduled',
+    },
+  ]);
+  assert.deepEqual(
+    requests.map(({ body, method, url }) => ({
+      body: body ? JSON.parse(body) : undefined,
+      method: method ?? 'GET',
+      url,
+    })),
+    [
+      {
+        body: undefined,
+        method: 'GET',
+        url: 'https://hermes.test/p/default/api/sessions/session-1',
+      },
+      {
+        body: { title: 'Renamed' },
+        method: 'PATCH',
+        url: 'https://hermes.test/p/default/api/sessions/session-1',
+      },
+      {
+        body: undefined,
+        method: 'DELETE',
+        url: 'https://hermes.test/p/default/api/sessions/session-1',
+      },
+      {
+        body: undefined,
+        method: 'GET',
+        url:
+          'https://hermes.test/p/default/api/jobs?include_disabled=true',
+      },
+    ],
+  );
 });
 
 test('streams normalized assistant and tool lifecycle events across chunks', async () => {
