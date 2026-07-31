@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Item,
+  PlayIcon,
   RadioGroup,
   Spinner,
   Typography,
@@ -245,26 +246,32 @@ function ConnectedSettingsScreen({
                 testID="voice-picker"
                 value={selectedVoice}
                 variant="card">
-                <RadioGroup.Item
-                  description={`Follow the Gateway setting${
-                    defaultVoice ? ` (${defaultVoice.label})` : ''
-                  }.`}
-                  label="Gateway default"
-                  value={REALTIME_DEFAULT_VOICE_PREFERENCE}>
+                <View className="flex-row items-center gap-2">
+                  <RadioGroup.Item
+                    className="flex-1"
+                    description={`Follow the Gateway setting${
+                      defaultVoice ? ` (${defaultVoice.label})` : ''
+                    }.`}
+                    label="Gateway default"
+                    value={REALTIME_DEFAULT_VOICE_PREFERENCE}
+                  />
                   {canPreview && defaultVoice ? (
                     <VoicePreviewButton
                       preview={preview}
+                      testID="voice-preview-default"
                       voiceId={defaultVoice.id}
                       voiceLabel={defaultVoice.label}
                     />
                   ) : null}
-                </RadioGroup.Item>
+                </View>
                 {catalog.data.voices.map((voice) => (
-                  <RadioGroup.Item
-                    key={voice.id}
-                    description={voice.description}
-                    label={voice.label}
-                    value={voice.id}>
+                  <View key={voice.id} className="flex-row items-center gap-2">
+                    <RadioGroup.Item
+                      className="flex-1"
+                      description={voice.description}
+                      label={voice.label}
+                      value={voice.id}
+                    />
                     {canPreview ? (
                       <VoicePreviewButton
                         preview={preview}
@@ -272,7 +279,7 @@ function ConnectedSettingsScreen({
                         voiceLabel={voice.label}
                       />
                     ) : null}
-                  </RadioGroup.Item>
+                  </View>
                 ))}
               </RadioGroup>
             ) : null}
@@ -336,30 +343,37 @@ function ConnectedSettingsScreen({
 
 function VoicePreviewButton({
   preview,
+  testID,
   voiceId,
   voiceLabel,
 }: {
   preview: VoicePreviewState;
+  testID?: string;
   voiceId: WaveRealtimeVoiceId;
   voiceLabel: string;
 }) {
   const isActive = preview.activeVoiceId === voiceId;
   const isLoading = isActive && preview.isLoading;
   return (
-    <View className="mt-2 flex-row">
-      <Button
-        size="sm"
-        variant="outline"
-        accessibilityLabel={
-          isActive
-            ? `Stop the ${voiceLabel} voice preview`
-            : `Preview the ${voiceLabel} voice`
-        }
-        testID={`voice-preview-${voiceId}`}
-        onPress={() => preview.toggle(voiceId)}>
-        {isLoading ? 'Loading…' : isActive ? 'Stop' : 'Preview'}
-      </Button>
-    </View>
+    <Button
+      size="icon"
+      variant="outline"
+      accessibilityLabel={
+        isActive
+          ? `Stop the ${voiceLabel} voice preview`
+          : `Preview the ${voiceLabel} voice`
+      }
+      className="rounded-full"
+      testID={testID ?? `voice-preview-${voiceId}`}
+      onPress={() => preview.toggle(voiceId)}>
+      {isLoading ? (
+        <Spinner size="sm" />
+      ) : isActive ? (
+        '■'
+      ) : (
+        <PlayIcon size={16} />
+      )}
+    </Button>
   );
 }
 
