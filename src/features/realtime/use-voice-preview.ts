@@ -1,5 +1,9 @@
 import type { WaveRealtimeVoiceId } from '@wave/contracts';
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  type AudioPlayer,
+} from 'expo-audio';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { VoiceSampleCache } from '@/services/realtime/voice-sample-cache';
@@ -72,6 +76,11 @@ export function useVoicePreview({
         await setAudioModeAsync({ playsInSilentMode: true });
         if (requestRef.current !== requestId) return;
         player.replace(uri);
+        // A play() issued while the replaced item is still loading is dropped
+        // by the native player, which happens reliably when the same sample
+        // file is loaded a second time. Wait for readiness before playing.
+        await waitUntilLoaded(player, 3_000);
+        if (requestRef.current !== requestId) return;
         player.play();
         setPlayingVoiceId(voiceId);
       } catch (previewError) {
@@ -108,4 +117,28 @@ export function useVoicePreview({
     isLoading: loadingVoiceId !== undefined,
     toggle,
   };
+}
+
+function waitUntilLoaded(player: AudioPlayer, timeoutMs: number) {
+  if (player.isLoaded) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      subscription.remove();
+      resolve();
+    };
+    const subscription = player.addListener(
+      'playbackStatusUpdate',
+      (playbackStatus) => {
+        if (playbackStatus.isLoaded) {
+          finish();
+        }
+      },
+    );
+    // Resolving on timeout keeps a stuck load on the error path of play()
+    // instead of stranding the preview in its loading state.
+    const timer = setTimeout(finish, timeoutMs);
+  });
 }
