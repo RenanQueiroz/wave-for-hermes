@@ -127,6 +127,7 @@ class FakeRealtimeSideband implements RealtimeSideband {
 }
 
 class FakeRealtimeProvider implements RealtimeProvider {
+  createCallGate?: Promise<void>;
   readonly calls: {
     ended: boolean;
     safetyIdentifier: string;
@@ -148,6 +149,7 @@ class FakeRealtimeProvider implements RealtimeProvider {
       voice: input.voice,
     };
     this.calls.push(call);
+    await this.createCallGate;
     return {
       end: async () => {
         call.ended = true;
@@ -269,6 +271,48 @@ test('binds a Realtime call to trusted device and session state', async () => {
   await context.registry.end(context.deviceId, started.id);
   assert.equal(context.provider.calls[0]?.ended, true);
   closeContext(context);
+});
+
+test('ends active calls and rejects setup that finishes after device revocation', async () => {
+  const activeContext = createContext();
+  const started = await activeContext.registry.start({
+    deviceId: activeContext.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: activeContext.sessionId,
+  });
+
+  activeContext.store.revokeDevice(activeContext.deviceId);
+  await activeContext.registry.abortDevice(activeContext.deviceId);
+
+  assert.equal(activeContext.provider.calls[0]?.ended, true);
+  await assert.rejects(
+    activeContext.registry.end(activeContext.deviceId, started.id),
+    (error: unknown) =>
+      error instanceof WaveHttpError && error.code === 'not_found',
+  );
+  closeContext(activeContext);
+
+  const setupContext = createContext();
+  let finishSetup: (() => void) | undefined;
+  setupContext.provider.createCallGate = new Promise<void>((resolve) => {
+    finishSetup = resolve;
+  });
+  const setup = setupContext.registry.start({
+    deviceId: setupContext.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: setupContext.sessionId,
+  });
+  await waitFor(() => setupContext.provider.calls.length === 1);
+  setupContext.store.revokeDevice(setupContext.deviceId);
+  finishSetup?.();
+
+  await assert.rejects(
+    setup,
+    (error: unknown) =>
+      error instanceof WaveHttpError && error.code === 'unauthorized',
+  );
+  assert.equal(setupContext.provider.calls[0]?.ended, true);
+  closeContext(setupContext);
 });
 
 test('persists finalized speech and correlates the Hermes handoff result', async () => {

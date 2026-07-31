@@ -17,6 +17,7 @@ import {
   WaveAskHermesToolResultSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
+  WaveRevokeCurrentDeviceResponseSchema,
   WaveRealtimeVoiceListResponseSchema,
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
@@ -83,6 +84,24 @@ test('accepts only content-free redacted diagnostics', () => {
         missingFeatures: ['session_chat'],
         status: 'incompatible',
       },
+    }).success,
+    false,
+  );
+});
+
+test('accepts only a current-device revocation acknowledgement', () => {
+  const response = WaveRevokeCurrentDeviceResponseSchema.parse({
+    apiVersion: WAVE_API_VERSION,
+    deviceId: 'device-1',
+    requestId: 'request-1',
+    revoked: true,
+  });
+
+  assert.equal(response.revoked, true);
+  assert.equal(
+    WaveRevokeCurrentDeviceResponseSchema.safeParse({
+      ...response,
+      credential: `wave_device_${'a'.repeat(43)}`,
     }).success,
     false,
   );

@@ -84,8 +84,8 @@ currently includes:
 - a secure per-device live-voice preference backed by a strict Gateway-owned voice catalog, plus
   actionable microphone-permission recovery on both mobile platforms;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
-  the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
-  access explicitly;
+  the connection in Expo SecureStore, restores and verifies it on launch, and can revoke the
+  current device before clearing local access;
 - a ChatGPT-style chat-first shell that creates a new conversation on connected launch, opens
   account-wide history from a side drawer, searches titles, renames/deletes sessions, keeps
   Settings and Disconnect fixed at the bottom, exposes scheduled jobs as read-only status, and can
@@ -124,7 +124,8 @@ live voice is production-ready. See the tracked
 [`docs/roadmap.md`](./docs/roadmap.md) for the prioritized remaining work.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
-validated private deployment.
+validated private deployment. [`docs/security.md`](./docs/security.md) records the threat model,
+implemented controls, residual risks, and store-release security gates.
 
 ## Local development
 
@@ -232,9 +233,11 @@ device-scoped credential in platform secure storage, and performs an authenticat
 compatibility check before entering the app.
 
 On later launches Wave reads the saved connection asynchronously and repeats the compatibility
-check. **Disconnect this device** removes only the phone's local credential; use
-`npm run companion:revoke -- <device-id>` when the credential must also be invalidated server-side.
-The full operator workflow is in [`companion/README.md`](./companion/README.md).
+check. **Disconnect this device** calls the authenticated self-revocation endpoint, ends that
+device's active text and voice work, then removes its local secure credential. If the Gateway is
+unreachable, the saved-connection screen offers an explicit local-only forget action and reminds
+the user to revoke the device through the operator tools. The full operator workflow is in
+[`companion/README.md`](./companion/README.md).
 
 After pairing, Wave creates and opens a new Hermes conversation. The drawer pages through every
 top-level session returned by the Hermes account and supports title search, continue, rename, and

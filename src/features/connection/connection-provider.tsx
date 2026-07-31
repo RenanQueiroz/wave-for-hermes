@@ -60,7 +60,8 @@ export type WaveConnectionState =
 
 interface WaveConnectionContextValue {
   client?: WaveBackendClient;
-  disconnect(): Promise<void>;
+  disconnect(): Promise<boolean>;
+  forget(): Promise<boolean>;
   pair(input: PairWaveDeviceInput): Promise<void>;
   retry(): Promise<void>;
   state: WaveConnectionState;
@@ -230,21 +231,46 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     [activeSessionStore, allowInsecureHttp, queryClient, store, verify],
   );
 
+  const clearLocalConnection = useCallback(
+    async (operation: number) => {
+      await queryClient.cancelQueries({ queryKey: ['wave'] });
+      queryClient.removeQueries({ queryKey: ['wave'] });
+      await activeSessionStore.clear();
+      await store.clear();
+      if (operation !== operationRef.current) return false;
+      setClient(undefined);
+      recordRef.current = undefined;
+      setState({ phase: 'disconnected' });
+      return true;
+    },
+    [activeSessionStore, queryClient, store],
+  );
+
   const disconnect = useCallback(async () => {
     const operation = ++operationRef.current;
     const currentRecord = recordRef.current;
     setState({ phase: 'loading' });
     try {
-      await queryClient.cancelQueries({ queryKey: ['wave'] });
-      queryClient.removeQueries({ queryKey: ['wave'] });
-      await activeSessionStore.clear();
-      await store.clear();
-      if (operation !== operationRef.current) return;
-      setClient(undefined);
-      recordRef.current = undefined;
-      setState({ phase: 'disconnected' });
+      if (currentRecord) {
+        const revocationClient = createMobileWaveBackendClient({
+          allowInsecureHttp,
+          baseUrl: currentRecord.baseUrl,
+          credential: currentRecord.credential,
+        });
+        try {
+          await revocationClient.revokeCurrentDevice();
+        } catch (error) {
+          if (
+            !(error instanceof WaveBackendError) ||
+            error.kind !== 'unauthorized'
+          ) {
+            throw error;
+          }
+        }
+      }
+      return await clearLocalConnection(operation);
     } catch (error) {
-      if (operation !== operationRef.current) return;
+      if (operation !== operationRef.current) return false;
       setState({
         error: toConnectionError(error),
         phase: 'error',
@@ -252,8 +278,28 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
           ? { summary: toWaveConnectionSummary(currentRecord) }
           : {}),
       });
+      return false;
     }
-  }, [activeSessionStore, queryClient, store]);
+  }, [allowInsecureHttp, clearLocalConnection]);
+
+  const forget = useCallback(async () => {
+    const operation = ++operationRef.current;
+    const currentRecord = recordRef.current;
+    setState({ phase: 'loading' });
+    try {
+      return await clearLocalConnection(operation);
+    } catch (error) {
+      if (operation !== operationRef.current) return false;
+      setState({
+        error: toConnectionError(error),
+        phase: 'error',
+        ...(currentRecord
+          ? { summary: toWaveConnectionSummary(currentRecord) }
+          : {}),
+      });
+      return false;
+    }
+  }, [clearLocalConnection]);
 
   const retry = useCallback(async () => {
     const record = recordRef.current;
@@ -292,11 +338,12 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     () => ({
       ...(state.phase === 'connected' && client ? { client } : {}),
       disconnect,
+      forget,
       pair,
       retry,
       state,
     }),
-    [client, disconnect, pair, retry, state],
+    [client, disconnect, forget, pair, retry, state],
   );
 
   return (

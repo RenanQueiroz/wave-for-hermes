@@ -70,7 +70,7 @@ function ConnectedWaveDrawerContent({
   client: WaveBackendClient;
   connectionId: string;
   deviceName: string;
-  disconnect(): Promise<void>;
+  disconnect(): Promise<boolean>;
 }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
@@ -90,6 +90,7 @@ function ConnectedWaveDrawerContent({
   const [renameSession, setRenameSession] = useState<WaveSessionSummary>();
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteSession, setDeleteSession] = useState<WaveSessionSummary>();
+  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const sessionsKey = waveSessionQueryKey(connectionId, baseUrl);
 
   const renameMutation = useMutation({
@@ -112,6 +113,16 @@ function ConnectedWaveDrawerContent({
       if (pathname.includes(result.sessionId)) {
         navigation.closeDrawer();
         router.replace('/new');
+      }
+    },
+  });
+  const disconnectMutation = useMutation({
+    mutationFn: disconnect,
+    onSuccess: (disconnected) => {
+      if (disconnected) {
+        setDisconnectOpen(false);
+        navigation.closeDrawer();
+        router.replace('/');
       }
     },
   });
@@ -272,10 +283,7 @@ function ConnectedWaveDrawerContent({
           description={deviceName}
           label="Disconnect"
           testID="drawer-disconnect"
-          onPress={() => {
-            navigation.closeDrawer();
-            void disconnect().then(() => router.replace('/'));
-          }}
+          onPress={() => setDisconnectOpen(true)}
         />
       </View>
 
@@ -356,6 +364,38 @@ function ConnectedWaveDrawerContent({
                 }
               }}>
               Delete
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
+
+      <Dialog
+        open={disconnectOpen}
+        onOpenChange={(open) => {
+          if (!open && !disconnectMutation.isPending) {
+            setDisconnectOpen(false);
+          }
+        }}>
+        <Dialog.Content blur dismissible={!disconnectMutation.isPending}>
+          <Dialog.Title>Disconnect this device?</Dialog.Title>
+          <Dialog.Description>
+            Wave will revoke this device on the Gateway, end its active work,
+            and remove its credential from this phone.
+          </Dialog.Description>
+          <Dialog.Footer className="mt-4">
+            <Button
+              variant="ghost"
+              disabled={disconnectMutation.isPending}
+              onPress={() => setDisconnectOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={disconnectMutation.isPending}
+              loading={disconnectMutation.isPending}
+              testID="disconnect-device-confirm"
+              onPress={() => disconnectMutation.mutate()}>
+              Disconnect
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

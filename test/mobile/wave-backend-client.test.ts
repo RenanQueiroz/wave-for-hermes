@@ -246,6 +246,34 @@ test('loads authenticated redacted support diagnostics', async () => {
   assert.equal(diagnostics.companion.uptimeSeconds, 120);
 });
 
+test('revokes the current device through the authenticated Wave boundary', async () => {
+  let method = '';
+  let requestedPath = '';
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test/root',
+    credential,
+    fetch: async (input, init) => {
+      method = init?.method ?? 'GET';
+      requestedPath = new URL(String(input)).pathname;
+      assert.equal(
+        new Headers(init?.headers).get('authorization'),
+        `Bearer ${credential}`,
+      );
+      return jsonResponse({
+        apiVersion: 'v1',
+        deviceId: 'device-1',
+        revoked: true,
+      });
+    },
+  });
+
+  const response = await client.revokeCurrentDevice();
+
+  assert.equal(response.revoked, true);
+  assert.equal(method, 'DELETE');
+  assert.equal(requestedPath, '/root/v1/device');
+});
+
 test('loads a cursor-paginated unified conversation timeline', async () => {
   let requestedUrl = '';
   const client = new WaveBackendClient({

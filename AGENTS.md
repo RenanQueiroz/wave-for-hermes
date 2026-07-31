@@ -100,6 +100,10 @@ documentation before implementing UI.
   protocol types.
 - Standard OpenAI and Hermes API keys must remain in the companion. The mobile app may hold only a
   revocable device-scoped companion credential and short-lived Realtime connection material.
+- A connected Disconnect action must revoke the calling device through the Companion before
+  clearing its local credential and must end that device's admitted text and Realtime work.
+  Local-only forgetting is an explicit recovery action for an unreachable or incompatible
+  Gateway; never present it as confirmed server revocation.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
 - Raw tool input/output shown to the paired user must cross only as bounded Wave-owned detail
@@ -201,6 +205,8 @@ documentation.
 
 - Update `README.md` when setup, scripts, architecture, product scope, or developer workflow
   changes.
+- Update `docs/security.md` when trust boundaries, authentication, authorization, sensitive data,
+  resource limits, deployment controls, or release-security gates change.
 - Update this file when agent constraints, repository conventions, or verification steps change.
 - Update local tool documentation when commands, capabilities, limitations, or protocols change.
 - Delete or rewrite obsolete guidance instead of leaving contradictory historical instructions.

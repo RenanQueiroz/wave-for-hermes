@@ -43,6 +43,17 @@ export class ActiveTurnRegistry {
     }
   }
 
+  abortDevice(deviceId: string, reason: TurnAbortReason) {
+    let aborted = 0;
+    for (const turn of this.turns.values()) {
+      if (turn.deviceId === deviceId) {
+        turn.abort(reason);
+        aborted += 1;
+      }
+    }
+    return aborted;
+  }
+
   finish(turnId: string) {
     this.turns.delete(turnId);
   }

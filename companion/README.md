@@ -107,6 +107,10 @@ interrupt a turn already streaming in another process; the configured total turn
 that window. Stop the companion process as well if immediate termination of all in-flight work is
 required.
 
+The app's **Disconnect** action uses authenticated `DELETE /v1/device` instead. That route can
+revoke only the calling device and immediately cancels its active text turn and Realtime call in
+the same Companion process before the app removes its local secure credential.
+
 The operator commands need only `WAVE_DATABASE_PATH` and
 `WAVE_PAIRING_CODE_TTL_SECONDS`; they do not load or print Hermes credentials.
 
@@ -148,6 +152,7 @@ Authorization: Bearer <device-credential>
 | ----------------------------------------------------- | --------------------- | ---------------------------------------------------------------- |
 | `GET /v1/status`                                      | Public                | Non-sensitive service and feature status                         |
 | `POST /v1/pairings/redeem`                            | One-time code         | Create a named device and return its credential once             |
+| `DELETE /v1/device`                                   | Device                | Revoke only the calling device and end its active work           |
 | `GET /v1/compatibility`                               | Device                | Probe the live Hermes capability contract                        |
 | `GET /v1/diagnostics`                                 | Device                | Read redacted support status without content or credentials      |
 | `GET /v1/operations/jobs`                             | Device                | Read normalized scheduled-job status without prompts or controls |

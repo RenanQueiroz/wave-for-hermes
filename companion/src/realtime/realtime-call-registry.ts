@@ -118,6 +118,13 @@ export class RealtimeCallRegistry {
     await Promise.allSettled(calls.map((call) => this.release(call, true)));
   }
 
+  async abortDevice(deviceId: string) {
+    const calls = [...this.calls.values()].filter(
+      (call) => call.deviceId === deviceId,
+    );
+    await Promise.allSettled(calls.map((call) => this.release(call, true)));
+  }
+
   async end(deviceId: string, waveCallId: string) {
     const call = this.calls.get(waveCallId);
     if (!call || call.deviceId !== deviceId) {
@@ -191,6 +198,18 @@ export class RealtimeCallRegistry {
     } catch (error) {
       this.releaseReservation(input.deviceId, input.sessionId);
       throw normalizeProviderError(error);
+    }
+
+    if (!this.services.deviceStore.isDeviceActive(input.deviceId)) {
+      this.releaseReservation(input.deviceId, input.sessionId);
+      await providerCall.end().catch(() => undefined);
+      throw new WaveHttpError(
+        'This Wave device is no longer authorized for Realtime.',
+        {
+          code: 'unauthorized',
+          statusCode: 401,
+        },
+      );
     }
 
     const now = this.options.now?.() ?? new Date();

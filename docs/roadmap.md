@@ -55,6 +55,14 @@ cascade records when a session is deleted. Deterministic coverage includes:
 - explicit handling when Hermes history is cleared externally; and
 - a 226-entry mixed timeline paginated across seven cursor pages without gaps or duplicates.
 
+## Completed: device self-revocation
+
+Disconnect now revokes the calling device at the Gateway before Wave clears its secure local
+credential. The Companion cancels that device's active text turn and Realtime call, closes a
+Realtime setup that finishes after concurrent revocation, and leaves every other paired device
+active. If the Gateway cannot be reached, Wave exposes a clearly labeled local-only forget action
+instead of implying that server access was revoked.
+
 ## Next: release hardening and focused operations
 
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
@@ -63,5 +71,7 @@ cascade records when a session is deleted. Deterministic coverage includes:
 - Use the authenticated Settings diagnostics report for user support. It includes only app/platform
   details, Companion version/uptime and feature availability, and normalized Hermes compatibility;
   it excludes credentials, server addresses, device identifiers, and conversation content.
-- Complete security, lifecycle-race, production-bundle, and private-deployment validation before
-  the first store release.
+- Use [`security.md`](./security.md) as the release-security checklist. Deterministic
+  self-revocation, lifecycle-race, schema, resource-bound, production-bundle, and private-deployment
+  validation now pass; physical-device, signed-release, exact-edge, and dependency-review gates
+  remain before the first store release.

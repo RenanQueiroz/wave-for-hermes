@@ -163,7 +163,9 @@ these boundaries:
 
 The generated Hermes key stays in Homelab's ignored mode-`0600` `.env` and the two server
 environments. A mobile device receives only a separately revocable Wave credential after
-one-time pairing.
+one-time pairing. An authenticated device can revoke only itself through `DELETE /v1/device`; the
+Companion cancels that device's admitted text and Realtime work before the app clears its local
+credential.
 
 The recorded Homelab validation covers pairing, authorization, text streaming, persisted history,
 cancellation, OpenAI unified Realtime setup, authenticated sideband `ask_hermes`, explicit

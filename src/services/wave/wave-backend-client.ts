@@ -10,6 +10,7 @@ import {
   WaveListSessionsRequestSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
+  WaveRevokeCurrentDeviceResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
@@ -32,6 +33,7 @@ import {
   type WaveEndRealtimeCallResponse,
   type WaveRedeemPairingRequest,
   type WaveRedeemPairingResponse,
+  type WaveRevokeCurrentDeviceResponse,
   type WaveScheduledJobListResponse,
   type WaveRealtimeVoiceId,
   type WaveRealtimeVoiceListResponse,
@@ -334,6 +336,16 @@ export class WaveBackendClient {
         signal,
       },
     );
+  }
+
+  revokeCurrentDevice(
+    signal?: AbortSignal,
+  ): Promise<WaveRevokeCurrentDeviceResponse> {
+    return this.request(WaveRevokeCurrentDeviceResponseSchema, '/v1/device', {
+      authenticated: true,
+      method: 'DELETE',
+      signal,
+    });
   }
 
   startRealtimeCall(

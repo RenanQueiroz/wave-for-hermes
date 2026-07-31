@@ -40,10 +40,19 @@ export const WaveRedeemPairingResponseSchema =
     device: WaveDeviceSchema,
   }).strict();
 
+export const WaveRevokeCurrentDeviceResponseSchema =
+  WaveResponseMetadataSchema.extend({
+    deviceId: WaveIdentifierSchema,
+    revoked: z.literal(true),
+  }).strict();
+
 export type WaveDevice = z.infer<typeof WaveDeviceSchema>;
 export type WaveRedeemPairingRequest = z.infer<
   typeof WaveRedeemPairingRequestSchema
 >;
 export type WaveRedeemPairingResponse = z.infer<
   typeof WaveRedeemPairingResponseSchema
+>;
+export type WaveRevokeCurrentDeviceResponse = z.infer<
+  typeof WaveRevokeCurrentDeviceResponseSchema
 >;

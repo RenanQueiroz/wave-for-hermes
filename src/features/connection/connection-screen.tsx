@@ -22,7 +22,7 @@ interface FieldValidationError {
 }
 
 export function ConnectionScreen() {
-  const { disconnect, pair, retry, state } = useWaveConnection();
+  const { forget, pair, retry, state } = useWaveConnection();
   const [baseUrl, setBaseUrl] = useState('');
   const [deviceName, setDeviceName] = useState(
     () => Device.deviceName ?? Device.modelName ?? 'Wave mobile',
@@ -100,6 +100,11 @@ export function ConnectionScreen() {
               message={savedConnectionError.error.message}
               destructive={!savedConnectionError.error.retryable}
             />
+            <Typography.Paragraph muted type="body-sm">
+              If the Gateway cannot be reached, forgetting removes this
+              credential from the phone only. Revoke the device from the Gateway
+              operator tools if it may still be active.
+            </Typography.Paragraph>
           </Card.Content>
           <Card.Footer className="flex-col">
             {savedConnectionError.error.retryable ? (
@@ -114,10 +119,10 @@ export function ConnectionScreen() {
             <Button
               fullWidth
               variant="outline"
-              accessibilityLabel="Disconnect saved Wave device"
+              accessibilityLabel="Forget saved Wave device locally"
               testID="connection-disconnect-button"
-              onPress={() => void disconnect()}>
-              Disconnect and pair again
+              onPress={() => void forget()}>
+              Forget this device locally
             </Button>
           </Card.Footer>
         </Card>

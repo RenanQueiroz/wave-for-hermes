@@ -8,6 +8,7 @@ import {
   WaveDiagnosticsResponseSchema,
   WaveErrorResponseSchema,
   WaveRedeemPairingResponseSchema,
+  WaveRevokeCurrentDeviceResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
@@ -271,6 +272,43 @@ test('authenticates compatibility checks and never reaches Hermes for invalid cr
   });
   assert.equal(revoked.statusCode, 401);
   assert.equal(context.hermes.capabilityCalls, 1);
+  await closeContext(context);
+});
+
+test('lets a device revoke only itself and rejects its credential afterward', async () => {
+  const context = createContext();
+  const first = pairDevice(context.store, 'First device');
+  const second = pairDevice(context.store, 'Second device');
+
+  const revoked = await context.app.inject({
+    headers: authorizationHeader(first.credential),
+    method: 'DELETE',
+    url: '/v1/device',
+  });
+  assert.equal(revoked.statusCode, 200);
+  assert.deepEqual(
+    WaveRevokeCurrentDeviceResponseSchema.parse(revoked.json()),
+    {
+      apiVersion: 'v1',
+      deviceId: first.device.id,
+      requestId: revoked.json().requestId,
+      revoked: true,
+    },
+  );
+
+  const firstAfterRevocation = await context.app.inject({
+    headers: authorizationHeader(first.credential),
+    method: 'GET',
+    url: '/v1/compatibility',
+  });
+  assert.equal(firstAfterRevocation.statusCode, 401);
+
+  const secondStillActive = await context.app.inject({
+    headers: authorizationHeader(second.credential),
+    method: 'GET',
+    url: '/v1/compatibility',
+  });
+  assert.equal(secondStillActive.statusCode, 200);
   await closeContext(context);
 });
 
@@ -832,6 +870,63 @@ test('cancels an active streamed turn over the authenticated HTTP contract', asy
     ),
     true,
   );
+  await closeContext(context);
+});
+
+test('self-revocation aborts that device active turn and invalidates its credential', async () => {
+  const context = createContext();
+  const paired = pairDevice(context.store, 'Revoking device');
+  context.hermes.stream = waitingHermesStream;
+  const address = await context.app.listen({
+    host: '127.0.0.1',
+    port: 0,
+  });
+
+  const streamResponse = await fetch(
+    `${address}/v1/sessions/existing-session/turns`,
+    {
+      body: JSON.stringify({ input: 'Wait for device revocation' }),
+      headers: {
+        ...authorizationHeader(paired.credential),
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  );
+  assert.equal(streamResponse.status, 200);
+  assert.ok(streamResponse.body);
+  const reader = streamResponse.body.getReader();
+  assert.equal((await reader.read()).done, false);
+
+  const revokeResponse = await fetch(`${address}/v1/device`, {
+    headers: authorizationHeader(paired.credential),
+    method: 'DELETE',
+  });
+  assert.equal(revokeResponse.status, 200);
+  assert.equal(
+    WaveRevokeCurrentDeviceResponseSchema.parse(await revokeResponse.json())
+      .revoked,
+    true,
+  );
+
+  let remainingText = '';
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    remainingText += new TextDecoder().decode(chunk.value);
+  }
+  assert.equal(
+    parseSseEvents(remainingText).some(
+      (event) =>
+        event.type === 'turn.error' && event.error.code === 'cancelled',
+    ),
+    true,
+  );
+
+  const rejected = await fetch(`${address}/v1/compatibility`, {
+    headers: authorizationHeader(paired.credential),
+  });
+  assert.equal(rejected.status, 401);
   await closeContext(context);
 });
 

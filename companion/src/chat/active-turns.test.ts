@@ -50,6 +50,18 @@ test('aborts every active turn during server shutdown', () => {
   assert.equal(second.abortReason(), 'server_shutdown');
 });
 
+test('aborts only active turns owned by a revoked device', () => {
+  const registry = new ActiveTurnRegistry(2);
+  const first = registry.start('device-1', 'session-1');
+  const second = registry.start('device-2', 'session-2');
+
+  assert.equal(registry.abortDevice('device-1', 'cancelled'), 1);
+
+  assert.equal(first.controller.signal.aborted, true);
+  assert.equal(first.abortReason(), 'cancelled');
+  assert.equal(second.controller.signal.aborted, false);
+});
+
 test('makes session deletion mutually exclusive with new turns', () => {
   const registry = new ActiveTurnRegistry(2);
 

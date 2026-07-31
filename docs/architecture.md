@@ -91,13 +91,14 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   asynchronous APIs with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The record contains the normalized
   companion URL, public device metadata, and the revocable device credential. UI and
   development-state summaries omit the credential.
-- `WaveConnectionProvider` owns bootstrap, pairing, restore, compatibility verification, retry, and
-  local disconnect state. Screens do not construct authorization headers or raw protocol
-  messages.
+- `WaveConnectionProvider` owns bootstrap, pairing, restore, compatibility verification, retry,
+  authenticated self-revocation, and local credential cleanup. Screens do not construct
+  authorization headers or raw protocol messages.
 - The PanelUI connection route performs the public status check and one-time redemption before
   saving the credential, then requires an authenticated live compatibility check. A saved
-  credential is rechecked at launch. Local disconnect deletes the secure record but deliberately
-  does not revoke the server-side device.
+  credential is rechecked at launch. Connected disconnect first revokes the current server-side
+  device and aborts its active text and Realtime work before deleting the secure record. When the
+  Gateway is unreachable, local-only forgetting is a separate explicit recovery action.
 - `WaveQueryProvider` owns finite server state for session lists and unified timelines. Connection changes
   cancel and remove the connection-scoped `wave` cache so one companion/device cannot reuse
   another's data.
@@ -238,7 +239,8 @@ A valid device credential represents access to the paired Wave Gateway account. 
 paired device can page through, read, continue, rename, and delete the same top-level sessions
 returned by Hermes; the Companion does not keep per-device session bindings or copies. Hermes
 remains authoritative for session existence and history. Revoking the device credential removes
-that account access.
+that account access. `DELETE /v1/device` lets an authenticated mobile client revoke only its own
+credential; the in-process Companion also cancels that device's admitted text and Realtime work.
 
 ### HTTP and stream policy
 

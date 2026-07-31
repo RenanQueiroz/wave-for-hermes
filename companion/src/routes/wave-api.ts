@@ -15,6 +15,7 @@ import {
   WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
+  WaveRevokeCurrentDeviceResponseSchema,
   WaveRealtimeVoiceListResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
@@ -195,6 +196,24 @@ export function registerWaveApi(
         WaveRedeemPairingResponseSchema.parse({
           ...responseMetadata(request),
           ...redeemed,
+        }),
+      );
+    },
+  );
+
+  app.delete(
+    '/v1/device',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      services.deviceStore.revokeDevice(device.id);
+      services.turnRegistry.abortDevice(device.id, 'cancelled');
+      await services.realtimeCallRegistry?.abortDevice(device.id);
+      return reply.send(
+        WaveRevokeCurrentDeviceResponseSchema.parse({
+          ...responseMetadata(request),
+          deviceId: device.id,
+          revoked: true,
         }),
       );
     },
@@ -480,6 +499,15 @@ export function registerWaveApi(
       const { sessionId } = SessionParamsSchema.parse(request.params);
       const input = WaveStartTurnRequestSchema.parse(request.body);
       await services.hermesClient.getSession(sessionId);
+      if (!services.deviceStore.isDeviceActive(device.id)) {
+        throw new WaveHttpError(
+          'This Wave device is no longer authorized for Hermes.',
+          {
+            code: 'unauthorized',
+            statusCode: 401,
+          },
+        );
+      }
       const turn = services.turnRegistry.start(device.id, sessionId);
       await streamTurn(
         request,
