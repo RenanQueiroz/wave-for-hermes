@@ -8,12 +8,14 @@ import {
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
   WaveDeleteSessionResponseSchema,
+  WaveDiagnosticsResponseSchema,
   WaveIdentifierSchema,
   WaveListSessionsRequestSchema,
   WaveScheduledJobListResponseSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
+  WaveRealtimeVoiceListResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
@@ -120,6 +122,50 @@ export function registerWaveApi(
     );
   });
 
+  app.get(
+    '/v1/diagnostics',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      let hermes:
+        | { status: 'compatible' }
+        | {
+            missingEndpoints: string[];
+            missingFeatures: string[];
+            status: 'incompatible';
+          }
+        | { status: 'unreachable' };
+      try {
+        const report = await services.hermesClient.probeCapabilities();
+        hermes = report.supported
+          ? { status: 'compatible' }
+          : {
+              missingEndpoints: report.missingEndpoints,
+              missingFeatures: report.missingFeatures,
+              status: 'incompatible',
+            };
+      } catch {
+        hermes = { status: 'unreachable' };
+      }
+
+      return reply.send(
+        WaveDiagnosticsResponseSchema.parse({
+          ...responseMetadata(request),
+          companion: {
+            serviceVersion: SERVICE_VERSION,
+            uptimeSeconds: Math.max(0, Math.floor(process.uptime())),
+          },
+          features: {
+            chat: true,
+            pairing: true,
+            realtime: services.realtimeCallRegistry !== undefined,
+          },
+          generatedAt: now().toISOString(),
+          hermes,
+        }),
+      );
+    },
+  );
+
   app.post(
     '/v1/pairings/redeem',
     {
@@ -201,6 +247,22 @@ export function registerWaveApi(
           limit: page.limit,
           offset: page.offset,
           sessions: page.sessions.map(normalizeHermesSession),
+        }),
+      );
+    },
+  );
+
+  app.get(
+    '/v1/realtime/voices',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const realtimeCallRegistry = requireRealtimeCallRegistry(
+        services.realtimeCallRegistry,
+      );
+      return reply.send(
+        WaveRealtimeVoiceListResponseSchema.parse({
+          ...responseMetadata(request),
+          ...realtimeCallRegistry.getVoiceCatalog(),
         }),
       );
     },
@@ -379,6 +441,7 @@ export function registerWaveApi(
         deviceId: device.id,
         sdpOffer: input.sdpOffer,
         sessionId,
+        ...(input.voiceId ? { voiceId: input.voiceId } : {}),
       });
       return reply.code(201).send(
         WaveStartRealtimeCallResponseSchema.parse({

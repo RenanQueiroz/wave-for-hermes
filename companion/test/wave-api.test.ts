@@ -5,6 +5,7 @@ import {
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
   WaveDeleteSessionResponseSchema,
+  WaveDiagnosticsResponseSchema,
   WaveErrorResponseSchema,
   WaveRedeemPairingResponseSchema,
   WaveSessionHistoryResponseSchema,
@@ -273,6 +274,53 @@ test('authenticates compatibility checks and never reaches Hermes for invalid cr
   await closeContext(context);
 });
 
+test('returns authenticated content-free diagnostics even when Hermes is unreachable', async () => {
+  const context = createContext();
+  const paired = pairDevice(context.store, 'Support device');
+
+  const unauthorized = await context.app.inject({
+    method: 'GET',
+    url: '/v1/diagnostics',
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  const available = await context.app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/diagnostics',
+  });
+  assert.equal(available.statusCode, 200);
+  const diagnostics = WaveDiagnosticsResponseSchema.parse(available.json());
+  assert.equal(diagnostics.hermes.status, 'compatible');
+  assert.equal(diagnostics.generatedAt, NOW.toISOString());
+  assert.equal(diagnostics.companion.serviceVersion, '0.1.0');
+  assert.equal(Number.isInteger(diagnostics.companion.uptimeSeconds), true);
+  assert.equal(available.body.includes('server-only-hermes-key'), false);
+  assert.equal(available.body.includes('Hello from Hermes'), false);
+
+  context.hermes.probeCapabilities = async () => {
+    throw new HermesClientError('Sensitive upstream failure.', {
+      kind: 'server',
+      status: 503,
+    });
+  };
+  const unavailable = await context.app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/diagnostics',
+  });
+  assert.equal(unavailable.statusCode, 200);
+  assert.deepEqual(
+    WaveDiagnosticsResponseSchema.parse(unavailable.json()).hermes,
+    {
+      status: 'unreachable',
+    },
+  );
+  assert.equal(unavailable.body.includes('Sensitive upstream failure'), false);
+
+  await closeContext(context);
+});
+
 test('exposes canonical Hermes sessions to every paired device', async () => {
   const context = createContext();
   const first = pairDevice(context.store, 'First device');
@@ -393,6 +441,51 @@ test('exposes canonical Hermes sessions to every paired device', async () => {
     true,
   );
   assert.deepEqual(context.store.listSessionTurns(createdSession.id), []);
+  await closeContext(context);
+});
+
+test('paginates a long mixed timeline without gaps or duplicate entries', async () => {
+  const context = createContext();
+  const paired = pairDevice(context.store, 'Long timeline device');
+  const transcriptCount = 225;
+
+  for (let index = 0; index < transcriptCount; index += 1) {
+    const timestamp = new Date(NOW.getTime() + index * 1_000).toISOString();
+    const turnId = context.store.beginRealtimeTurn({
+      createdAt: timestamp,
+      eventKey: (index + 1).toString(16).padStart(64, '0'),
+      sessionId: 'existing-session',
+    });
+    context.store.recordUserTranscript({
+      transcript: `Voice transcript ${index + 1}`,
+      turnId,
+      updatedAt: timestamp,
+    });
+  }
+
+  const entryIds: string[] = [];
+  let before: string | undefined;
+  let pageCount = 0;
+  do {
+    const search = new URLSearchParams({ limit: '37' });
+    if (before) search.set('before', before);
+    const response = await context.app.inject({
+      headers: authorizationHeader(paired.credential),
+      method: 'GET',
+      url: `/v1/sessions/existing-session/timeline?${search}`,
+    });
+    assert.equal(response.statusCode, 200);
+    const page = WaveTimelineResponseSchema.parse(response.json());
+    pageCount += 1;
+    entryIds.push(...page.entries.map((entry) => entry.id));
+    before = page.hasMore ? page.nextCursor : undefined;
+    if (page.hasMore) assert.ok(before);
+  } while (before);
+
+  assert.equal(pageCount, 7);
+  assert.equal(entryIds.length, transcriptCount + 1);
+  assert.equal(new Set(entryIds).size, entryIds.length);
+
   await closeContext(context);
 });
 

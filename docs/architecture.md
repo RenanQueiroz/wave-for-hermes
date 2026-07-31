@@ -146,7 +146,8 @@ The companion lives in `companion/` and provides:
 - one-time operator-generated pairing codes and revocable device credentials;
 - account-scoped device authorization;
 - live compatibility, paginated session lifecycle, history, attachment-aware streamed-turn,
-  cancellation, and normalized read-only scheduled-job routes;
+  cancellation, normalized read-only scheduled-job, content-free diagnostics, and Realtime
+  voice-catalog routes;
 - request-size, rate, active-turn, first-event, idle, and total-time bounds;
 - authenticated, rate-limited Realtime call setup and device-owned call termination;
 - a process-local Realtime registry that enforces one call per device/session, a bounded global
@@ -166,7 +167,10 @@ The companion lives in `companion/` and provides:
 `GET /v1/status` always reports `pairing: true` and `chat: true`; `realtime` is true only when the
 server started with `OPENAI_API_KEY`.
 `hermes.configured: true` means the companion accepted Hermes configuration at startup. An
-authenticated `GET /v1/compatibility` performs the live capability probe.
+authenticated `GET /v1/compatibility` performs the live capability probe. Authenticated
+`GET /v1/diagnostics` is support-oriented and contains only Companion version/uptime, feature
+availability, and normalized Hermes compatibility; it excludes credentials, server addresses,
+device identifiers, and conversation content.
 
 Start the built companion with server-only environment variables:
 
@@ -299,6 +303,7 @@ See [`companion/README.md`](../companion/README.md) for the endpoint table and o
 - the literal Wave API version (`v1`);
 - strict response metadata;
 - the companion status and feature-availability response;
+- authenticated content-free diagnostics and the strict Realtime voice catalog;
 - stable safe error codes and error envelopes;
 - one-time pairing requests and responses;
 - compatibility, paginated session lifecycle, cursor-paginated unified timeline,
@@ -320,7 +325,8 @@ protocol messages.
   Companion interaction ledger is authoritative only for finalized Wave speech and handoff
   lifecycle records; it stores no raw audio, partial transcripts, or hidden reasoning.
 - TanStack Query owns finite server state such as status, paginated account sessions, the
-  cursor-paginated unified timeline, and read-only scheduled jobs.
+  cursor-paginated unified timeline, read-only scheduled jobs, diagnostics, and the Realtime voice
+  catalog.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.

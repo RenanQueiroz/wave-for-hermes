@@ -19,40 +19,49 @@ ordered canonical history immediately in the text UI.
    when hardware is available.
 2. Validate speaker, receiver, Bluetooth, and wired-headset selection and route changes on physical
    devices.
-3. Validate phone/audio interruptions, app backgrounding, device lock, permission denial and
-   recovery, and bounded reconnect behavior.
+3. Validate phone/audio interruptions, device lock, route changes, and bounded reconnect behavior
+   on physical devices. Simulator validation now covers permission denial and recovery, direct
+   access to system settings, established-call background teardown, and a clean subsequent call on
+   both iOS and Android.
 4. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
 
 The detailed evidence and acceptance gates live in
 [`webrtc-foundation.md`](./webrtc-foundation.md).
 
-## Next: voice personalization
+## Completed: voice personalization
 
-Add a mobile voice picker so the user can choose the Realtime assistant voice before starting a
-call.
+Wave now exposes a strict Gateway-owned voice catalog, stores the selected voice in device secure
+storage, and applies it only when creating the next Realtime call. Settings presents the Gateway
+default plus the supported OpenAI Realtime voices with accessible descriptions. The Companion
+validates the selection against the shared allowlist and retains `OPENAI_REALTIME_VOICE` as its
+default.
 
-The implementation must:
+This preserves the required boundaries:
 
-- expose a Wave-owned allowlist of supported voices rather than accepting arbitrary provider
-  values from mobile;
-- validate the selected voice in the Companion and apply it when creating the Realtime session;
-- keep the server-selected `OPENAI_REALTIME_VOICE` value as the safe default;
-- present accessible previews or descriptions without adding model/provider administration to the
-  product; and
-- apply a changed selection to the next call, because OpenAI does not allow changing the voice
-  after a session has already produced audio.
+- mobile cannot submit an arbitrary provider voice;
+- the standard OpenAI key and provider session remain server-side;
+- selecting a voice is user-facing personalization, not model/provider administration; and
+- an active call is never mutated after audio has started.
 
-## Later: continuity validation and release hardening
+## Completed: deterministic continuity validation
 
 The Companion interaction ledger and unified timeline now persist finalized live-voice speech,
 merge it with canonical Hermes history, nest correlated handoffs, paginate with stable cursors, and
-cascade records when a session is deleted. Remaining work:
+cascade records when a session is deleted. Deterministic coverage includes:
 
-- Expand runtime coverage for cross-device refresh, reconnect idempotency, multiple queued
-  handoffs, external Hermes-history deletion, and long-session pagination.
+- account-wide cross-device history visibility and post-call refresh;
+- idempotent persisted Realtime events and duplicate tool-call coalescing;
+- multiple ordered queued handoffs without cancelling active Hermes work;
+- explicit handling when Hermes history is cleared externally; and
+- a 226-entry mixed timeline paginated across seven cursor pages without gaps or duplicates.
+
+## Next: release hardening and focused operations
+
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.
-- Add redacted diagnostics suitable for user support without collecting conversation content.
+- Use the authenticated Settings diagnostics report for user support. It includes only app/platform
+  details, Companion version/uptime and feature availability, and normalized Hermes compatibility;
+  it excludes credentials, server addresses, device identifiers, and conversation content.
 - Complete security, lifecycle-race, production-bundle, and private-deployment validation before
   the first store release.

@@ -3,6 +3,7 @@ import {
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
   WaveDeleteSessionResponseSchema,
+  WaveDiagnosticsResponseSchema,
   WaveErrorResponseSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveIdentifierSchema,
@@ -13,6 +14,7 @@ import {
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
   WaveScheduledJobListResponseSchema,
+  WaveRealtimeVoiceListResponseSchema,
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
@@ -25,11 +27,14 @@ import {
   type WaveCompatibilityResponse,
   type WaveCreateSessionRequest,
   type WaveDeleteSessionResponse,
+  type WaveDiagnosticsResponse,
   type WaveErrorCode,
   type WaveEndRealtimeCallResponse,
   type WaveRedeemPairingRequest,
   type WaveRedeemPairingResponse,
   type WaveScheduledJobListResponse,
+  type WaveRealtimeVoiceId,
+  type WaveRealtimeVoiceListResponse,
   type WaveSessionHistoryResponse,
   type WaveSessionListResponse,
   type WaveSessionResponse,
@@ -248,6 +253,13 @@ export class WaveBackendClient {
     return this.request(WaveStatusResponseSchema, '/v1/status', { signal });
   }
 
+  getDiagnostics(signal?: AbortSignal): Promise<WaveDiagnosticsResponse> {
+    return this.request(WaveDiagnosticsResponseSchema, '/v1/diagnostics', {
+      authenticated: true,
+      signal,
+    });
+  }
+
   listScheduledJobs(
     signal?: AbortSignal,
   ): Promise<WaveScheduledJobListResponse> {
@@ -327,6 +339,7 @@ export class WaveBackendClient {
   startRealtimeCall(
     sessionId: string,
     sdpOffer: string,
+    voiceId?: WaveRealtimeVoiceId,
     signal?: AbortSignal,
   ): Promise<WaveStartRealtimeCallResponse> {
     const validSessionId = parseClientInput(
@@ -336,7 +349,7 @@ export class WaveBackendClient {
     );
     const body = parseClientInput(
       WaveStartRealtimeCallRequestSchema,
-      { sdpOffer },
+      { sdpOffer, ...(voiceId ? { voiceId } : {}) },
       'Wave could not create a valid WebRTC offer.',
     );
     return this.request(
@@ -348,6 +361,19 @@ export class WaveBackendClient {
         method: 'POST',
         signal,
         timeoutMs: this.realtimeSetupTimeoutMs,
+      },
+    );
+  }
+
+  getRealtimeVoices(
+    signal?: AbortSignal,
+  ): Promise<WaveRealtimeVoiceListResponse> {
+    return this.request(
+      WaveRealtimeVoiceListResponseSchema,
+      '/v1/realtime/voices',
+      {
+        authenticated: true,
+        signal,
       },
     );
   }

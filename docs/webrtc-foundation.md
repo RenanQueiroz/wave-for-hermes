@@ -2,7 +2,7 @@
 
 Status: native Realtime path validated on simulators and physical Android; remaining production gates are tracked below
 
-Validated: 2026-07-30
+Validated: 2026-07-31
 
 Wave uses `react-native-webrtc` as the native media foundation for the OpenAI Realtime
 voice transport. The dependency is installed through `npx expo install`; the validated lockfile
@@ -74,6 +74,12 @@ media and attempts authenticated Companion cleanup. A failed server-side cleanup
 and retryable; Wave does not silently start a second call. A transient peer disconnect may recover
 inside a bounded window, while a closed event channel is terminal.
 
+Microphone denial produces a retryable, content-free permission error and an accessible system
+settings action. Android requests `RECORD_AUDIO` explicitly before native media acquisition; iOS
+uses the configured microphone purpose string and native prompt. The selected Wave voice is loaded
+from secure device storage before setup and included only in the strict authenticated Companion
+call request.
+
 The live transcript shown during a call is transient controller state. The Companion persists only
 finalized user and Wave transcript items plus bounded handoff lifecycle records; it stores no raw
 audio, partial speech, or hidden reasoning. Successful route exit refreshes the active unified
@@ -134,6 +140,10 @@ The production simulator path additionally passed on 2026-07-30:
 - explicit peer, media, data-channel, timer, and Companion-call teardown;
 - return to the existing chat on both the Radon-managed iOS and Android devices.
 
+On 2026-07-31, both Radon-managed platforms additionally passed denial and later recovery of
+microphone permission, the system-settings recovery action, a successful subsequent call reaching
+`Listening`, established-call background teardown, and another clean idle state ready to reconnect.
+
 The production path also passed on a physical Google Pixel 8 Pro on 2026-07-30:
 
 - microphone capture reached the Realtime session and produced a user turn;
@@ -165,7 +175,6 @@ Before declaring voice production-ready, validate:
 - full-duplex barge-in and assistant-audio interruption on physical iOS;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
-- permission denial and later recovery;
 - release builds and realistic network transitions.
 
 The local proof should remain a small development-only native diagnostic even though the

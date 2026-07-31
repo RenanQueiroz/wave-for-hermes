@@ -3,6 +3,7 @@ import {
   WaveAskHermesToolResultSchema,
   WaveRealtimeSdpSchema,
   type WaveAskHermesToolResult,
+  type WaveRealtimeVoiceId,
 } from '@wave/contracts';
 import OpenAI, {
   APIConnectionError,
@@ -132,10 +133,14 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     safetyIdentifier: string;
     sdpOffer: string;
     signal?: AbortSignal;
+    voice: WaveRealtimeVoiceId;
   }): Promise<RealtimeProviderCall> {
     const form = new FormData();
     form.set('sdp', input.sdpOffer);
-    form.set('session', JSON.stringify(createSessionConfig(this.config)));
+    form.set(
+      'session',
+      JSON.stringify(createSessionConfig(this.config, input.voice)),
+    );
 
     let response: Response;
     try {
@@ -743,6 +748,7 @@ function readSidebandMessage(
 
 function createSessionConfig(
   config: OpenAIRealtimeConfig,
+  voice: WaveRealtimeVoiceId,
 ): RealtimeSessionCreateRequest {
   return {
     audio: {
@@ -757,7 +763,7 @@ function createSessionConfig(
         },
       },
       output: {
-        voice: config.voice,
+        voice,
       },
     },
     instructions: `# Role

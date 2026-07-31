@@ -4,8 +4,10 @@ import test from 'node:test';
 import {
   WaveEndRealtimeCallResponseSchema,
   WaveErrorResponseSchema,
+  WaveRealtimeVoiceListResponseSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveStatusResponseSchema,
+  type WaveRealtimeVoiceId,
 } from '@wave/contracts';
 
 import { buildCompanionServer } from '../src/app.ts';
@@ -51,6 +53,7 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
   const registry = new RealtimeCallRegistry(
     {
       callTtlMs: config.realtimeCallTtlMs,
+      defaultVoiceId: 'marin',
       maxActiveCalls: config.maxActiveRealtimeCalls,
       toolTimeoutMs: config.realtimeToolTimeoutMs,
     },
@@ -84,6 +87,28 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
   );
   assert.equal(status.features.realtime, true);
 
+  const unauthorizedVoices = await app.inject({
+    method: 'GET',
+    url: '/v1/realtime/voices',
+  });
+  assert.equal(unauthorizedVoices.statusCode, 401);
+
+  const voicesResponse = await app.inject({
+    headers: authorizationHeader(first.credential),
+    method: 'GET',
+    url: '/v1/realtime/voices',
+  });
+  assert.equal(voicesResponse.statusCode, 200);
+  const voices = WaveRealtimeVoiceListResponseSchema.parse(
+    voicesResponse.json(),
+  );
+  assert.equal(voices.defaultVoiceId, 'marin');
+  assert.equal(voices.voices.length, 10);
+  assert.equal(
+    voices.voices.some((voice) => voice.id === 'cedar'),
+    true,
+  );
+
   const unauthorized = await app.inject({
     method: 'POST',
     payload: { sdpOffer: SDP_OFFER },
@@ -104,7 +129,7 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
   const createdResponse = await app.inject({
     headers: authorizationHeader(first.credential),
     method: 'POST',
-    payload: { sdpOffer: SDP_OFFER },
+    payload: { sdpOffer: SDP_OFFER, voiceId: 'cedar' },
     url: '/v1/sessions/hermes-session-1/realtime/calls',
   });
   assert.equal(createdResponse.statusCode, 201);
@@ -119,6 +144,7 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
   assert.equal(createdResponse.body.includes('rtc_provider_call'), false);
   assert.equal(createdResponse.body.includes('server-only'), false);
   assert.equal(provider.createCalls, 1);
+  assert.equal(provider.lastVoice, 'cedar');
 
   const crossDeviceEnd = await app.inject({
     headers: authorizationHeader(second.credential),
@@ -186,9 +212,13 @@ test('keeps Realtime unavailable when the server OpenAI credential is absent', a
 class FakeRealtimeProvider implements RealtimeProvider {
   createCalls = 0;
   endedCalls = 0;
+  lastVoice?: WaveRealtimeVoiceId;
 
-  async createCall(): Promise<RealtimeProviderCall> {
+  async createCall(input: {
+    voice: WaveRealtimeVoiceId;
+  }): Promise<RealtimeProviderCall> {
     this.createCalls += 1;
+    this.lastVoice = input.voice;
     const sideband = new FakeRealtimeSideband();
     return {
       end: async () => {

@@ -3,6 +3,7 @@ import {
   type MediaStream,
   RTCPeerConnection,
 } from 'react-native-webrtc';
+import { PermissionsAndroid, Platform } from 'react-native';
 
 import {
   parseRealtimeServerEvent,
@@ -273,6 +274,7 @@ class ReactNativePreparedRealtimeTransport implements PreparedRealtimeTransport 
 
 async function acquireMicrophone(signal: AbortSignal) {
   try {
+    await requestAndroidMicrophonePermission(signal);
     const stream = await mediaDevices.getUserMedia({
       audio: true,
       video: false,
@@ -284,16 +286,19 @@ async function acquireMicrophone(signal: AbortSignal) {
     return stream;
   } catch (error) {
     if (signal.aborted) throw abortError();
+    if (error instanceof RealtimeTransportError) throw error;
     const message = normalizeErrorMessage(error).toLowerCase();
     if (
+      Platform.OS === 'ios' ||
       message.includes('denied') ||
       message.includes('notallowed') ||
       message.includes('permission')
     ) {
       throw new RealtimeTransportError(
-        'Microphone access is required for live voice.',
+        'Allow microphone access in system settings, then try live voice again.',
         {
           kind: 'media_permission',
+          retryable: true,
         },
       );
     }
@@ -301,6 +306,31 @@ async function acquireMicrophone(signal: AbortSignal) {
       kind: 'media_unavailable',
       retryable: true,
     });
+  }
+}
+
+async function requestAndroidMicrophonePermission(signal: AbortSignal) {
+  if (Platform.OS !== 'android') return;
+  throwIfAborted(signal);
+  const result = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    {
+      buttonNegative: 'Not now',
+      buttonPositive: 'Continue',
+      message:
+        'Wave uses your microphone only while a live voice conversation is active.',
+      title: 'Microphone access',
+    },
+  );
+  throwIfAborted(signal);
+  if (result !== PermissionsAndroid.RESULTS.GRANTED) {
+    throw new RealtimeTransportError(
+      'Allow microphone access in system settings, then try live voice again.',
+      {
+        kind: 'media_permission',
+        retryable: true,
+      },
+    );
   }
 }
 

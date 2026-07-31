@@ -64,6 +64,7 @@ test('uses the official SDK for unified setup and authenticated sideband control
   const call = await provider.createCall({
     safetyIdentifier: 'a'.repeat(64),
     sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+    voice: 'cedar',
   });
 
   assert.equal(call.sdpAnswer.startsWith('v=0'), true);
@@ -82,6 +83,11 @@ test('uses the official SDK for unified setup and authenticated sideband control
   const sessionPart = form.get('session');
   assert.equal(typeof sessionPart, 'string');
   const session = JSON.parse(sessionPart as string) as {
+    audio: {
+      output: {
+        voice: string;
+      };
+    };
     instructions: string;
     model: string;
     parallel_tool_calls: boolean;
@@ -97,6 +103,7 @@ test('uses the official SDK for unified setup and authenticated sideband control
     type: string;
   };
   assert.equal(session.type, 'realtime');
+  assert.equal(session.audio.output.voice, 'cedar');
   assert.equal(session.model, 'gpt-realtime-2.1-mini');
   assert.equal(session.parallel_tool_calls, true);
   assert.equal(session.tools.length, 1);

@@ -10,12 +10,14 @@ import {
   WaveAssistantDeltaEventSchema,
   WaveCreateSessionRequestSchema,
   WaveDeviceCredentialSchema,
+  WaveDiagnosticsResponseSchema,
   WaveErrorResponseSchema,
   WaveEventEnvelopeSchema,
   WaveAskHermesArgumentsSchema,
   WaveAskHermesToolResultSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
+  WaveRealtimeVoiceListResponseSchema,
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveSessionHistoryResponseSchema,
@@ -46,6 +48,44 @@ test('accepts a strict versioned companion status response', () => {
 
   assert.equal(result.apiVersion, 'v1');
   assert.equal(result.hermes.configured, true);
+});
+
+test('accepts only content-free redacted diagnostics', () => {
+  const diagnostics = WaveDiagnosticsResponseSchema.parse({
+    apiVersion: WAVE_API_VERSION,
+    companion: {
+      serviceVersion: '0.1.0',
+      uptimeSeconds: 42,
+    },
+    features: {
+      chat: true,
+      pairing: true,
+      realtime: true,
+    },
+    generatedAt: '2026-07-31T12:00:00.000Z',
+    hermes: {
+      status: 'compatible',
+    },
+  });
+
+  assert.equal(diagnostics.hermes.status, 'compatible');
+  assert.equal(
+    WaveDiagnosticsResponseSchema.safeParse({
+      ...diagnostics,
+      conversationContent: 'must not cross',
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveDiagnosticsResponseSchema.safeParse({
+      ...diagnostics,
+      hermes: {
+        missingFeatures: ['session_chat'],
+        status: 'incompatible',
+      },
+    }).success,
+    false,
+  );
 });
 
 test('accepts only bounded Wave-owned unified timeline entries', () => {
@@ -354,8 +394,10 @@ test('validates each normalized turn event variant strictly', () => {
 test('validates bounded Realtime SDP call setup without exposing provider identifiers', () => {
   const request = WaveStartRealtimeCallRequestSchema.parse({
     sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+    voiceId: 'cedar',
   });
   assert.equal(request.sdpOffer.startsWith('v=0'), true);
+  assert.equal(request.voiceId, 'cedar');
 
   const response = WaveStartRealtimeCallResponseSchema.parse({
     apiVersion: WAVE_API_VERSION,
@@ -382,6 +424,31 @@ test('validates bounded Realtime SDP call setup without exposing provider identi
     }).success,
     false,
   );
+  assert.equal(
+    WaveStartRealtimeCallRequestSchema.safeParse({
+      sdpOffer: 'v=0\r\nvalid',
+      voiceId: 'model-controlled-custom-voice',
+    }).success,
+    false,
+  );
+  const voices = WaveRealtimeVoiceListResponseSchema.parse({
+    apiVersion: WAVE_API_VERSION,
+    defaultVoiceId: 'marin',
+    voices: [
+      {
+        description: 'Natural and expressive for a polished voice experience.',
+        id: 'marin',
+        label: 'Marin',
+      },
+      {
+        description: 'Clear and grounded with a steady presence.',
+        id: 'cedar',
+        label: 'Cedar',
+      },
+    ],
+  });
+  assert.equal(voices.defaultVoiceId, 'marin');
+  assert.equal(voices.voices[1]?.id, 'cedar');
   assert.equal(
     WaveEndRealtimeCallResponseSchema.parse({
       apiVersion: WAVE_API_VERSION,

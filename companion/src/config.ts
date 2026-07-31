@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  WaveRealtimeVoiceIdSchema,
+  type WaveRealtimeVoiceId,
+} from '@wave/contracts';
 
 import type { HermesConnectionConfig } from './hermes/hermes-types.ts';
 
@@ -13,20 +17,7 @@ const CompanionEnvironmentSchema = z.object({
     .min(1)
     .max(100)
     .default('gpt-realtime-2.1-mini'),
-  OPENAI_REALTIME_VOICE: z
-    .enum([
-      'alloy',
-      'ash',
-      'ballad',
-      'cedar',
-      'coral',
-      'echo',
-      'marin',
-      'sage',
-      'shimmer',
-      'verse',
-    ])
-    .default('marin'),
+  OPENAI_REALTIME_VOICE: WaveRealtimeVoiceIdSchema.default('marin'),
   WAVE_DATABASE_PATH: z
     .string()
     .trim()
@@ -96,17 +87,7 @@ export interface OpenAIRealtimeConfig {
   model: string;
   requestTimeoutMs: number;
   sidebandConnectTimeoutMs: number;
-  voice:
-    | 'alloy'
-    | 'ash'
-    | 'ballad'
-    | 'cedar'
-    | 'coral'
-    | 'echo'
-    | 'marin'
-    | 'sage'
-    | 'shimmer'
-    | 'verse';
+  voice: WaveRealtimeVoiceId;
 }
 
 export interface CompanionConfig {

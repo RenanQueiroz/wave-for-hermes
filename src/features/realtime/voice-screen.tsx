@@ -1,4 +1,5 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Linking from 'expo-linking';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Button, MicIcon, Soundwave, Typography } from 'panelui-native';
 import {
@@ -16,6 +17,10 @@ import {
   WaveRealtimeController,
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
+import {
+  realtimeVoicePreferenceQueryKey,
+  realtimeVoicePreferenceStore,
+} from '@/features/realtime/realtime-voice-preference';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
 import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
@@ -53,6 +58,12 @@ function ConnectedVoiceScreen({
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const voicePreference = useQuery({
+    queryFn: () => realtimeVoicePreferenceStore.load(),
+    queryKey: realtimeVoicePreferenceQueryKey,
+    retry: false,
+    staleTime: Infinity,
+  });
   const stopAndRefreshRef = useRef<Promise<void> | undefined>(undefined);
   const controller = useMemo(
     () =>
@@ -90,9 +101,13 @@ function ConnectedVoiceScreen({
     return task;
   }, [baseUrl, client, connectionId, controller, queryClient, sessionId]);
   const start = useCallback(() => {
+    if (voicePreference.isPending) return;
     stopAndRefreshRef.current = undefined;
-    void controller.start(sessionId);
-  }, [controller, sessionId]);
+    void controller.start(
+      sessionId,
+      voicePreference.data === 'default' ? undefined : voicePreference.data,
+    );
+  }, [controller, sessionId, voicePreference.data, voicePreference.isPending]);
 
   useFocusEffect(
     useCallback(() => {
@@ -214,6 +229,16 @@ function ConnectedVoiceScreen({
       </View>
 
       <View className="w-full max-w-md self-center gap-3">
+        {state.error?.kind === 'media_permission' ? (
+          <Button
+            fullWidth
+            accessibilityLabel="Open microphone settings"
+            testID="voice-open-settings-button"
+            variant="outline"
+            onPress={() => void Linking.openSettings()}>
+            Open microphone settings
+          </Button>
+        ) : null}
         {state.cleanupPending ? (
           <Button
             fullWidth
@@ -302,7 +327,7 @@ function phaseDescription(phase: WaveRealtimePhase) {
     case 'error':
       return 'No microphone audio is being sent.';
     case 'idle':
-      return 'Start when you are ready to talk with Hermes.';
+      return 'Start when you are ready to talk with Wave.';
   }
 }
 

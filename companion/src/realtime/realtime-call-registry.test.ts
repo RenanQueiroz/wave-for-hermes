@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { WaveAskHermesToolResult } from '@wave/contracts';
+import type {
+  WaveAskHermesToolResult,
+  WaveRealtimeVoiceId,
+} from '@wave/contracts';
 
 import { SqliteDeviceStore } from '../auth/sqlite-device-store.ts';
 import type {
@@ -129,17 +132,20 @@ class FakeRealtimeProvider implements RealtimeProvider {
     safetyIdentifier: string;
     sdpOffer: string;
     sideband: FakeRealtimeSideband;
+    voice: WaveRealtimeVoiceId;
   }[] = [];
 
   async createCall(input: {
     safetyIdentifier: string;
     sdpOffer: string;
+    voice: WaveRealtimeVoiceId;
   }): Promise<RealtimeProviderCall> {
     const call = {
       ended: false,
       safetyIdentifier: input.safetyIdentifier,
       sdpOffer: input.sdpOffer,
       sideband: new FakeRealtimeSideband(),
+      voice: input.voice,
     };
     this.calls.push(call);
     return {
@@ -227,6 +233,9 @@ test('binds a Realtime call to trusted device and session state', async () => {
   });
   assert.equal(started.sdpAnswer, SDP_ANSWER);
   assert.equal(context.provider.calls[0]?.sdpOffer, SDP_OFFER);
+  assert.equal(context.provider.calls[0]?.voice, 'marin');
+  assert.equal(context.registry.getVoiceCatalog().defaultVoiceId, 'marin');
+  assert.equal(context.registry.getVoiceCatalog().voices.length, 10);
   assert.match(
     context.provider.calls[0]?.safetyIdentifier ?? '',
     /^[a-f0-9]{64}$/,
@@ -793,6 +802,7 @@ function createContext(
   const registry = new RealtimeCallRegistry(
     {
       callTtlMs: 60_000,
+      defaultVoiceId: 'marin',
       maxActiveCalls: options.maxActiveCalls ?? 2,
       toolTimeoutMs: options.toolTimeoutMs ?? 1_000,
     },

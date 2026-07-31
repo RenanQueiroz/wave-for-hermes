@@ -66,8 +66,8 @@ currently includes:
   Wave-owned call identifiers, bounded call state, background Hermes request serialization,
   exact-instruction coalescing, response-safe result delivery, and cleanup;
 - runtime-neutral Wave pairing, paginated session lifecycle and unified timeline, attachment,
-  read-only scheduled-job, cancellation, error, normalized turn-event, Realtime call, and strict
-  `ask_hermes` schemas in `@wave/contracts`;
+  read-only scheduled-job, redacted diagnostics, cancellation, error, normalized turn-event,
+  Realtime voice/catalog, call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
   strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
   limits, authenticated Realtime call start/end methods, safe normalized errors, and no direct
@@ -81,12 +81,15 @@ currently includes:
   validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators,
   plus audible microphone/assistant playback, background-work barge-in, and bounded ordered
   `ask_hermes` follow-ups on a physical Android device;
+- a secure per-device live-voice preference backed by a strict Gateway-owned voice catalog, plus
+  actionable microphone-permission recovery on both mobile platforms;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
 - a ChatGPT-style chat-first shell that creates a new conversation on connected launch, opens
   account-wide history from a side drawer, searches titles, renames/deletes sessions, keeps
-  Settings and Disconnect fixed at the bottom, and exposes scheduled jobs as read-only status;
+  Settings and Disconnect fixed at the bottom, exposes scheduled jobs as read-only status, and can
+  share content-free support diagnostics from Settings;
 - TanStack Query-backed paginated session/timeline state plus PanelUI conversation and chat routes
   with batched assistant deltas, lifecycle-safe prompt cancellation, canonical Hermes records and
   finalized Wave speech merged into coherent turns, bottom-aligned Wave avatars, collapsed named

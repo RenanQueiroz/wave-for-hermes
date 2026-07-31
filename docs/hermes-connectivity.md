@@ -26,9 +26,11 @@ application will instead use `WaveBackendClient` and Wave-owned normalized contr
 `packages/contracts`.
 
 The companion exposes a non-sensitive `GET /v1/status` plus authenticated Wave-owned compatibility,
-paginated session lifecycle, cursor-paginated unified timeline, attachment-aware streamed-turn,
-cancellation, read-only scheduled-job, and Realtime call routes. The authenticated
-`GET /v1/compatibility` route performs a live Hermes capability probe. Mobile does not call Hermes
+redacted diagnostics, paginated session lifecycle, cursor-paginated unified timeline,
+attachment-aware streamed-turn, cancellation, read-only scheduled-job, Realtime voice-catalog, and
+Realtime call routes. The authenticated `GET /v1/compatibility` route performs a live Hermes
+capability probe. `GET /v1/diagnostics` reduces that state to compatible, incompatible, or
+unreachable for support use and cannot contain an upstream error body. Mobile does not call Hermes
 routes directly: its contract-validating `WaveBackendClient` calls only the normalized Wave API,
 and pairing/bootstrap require the live compatibility probe before showing the connected route.
 

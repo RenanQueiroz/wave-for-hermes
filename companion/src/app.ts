@@ -56,6 +56,7 @@ export function buildCompanionServer(
       ? new RealtimeCallRegistry(
           {
             callTtlMs: config.realtimeCallTtlMs,
+            defaultVoiceId: config.openAI.voice,
             maxActiveCalls: config.maxActiveRealtimeCalls,
             toolTimeoutMs: config.realtimeToolTimeoutMs,
           },

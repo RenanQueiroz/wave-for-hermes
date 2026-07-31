@@ -151,6 +151,7 @@ test('starts and ends a Realtime call through strict Wave-owned contracts', asyn
   const started = await client.startRealtimeCall(
     'hermes-session-1',
     'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+    'cedar',
   );
   assert.equal(started.call.id, 'wave-call-1');
   const ended = await client.endRealtimeCall(started.call.id);
@@ -159,6 +160,7 @@ test('starts and ends a Realtime call through strict Wave-owned contracts', asyn
     {
       body: {
         sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
+        voiceId: 'cedar',
       },
       path: '/root/v1/sessions/hermes-session-1/realtime/calls',
     },
@@ -167,6 +169,81 @@ test('starts and ends a Realtime call through strict Wave-owned contracts', asyn
       path: '/root/v1/realtime/calls/wave-call-1/end',
     },
   ]);
+});
+
+test('loads the Gateway-authorized Realtime voice catalog', async () => {
+  let requestedPath = '';
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test/root',
+    credential,
+    fetch: async (input, init) => {
+      requestedPath = new URL(String(input)).pathname;
+      assert.equal(
+        new Headers(init?.headers).get('authorization'),
+        `Bearer ${credential}`,
+      );
+      return jsonResponse({
+        apiVersion: 'v1',
+        defaultVoiceId: 'marin',
+        voices: [
+          {
+            description:
+              'Natural and expressive for a polished voice experience.',
+            id: 'marin',
+            label: 'Marin',
+          },
+          {
+            description: 'Clear and grounded with a steady presence.',
+            id: 'cedar',
+            label: 'Cedar',
+          },
+        ],
+      });
+    },
+  });
+
+  const catalog = await client.getRealtimeVoices();
+
+  assert.equal(requestedPath, '/root/v1/realtime/voices');
+  assert.equal(catalog.defaultVoiceId, 'marin');
+  assert.equal(catalog.voices[1]?.id, 'cedar');
+});
+
+test('loads authenticated redacted support diagnostics', async () => {
+  let requestedPath = '';
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test/root',
+    credential,
+    fetch: async (input, init) => {
+      requestedPath = new URL(String(input)).pathname;
+      assert.equal(
+        new Headers(init?.headers).get('authorization'),
+        `Bearer ${credential}`,
+      );
+      return jsonResponse({
+        apiVersion: 'v1',
+        companion: {
+          serviceVersion: '0.1.0',
+          uptimeSeconds: 120,
+        },
+        features: {
+          chat: true,
+          pairing: true,
+          realtime: true,
+        },
+        generatedAt: '2026-07-31T12:00:00.000Z',
+        hermes: {
+          status: 'compatible',
+        },
+      });
+    },
+  });
+
+  const diagnostics = await client.getDiagnostics();
+
+  assert.equal(requestedPath, '/root/v1/diagnostics');
+  assert.equal(diagnostics.hermes.status, 'compatible');
+  assert.equal(diagnostics.companion.uptimeSeconds, 120);
 });
 
 test('loads a cursor-paginated unified conversation timeline', async () => {

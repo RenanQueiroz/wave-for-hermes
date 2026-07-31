@@ -5,6 +5,52 @@ import { WaveIdentifierSchema, WaveResponseMetadataSchema } from './common.ts';
 export const WAVE_MAX_REALTIME_SDP_LENGTH = 48_000;
 export const WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH = 8_000;
 export const WAVE_MAX_ASK_HERMES_ANSWER_LENGTH = 24_000;
+export const WAVE_REALTIME_VOICE_IDS = [
+  'alloy',
+  'ash',
+  'ballad',
+  'cedar',
+  'coral',
+  'echo',
+  'marin',
+  'sage',
+  'shimmer',
+  'verse',
+] as const;
+
+export const WaveRealtimeVoiceIdSchema = z.enum(WAVE_REALTIME_VOICE_IDS);
+
+export const WaveRealtimeVoiceOptionSchema = z
+  .object({
+    description: z.string().trim().min(1).max(160),
+    id: WaveRealtimeVoiceIdSchema,
+    label: z.string().trim().min(1).max(40),
+  })
+  .strict();
+
+export const WaveRealtimeVoiceListResponseSchema =
+  WaveResponseMetadataSchema.extend({
+    defaultVoiceId: WaveRealtimeVoiceIdSchema,
+    voices: z.array(WaveRealtimeVoiceOptionSchema).min(1).max(32),
+  })
+    .strict()
+    .superRefine((value, context) => {
+      const voiceIds = new Set(value.voices.map((voice) => voice.id));
+      if (voiceIds.size !== value.voices.length) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Realtime voice identifiers must be unique.',
+          path: ['voices'],
+        });
+      }
+      if (!voiceIds.has(value.defaultVoiceId)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'The default Realtime voice must be available.',
+          path: ['defaultVoiceId'],
+        });
+      }
+    });
 
 export const WaveRealtimeSdpSchema = z
   .string()
@@ -18,6 +64,7 @@ export const WaveRealtimeSdpSchema = z
 export const WaveStartRealtimeCallRequestSchema = z
   .object({
     sdpOffer: WaveRealtimeSdpSchema,
+    voiceId: WaveRealtimeVoiceIdSchema.optional(),
   })
   .strict();
 
@@ -95,6 +142,13 @@ export type WaveEndRealtimeCallResponse = z.infer<
   typeof WaveEndRealtimeCallResponseSchema
 >;
 export type WaveRealtimeCall = z.infer<typeof WaveRealtimeCallSchema>;
+export type WaveRealtimeVoiceId = z.infer<typeof WaveRealtimeVoiceIdSchema>;
+export type WaveRealtimeVoiceListResponse = z.infer<
+  typeof WaveRealtimeVoiceListResponseSchema
+>;
+export type WaveRealtimeVoiceOption = z.infer<
+  typeof WaveRealtimeVoiceOptionSchema
+>;
 export type WaveStartRealtimeCallRequest = z.infer<
   typeof WaveStartRealtimeCallRequestSchema
 >;

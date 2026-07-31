@@ -1,4 +1,7 @@
-import type { WaveAskHermesToolResult } from '@wave/contracts';
+import type {
+  WaveAskHermesToolResult,
+  WaveRealtimeVoiceId,
+} from '@wave/contracts';
 
 export interface RealtimeFunctionCall {
   arguments: string;
@@ -78,5 +81,6 @@ export interface RealtimeProvider {
     safetyIdentifier: string;
     sdpOffer: string;
     signal?: AbortSignal;
+    voice: WaveRealtimeVoiceId;
   }): Promise<RealtimeProviderCall>;
 }

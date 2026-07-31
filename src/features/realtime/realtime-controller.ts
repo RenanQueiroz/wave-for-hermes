@@ -1,5 +1,6 @@
 import type {
   WaveEndRealtimeCallResponse,
+  WaveRealtimeVoiceId,
   WaveStartRealtimeCallResponse,
 } from '@wave/contracts';
 
@@ -48,6 +49,7 @@ export interface RealtimeBackend {
   startRealtimeCall(
     sessionId: string,
     sdpOffer: string,
+    voiceId?: WaveRealtimeVoiceId,
     signal?: AbortSignal,
   ): Promise<WaveStartRealtimeCallResponse>;
 }
@@ -90,7 +92,7 @@ export class WaveRealtimeController {
     return () => this.listeners.delete(listener);
   };
 
-  async start(sessionId: string) {
+  async start(sessionId: string, voiceId?: WaveRealtimeVoiceId) {
     if (this.state.phase !== 'idle' && this.state.phase !== 'error') {
       return;
     }
@@ -132,6 +134,7 @@ export class WaveRealtimeController {
       const response = await this.backend.startRealtimeCall(
         sessionId,
         transportSession.sdpOffer,
+        voiceId,
         controller.signal,
       );
       this.callId = response.call.id;

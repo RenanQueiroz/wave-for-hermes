@@ -149,7 +149,9 @@ Authorization: Bearer <device-credential>
 | `GET /v1/status`                                      | Public                | Non-sensitive service and feature status                         |
 | `POST /v1/pairings/redeem`                            | One-time code         | Create a named device and return its credential once             |
 | `GET /v1/compatibility`                               | Device                | Probe the live Hermes capability contract                        |
+| `GET /v1/diagnostics`                                 | Device                | Read redacted support status without content or credentials      |
 | `GET /v1/operations/jobs`                             | Device                | Read normalized scheduled-job status without prompts or controls |
+| `GET /v1/realtime/voices`                             | Device                | Read the strict Wave-owned Realtime voice catalog                |
 | `GET /v1/sessions?limit=&offset=`                     | Device                | Page through top-level Hermes sessions                           |
 | `POST /v1/sessions`                                   | Device                | Create a Hermes session                                          |
 | `PATCH /v1/sessions/:sessionId`                       | Device                | Rename a Hermes session                                          |
@@ -196,6 +198,10 @@ The mobile client sends a strict SDP offer for an existing Hermes session. The C
 uses the official OpenAI JavaScript SDK to perform unified WebRTC call setup, attaches its
 server-only sideband WebSocket, and returns only the SDP answer, expiry, and an opaque Wave-owned
 call ID. OpenAI's API key and call ID never cross the Wave API boundary.
+
+Mobile may omit `voiceId` to use the server's `OPENAI_REALTIME_VOICE` default or select an ID from
+`GET /v1/realtime/voices`. The shared contract rejects arbitrary provider values. A selection is
+applied only during new call creation; an active session's voice is never mutated.
 
 One device and one Hermes session can each participate in only one active Realtime call, and the
 process-wide default is two. A call expires after 30 minutes by default, and explicit termination

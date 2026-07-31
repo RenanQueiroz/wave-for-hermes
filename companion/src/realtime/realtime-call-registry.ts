@@ -4,8 +4,10 @@ import {
   WAVE_MAX_ASK_HERMES_ANSWER_LENGTH,
   WaveAskHermesArgumentsSchema,
   WaveAskHermesToolResultSchema,
+  WaveRealtimeVoiceIdSchema,
   type WaveAskHermesToolErrorCode,
   type WaveAskHermesToolResult,
+  type WaveRealtimeVoiceId,
 } from '@wave/contracts';
 
 import type { DeviceStore } from '../auth/device-store.ts';
@@ -20,6 +22,7 @@ import {
   type RealtimeProviderCall,
   type RealtimeUserTranscript,
 } from './realtime-provider.ts';
+import { WAVE_REALTIME_VOICE_OPTIONS } from './realtime-voices.ts';
 
 const ASK_HERMES_TOOL_NAME = 'ask_hermes';
 const MAX_TOOL_CALLS_PER_REALTIME_CALL = 128;
@@ -64,6 +67,7 @@ interface RealtimeCallState {
 
 export interface RealtimeCallRegistryConfig {
   callTtlMs: number;
+  defaultVoiceId: WaveRealtimeVoiceId;
   maxActiveCalls: number;
   toolTimeoutMs: number;
 }
@@ -133,6 +137,13 @@ export class RealtimeCallRegistry {
     return false;
   }
 
+  getVoiceCatalog() {
+    return {
+      defaultVoiceId: this.config.defaultVoiceId,
+      voices: WAVE_REALTIME_VOICE_OPTIONS,
+    };
+  }
+
   releaseSessionDeletion(sessionId: string) {
     this.deletingSessionIds.delete(sessionId);
   }
@@ -150,6 +161,7 @@ export class RealtimeCallRegistry {
     sdpOffer: string;
     sessionId: string;
     signal?: AbortSignal;
+    voiceId?: WaveRealtimeVoiceId;
   }): Promise<StartedRealtimeCall> {
     if (this.deletingSessionIds.has(input.sessionId)) {
       throw new WaveHttpError('This Hermes session is being deleted.', {
@@ -172,6 +184,9 @@ export class RealtimeCallRegistry {
         safetyIdentifier: createSafetyIdentifier(input.deviceId),
         sdpOffer: input.sdpOffer,
         signal: input.signal,
+        voice: WaveRealtimeVoiceIdSchema.parse(
+          input.voiceId ?? this.config.defaultVoiceId,
+        ),
       });
     } catch (error) {
       this.releaseReservation(input.deviceId, input.sessionId);

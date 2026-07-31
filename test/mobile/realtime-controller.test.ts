@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type {
   WaveEndRealtimeCallResponse,
+  WaveRealtimeVoiceId,
   WaveStartRealtimeCallResponse,
 } from '@wave/contracts';
 
@@ -60,6 +61,7 @@ class FakeRealtimeBackend implements RealtimeBackend {
   endAttempts = 0;
   endedCallIds: string[] = [];
   failNextEnd = false;
+  lastVoiceId?: WaveRealtimeVoiceId;
   startResponse = Promise.resolve(realtimeStartResponse());
 
   async endRealtimeCall(callId: string): Promise<WaveEndRealtimeCallResponse> {
@@ -80,7 +82,12 @@ class FakeRealtimeBackend implements RealtimeBackend {
     };
   }
 
-  startRealtimeCall() {
+  startRealtimeCall(
+    _sessionId: string,
+    _sdpOffer: string,
+    voiceId?: WaveRealtimeVoiceId,
+  ) {
+    this.lastVoiceId = voiceId;
     return this.startResponse;
   }
 }
@@ -93,8 +100,9 @@ test('connects, reduces safe activity, controls the microphone, and cleans up ex
     transport,
   });
 
-  await controller.start('session-1');
+  await controller.start('session-1', 'cedar');
   assert.equal(controller.getState().phase, 'listening');
+  assert.equal(backend.lastVoiceId, 'cedar');
   assert.equal(transport.prepared.connectedAnswer, 'v=0\r\nwave-answer');
 
   transport.emit({
