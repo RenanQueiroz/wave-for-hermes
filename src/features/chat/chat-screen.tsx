@@ -37,14 +37,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MenuButton } from '@/components/navigation/menu-button';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
-import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
   timelineToWaveChatMessages,
-  type WaveChatPart,
   type WaveChatMessage,
+  type WaveChatPart,
 } from '@/features/chat/chat-state';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
+import { useWaveConnection } from '@/features/connection/connection-provider';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
   waveSessionQueryKey,
@@ -359,7 +359,9 @@ function ConnectedChatScreen({
           <View
             pointerEvents="none"
             className="absolute inset-0 items-center justify-center gap-2 px-6">
-            <Typography.Heading type="h2">{emptyStateTitle}</Typography.Heading>
+            <Typography.Heading type="h2" className="text-center">
+              {emptyStateTitle}
+            </Typography.Heading>
             <Typography.Paragraph muted className="text-center">
               Chat naturally. Wave delegates work when your Hermes agent is
               needed.
