@@ -86,6 +86,7 @@ test('uses the official SDK for unified setup and authenticated sideband control
     model: string;
     parallel_tool_calls: boolean;
     tools: {
+      description: string;
       name: string;
       parameters: {
         additionalProperties: boolean;
@@ -105,6 +106,34 @@ test('uses the official SDK for unified setup and authenticated sideband control
   assert.equal(session.tracing, null);
   assert.equal(JSON.stringify(session).includes('sessionId'), false);
   assert.equal(
+    session.instructions.includes(
+      'the user never needs to mention Hermes or ask you to delegate',
+    ),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes(
+      'Answer greetings, lightweight conversation, clarification, and simple computations directly',
+    ),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes(
+      'Use ask_hermes automatically when a request needs external or current information',
+    ),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes(
+      'clear, self-contained instruction optimized for Hermes',
+    ),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes('never broaden the requested action'),
+    true,
+  );
+  assert.equal(
     session.instructions.includes('Hermes requests continue in the background'),
     true,
   );
@@ -121,11 +150,29 @@ test('uses the official SDK for unified setup and authenticated sideband control
     true,
   );
   assert.equal(
-    session.instructions.includes('quoted or exact wording verbatim'),
+    session.instructions.includes('Do not say "Hermes said" by default'),
     true,
   );
   assert.equal(
     session.instructions.includes('do not retry an identical instruction'),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes(
+      'Never claim an action succeeded until the tool result explicitly confirms it',
+    ),
+    true,
+  );
+  assert.equal(
+    session.tools[0]?.description.includes(
+      "Delegate work to the user's already-authorized Hermes",
+    ),
+    true,
+  );
+  assert.equal(
+    session.tools[0]?.description.includes(
+      'Do not use for greetings, lightweight conversation, clarification, or simple computations',
+    ),
     true,
   );
 

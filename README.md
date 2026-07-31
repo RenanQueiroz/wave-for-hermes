@@ -5,8 +5,11 @@ Wave is a focused mobile client for chatting with a user's
 administration console.
 
 The core feature is a low-latency live voice mode backed by the OpenAI Realtime API. The
-Realtime model can request typed tools; Wave validates those tool calls, forwards the corresponding
-request to the user's Hermes agent, and returns the result to the conversation.
+Realtime model is the user's Wave assistant: it answers lightweight conversation directly and
+automatically delegates requests that need tools, private context, current information, durable
+work, or substantial reasoning to Hermes through a typed tool. Wave validates the call, forwards
+an intent-preserving instruction, and presents the confirmed result naturally as its own response.
+The user never has to address Hermes separately.
 
 ## Product scope
 
@@ -16,7 +19,7 @@ Wave is intended to support:
 - browsing, searching, continuing, renaming, and deleting the user's Hermes conversation history;
 - sending bounded images and text-based files with a message;
 - a natural, interruptible live voice conversation;
-- explicit tool calls that let the Realtime session ask Hermes to perform work;
+- automatic typed delegation from the Realtime session to Hermes when work requires it;
 - focused read-only Hermes status surfaces, beginning with scheduled jobs;
 - iOS and Android, with shared behavior where the platforms allow it.
 
@@ -105,10 +108,14 @@ lifecycle actions, Settings, Disconnect, and focused read-only scheduled-job sta
 can attach bounded images and supported text files. Its trailing action changes between Send and a
 live-wave control based on whether trimmed text is present, so both are never shown together. From
 an active chat, the live-wave control opens the live-voice route, establishes a native WebRTC call
-through the Companion, and can automatically
-dispatch a strictly validated `ask_hermes({ instruction })` call against the trusted active Hermes
-session. Physical iOS (including barge-in), audio-route, interruption, release-build, and realistic
-network validation remain before live voice is production-ready. See the tracked
+through the Companion, and automatically dispatches a strictly validated
+`ask_hermes({ instruction })` call against the trusted active Hermes session when the user's natural
+request requires backend work. The Realtime model may turn that request into a clearer,
+self-contained Hermes instruction, but it must preserve the user's intent, scope, constraints,
+identifiers, quoted text, and literal values. It then summarizes or confirms only the result Hermes
+actually returned, without making the user manage the internal handoff. Physical iOS (including
+barge-in), audio-route, interruption, release-build, and realistic network validation remain before
+live voice is production-ready. See the tracked
 [`docs/roadmap.md`](./docs/roadmap.md) for the prioritized remaining work.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and

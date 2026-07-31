@@ -209,6 +209,14 @@ wait in order instead of cancelling the active Hermes run. Exact normalized inst
 executed at most once during a live call: distinct Realtime tool-call IDs share the same in-flight
 or completed Hermes result so a model retry cannot duplicate Hermes work.
 
+The Realtime model presents itself as Wave, not as a separate intermediary the user must direct.
+It answers greetings, lightweight conversation, clarification, and simple computations itself, and
+uses `ask_hermes` automatically for external or current information, private context, device or
+service control, durable work, and substantial reasoning. The instruction may be reorganized for
+Hermes, but must retain the user's intent, scope, constraints, identifiers, quoted text, and literal
+values without adding authority or side effects. A tool preamble stays short and neutral, and a
+successful result is resurfaced naturally as Wave without claiming more than Hermes confirmed.
+
 Hermes work remains in the background relative to the voice conversation. The Realtime session may
 submit another `ask_hermes` call while an earlier result is unresolved, but the Companion still
 executes those requests through its bounded ordered queue rather than concurrently against Hermes.

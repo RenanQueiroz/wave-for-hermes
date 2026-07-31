@@ -44,8 +44,15 @@ The implementation must:
 
 ## Later: conversation continuity and release hardening
 
-- Deliberately decide whether ended voice transcripts disappear or produce a bounded Hermes
-  summary; Hermes remains the durable source of truth.
+- Add a Companion-owned interaction ledger for finalized live-voice user/Wave transcript items and
+  Hermes handoff metadata. Store no raw audio, keep Hermes as the canonical source for its own
+  durable turns, and correlate records with stable IDs rather than text matching.
+- Merge that ledger with canonical Hermes history into one chronological mobile timeline. Render
+  each Hermes delegation as a collapsed nested task inside the surrounding Wave turn, with a
+  concise outcome visible by default and bounded raw handoff input/output available through
+  progressive disclosure.
+- Define retention, pagination, cross-device sync, and deletion-cascade behavior for the interaction
+  ledger before making Realtime-only speech durable.
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.

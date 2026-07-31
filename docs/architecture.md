@@ -277,6 +277,17 @@ carrying the same normalized instruction share one in-flight or completed result
 Realtime retry from duplicating Hermes work. A multi-replica deployment requires deliberate
 shared-state and routing decisions first.
 
+The Realtime model is the user-facing Wave assistant; Hermes is its server-side execution and
+reasoning layer. Users make requests directly to Wave and never need to name Hermes or ask for a
+handoff. The session prompt gives explicit selection rules: handle lightweight conversation and
+simple computations locally, but automatically call `ask_hermes` for current or external
+information, private context, device or service control, durable work, and substantial reasoning.
+Wave may rewrite the request into a clearer self-contained Hermes instruction, while preserving its
+intent, scope, constraints, identifiers, quoted text, and literal values. It must not broaden the
+action, invent details, or report success before a structured result confirms it. Neutral tool
+preambles and post-result responses avoid exposing implementation terminology unless progress or an
+error makes that context useful.
+
 See [`companion/README.md`](../companion/README.md) for the endpoint table and operator workflow.
 
 ## Shared protocol
@@ -319,6 +330,9 @@ protocol messages.
   `ask_hermes` turns appear immediately without persisting casual Realtime conversation twice.
 - The initial Realtime tool is the strict
   `ask_hermes({ instruction: string })` operation. A model-controlled session ID is forbidden.
+- Wave owns the spoken interaction. The user addresses Wave naturally, and Wave selects and
+  phrases a Hermes handoff when backend work is needed; successful voice responses do not require
+  the user to understand or manage that boundary.
 - Wave does not add an extra approval dialog before that narrow tool. The companion dispatches it
   automatically only after strict argument validation, active-device authorization, and trusted
   server-bound session selection;

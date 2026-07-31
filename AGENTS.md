@@ -3,8 +3,9 @@
 ## Product contract
 
 Wave is a simple mobile client for chatting with a user's Hermes agent. Its defining feature is an
-OpenAI Realtime API-backed live voice mode in which the model can use typed tool calls to ask the
-user's Hermes agent to perform work.
+OpenAI Realtime API-backed live voice mode in which Wave can use typed tool calls to delegate work
+to the user's Hermes agent. Wave is the user-facing assistant and Hermes is its execution and
+reasoning layer; never require the user to address them as separate entities.
 
 Keep the product focused:
 
@@ -20,6 +21,10 @@ Keep the product focused:
   repository. Realtime clients must receive short-lived credentials from a trusted server-side
   component.
 - Validate every Realtime tool call against an explicit schema before it can reach Hermes.
+- Realtime may turn a natural user request into a clearer self-contained Hermes instruction, but it
+  must preserve intent, scope, constraints, identifiers, quoted text, and literal values. It must
+  not broaden authority, add side effects, invent missing details, or report success before the
+  Hermes result confirms it.
 
 If a requested change conflicts with this product contract, stop and raise the conflict.
 
