@@ -174,6 +174,134 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
   store.close();
 });
 
+test('serves authorized bounded voice samples with a model-keyed version', async () => {
+  const store = new SqliteDeviceStore(':memory:', { now: () => NOW });
+  const hermes = createHermesClient();
+  const registry = new RealtimeCallRegistry(
+    {
+      callTtlMs: config.realtimeCallTtlMs,
+      defaultVoiceId: 'marin',
+      maxActiveCalls: config.maxActiveRealtimeCalls,
+      toolTimeoutMs: config.realtimeToolTimeoutMs,
+    },
+    {
+      deviceStore: store,
+      hermesClient: hermes,
+      interactionStore: store,
+      provider: new FakeRealtimeProvider(),
+    },
+  );
+  const sample = Buffer.from('RIFF-fake-wave-bytes');
+  const sampledVoices: WaveRealtimeVoiceId[] = [];
+  const app = buildCompanionServer(config, {
+    deviceStore: store,
+    hermesClient: hermes,
+    now: () => NOW,
+    realtimeCallRegistry: registry,
+    realtimeVoiceSampler: {
+      getSample: async (voice) => {
+        sampledVoices.push(voice);
+        return sample;
+      },
+      samplesVersion: 'model4a1b2c3d',
+    },
+  });
+  const paired = pairDevice(store, 'Preview device');
+
+  const catalog = WaveRealtimeVoiceListResponseSchema.parse(
+    (
+      await app.inject({
+        headers: authorizationHeader(paired.credential),
+        method: 'GET',
+        url: '/v1/realtime/voices',
+      })
+    ).json(),
+  );
+  assert.equal(catalog.samplesVersion, 'model4a1b2c3d');
+
+  const unauthorized = await app.inject({
+    method: 'GET',
+    url: '/v1/realtime/voices/marin/sample',
+  });
+  assert.equal(unauthorized.statusCode, 401);
+  assert.equal(sampledVoices.length, 0);
+
+  const unknownVoice = await app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/realtime/voices/not-a-voice/sample',
+  });
+  assert.equal(unknownVoice.statusCode, 400);
+  assert.equal(
+    WaveErrorResponseSchema.parse(unknownVoice.json()).error.code,
+    'bad_request',
+  );
+
+  const response = await app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/realtime/voices/marin/sample',
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers['content-type'], 'audio/wav');
+  assert.deepEqual(response.rawPayload, sample);
+  assert.deepEqual(sampledVoices, ['marin']);
+
+  await app.close();
+  store.close();
+});
+
+test('keeps voice samples unavailable without a configured sampler', async () => {
+  const store = new SqliteDeviceStore(':memory:', { now: () => NOW });
+  const hermes = createHermesClient();
+  const registry = new RealtimeCallRegistry(
+    {
+      callTtlMs: config.realtimeCallTtlMs,
+      defaultVoiceId: 'marin',
+      maxActiveCalls: config.maxActiveRealtimeCalls,
+      toolTimeoutMs: config.realtimeToolTimeoutMs,
+    },
+    {
+      deviceStore: store,
+      hermesClient: hermes,
+      interactionStore: store,
+      provider: new FakeRealtimeProvider(),
+    },
+  );
+  const app = buildCompanionServer(config, {
+    deviceStore: store,
+    hermesClient: hermes,
+    now: () => NOW,
+    realtimeCallRegistry: registry,
+  });
+  const paired = pairDevice(store, 'No-sampler device');
+
+  const catalog = WaveRealtimeVoiceListResponseSchema.parse(
+    (
+      await app.inject({
+        headers: authorizationHeader(paired.credential),
+        method: 'GET',
+        url: '/v1/realtime/voices',
+      })
+    ).json(),
+  );
+  assert.equal(catalog.samplesVersion, undefined);
+
+  const response = await app.inject({
+    headers: authorizationHeader(paired.credential),
+    method: 'GET',
+    url: '/v1/realtime/voices/marin/sample',
+  });
+  assert.equal(response.statusCode, 503);
+  assert.equal(
+    WaveErrorResponseSchema.parse(response.json()).error.code,
+    'upstream_unavailable',
+  );
+
+  await app.close();
+  store.close();
+});
+
 test('keeps Realtime unavailable when the server OpenAI credential is absent', async () => {
   const store = new SqliteDeviceStore(':memory:', { now: () => NOW });
   const hermes = createHermesClient();

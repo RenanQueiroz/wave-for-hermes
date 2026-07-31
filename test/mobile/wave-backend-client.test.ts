@@ -185,6 +185,7 @@ test('loads the Gateway-authorized Realtime voice catalog', async () => {
       return jsonResponse({
         apiVersion: 'v1',
         defaultVoiceId: 'marin',
+        samplesVersion: 'model4a1b2c3d',
         voices: [
           {
             description:
@@ -206,7 +207,93 @@ test('loads the Gateway-authorized Realtime voice catalog', async () => {
 
   assert.equal(requestedPath, '/root/v1/realtime/voices');
   assert.equal(catalog.defaultVoiceId, 'marin');
+  assert.equal(catalog.samplesVersion, 'model4a1b2c3d');
   assert.equal(catalog.voices[1]?.id, 'cedar');
+});
+
+test('downloads bounded authenticated voice samples', async () => {
+  const sample = new Uint8Array([82, 73, 70, 70, 1, 2, 3, 4]);
+  let requestedPath = '';
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async (input, init) => {
+      requestedPath = new URL(String(input)).pathname;
+      assert.equal(
+        new Headers(init?.headers).get('authorization'),
+        `Bearer ${credential}`,
+      );
+      return new Response(sample, {
+        headers: { 'content-type': 'audio/wav' },
+        status: 200,
+      });
+    },
+  });
+
+  assert.deepEqual(await client.getRealtimeVoiceSample('cedar'), sample);
+  assert.equal(requestedPath, '/v1/realtime/voices/cedar/sample');
+
+  const wrongType = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async () =>
+      new Response(sample, {
+        headers: { 'content-type': 'application/octet-stream' },
+        status: 200,
+      }),
+  });
+  await assert.rejects(
+    wrongType.getRealtimeVoiceSample('cedar'),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'invalid_response');
+      return true;
+    },
+  );
+
+  const oversized = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async () =>
+      new Response(new Uint8Array(700_000), {
+        headers: { 'content-type': 'audio/wav' },
+        status: 200,
+      }),
+  });
+  await assert.rejects(
+    oversized.getRealtimeVoiceSample('cedar'),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'invalid_response');
+      return true;
+    },
+  );
+
+  const unavailable = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async () =>
+      jsonResponse(
+        {
+          apiVersion: 'v1',
+          error: {
+            code: 'upstream_unavailable',
+            message: 'OpenAI Realtime could not generate the voice sample.',
+            retryable: true,
+          },
+        },
+        503,
+      ),
+  });
+  await assert.rejects(
+    unavailable.getRealtimeVoiceSample('cedar'),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'upstream_unavailable');
+      assert.equal(error.retryable, true);
+      return true;
+    },
+  );
 });
 
 test('loads authenticated redacted support diagnostics', async () => {

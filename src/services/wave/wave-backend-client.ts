@@ -15,7 +15,10 @@ import {
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
   WaveScheduledJobListResponseSchema,
+  WaveRealtimeVoiceIdSchema,
   WaveRealtimeVoiceListResponseSchema,
+  WAVE_MAX_REALTIME_VOICE_SAMPLE_BYTES,
+  WAVE_REALTIME_VOICE_SAMPLE_CONTENT_TYPE,
   WaveStartRealtimeCallRequestSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
@@ -390,6 +393,103 @@ export class WaveBackendClient {
     );
   }
 
+  async getRealtimeVoiceSample(
+    voiceId: WaveRealtimeVoiceId,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
+    const validVoiceId = parseClientInput(
+      WaveRealtimeVoiceIdSchema,
+      voiceId,
+      'Choose an available Wave voice.',
+    );
+    if (!this.credential) {
+      throw new WaveBackendError(
+        'This Wave connection does not have a device credential.',
+        { kind: 'unauthorized' },
+      );
+    }
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const onAbort = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener('abort', onAbort, { once: true });
+    }
+    // Generating a sample on a cold Gateway cache takes several seconds, so
+    // this read shares the Realtime setup budget instead of the default one.
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.realtimeSetupTimeoutMs);
+
+    try {
+      const response = await this.fetch(
+        this.buildUrl(
+          `/v1/realtime/voices/${encodeURIComponent(validVoiceId)}/sample`,
+        ),
+        {
+          headers: {
+            accept: WAVE_REALTIME_VOICE_SAMPLE_CONTENT_TYPE,
+            authorization: `Bearer ${this.credential}`,
+          },
+          method: 'GET',
+          redirect: 'error',
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        throw parseWaveResponseError(
+          response.status,
+          await readResponseJson(response),
+        );
+      }
+      const contentType = response.headers
+        .get('content-type')
+        ?.split(';', 1)[0]
+        ?.trim()
+        .toLowerCase();
+      if (contentType !== WAVE_REALTIME_VOICE_SAMPLE_CONTENT_TYPE) {
+        throw new WaveBackendError(
+          'Wave Companion returned an incompatible voice sample.',
+          { kind: 'invalid_response' },
+        );
+      }
+      return await readBoundedResponseBytes(
+        response,
+        WAVE_MAX_REALTIME_VOICE_SAMPLE_BYTES,
+      );
+    } catch (error) {
+      if (error instanceof WaveBackendError) {
+        throw error;
+      }
+      if (controller.signal.aborted) {
+        if (signal?.aborted) {
+          throw new WaveBackendError('The Wave request was cancelled.', {
+            kind: 'cancelled',
+          });
+        }
+        if (timedOut) {
+          throw new WaveBackendError(
+            'Wave Companion did not respond before the timeout.',
+            {
+              kind: 'timeout',
+              retryable: true,
+            },
+          );
+        }
+      }
+      throw new WaveBackendError('Wave Companion is unavailable.', {
+        kind: 'network',
+        retryable: true,
+      });
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
   async *streamTurn(
     sessionId: string,
     input: WaveTurnInput,
@@ -733,6 +833,51 @@ async function readResponseJson(response: Response) {
       },
     );
   }
+}
+
+async function readBoundedResponseBytes(response: Response, maxBytes: number) {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new WaveBackendError('Wave Companion returned too much data.', {
+      kind: 'invalid_response',
+    });
+  }
+  if (!response.body?.getReader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength <= maxBytes) {
+      return bytes;
+    }
+    throw new WaveBackendError('Wave Companion returned too much data.', {
+      kind: 'invalid_response',
+    });
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      byteLength += chunk.value.byteLength;
+      if (byteLength > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new WaveBackendError('Wave Companion returned too much data.', {
+          kind: 'invalid_response',
+        });
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function readBoundedResponseText(response: Response) {

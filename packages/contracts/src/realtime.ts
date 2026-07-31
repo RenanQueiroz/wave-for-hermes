@@ -5,6 +5,8 @@ import { WaveIdentifierSchema, WaveResponseMetadataSchema } from './common.ts';
 export const WAVE_MAX_REALTIME_SDP_LENGTH = 48_000;
 export const WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH = 8_000;
 export const WAVE_MAX_ASK_HERMES_ANSWER_LENGTH = 24_000;
+export const WAVE_MAX_REALTIME_VOICE_SAMPLE_BYTES = 600_000;
+export const WAVE_REALTIME_VOICE_SAMPLE_CONTENT_TYPE = 'audio/wav';
 export const WAVE_REALTIME_VOICE_IDS = [
   'alloy',
   'ash',
@@ -20,6 +22,13 @@ export const WAVE_REALTIME_VOICE_IDS = [
 
 export const WaveRealtimeVoiceIdSchema = z.enum(WAVE_REALTIME_VOICE_IDS);
 
+// Opaque token that changes only when the Gateway's voice output would sound
+// different (in practice: when its Realtime model changes). Clients key their
+// downloaded sample cache on it and must not interpret its contents.
+export const WaveRealtimeVoiceSamplesVersionSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
+
 export const WaveRealtimeVoiceOptionSchema = z
   .object({
     description: z.string().trim().min(1).max(160),
@@ -31,6 +40,8 @@ export const WaveRealtimeVoiceOptionSchema = z
 export const WaveRealtimeVoiceListResponseSchema =
   WaveResponseMetadataSchema.extend({
     defaultVoiceId: WaveRealtimeVoiceIdSchema,
+    // Absent when the Gateway predates voice previews; clients hide previews.
+    samplesVersion: WaveRealtimeVoiceSamplesVersionSchema.optional(),
     voices: z.array(WaveRealtimeVoiceOptionSchema).min(1).max(32),
   })
     .strict()

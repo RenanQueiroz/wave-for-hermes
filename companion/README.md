@@ -133,7 +133,10 @@ npm run companion:mobile-fixture
 It prints one short-lived pairing code, uses deterministic fake Hermes capability/session
 responses, provides a cancellation-only test prompt, streams assistant deltas around a sanitized
 tool lifecycle with deterministic expandable input/output details, and stores normalized history
-only in process memory. It loses every device/session when stopped. It binds to
+only in process memory. It also serves the Realtime voice catalog and locally synthesized
+per-voice preview tones so the mobile voice-preview flow can be exercised without OpenAI, while
+live Realtime call setup deliberately stays unavailable. It loses every device/session when
+stopped. It binds to
 `127.0.0.1:8787` by default. To reach it from an Android emulator, bind the fixture to the host
 network and enter `http://10.0.2.2:8787` in a development build:
 

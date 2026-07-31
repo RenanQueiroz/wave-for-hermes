@@ -81,8 +81,10 @@ currently includes:
   validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators,
   plus audible microphone/assistant playback, background-work barge-in, and bounded ordered
   `ask_hermes` follow-ups on a physical Android device;
-- a secure per-device live-voice preference backed by a strict Gateway-owned voice catalog, plus
-  actionable microphone-permission recovery on both mobile platforms;
+- a secure per-device live-voice preference backed by a strict Gateway-owned voice catalog, with
+  in-settings voice previews served as bounded Gateway-generated samples that both sides cache
+  until the Gateway's Realtime model changes, plus actionable microphone-permission recovery on
+  both mobile platforms;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can revoke the
   current device before clearing local access;
@@ -267,7 +269,9 @@ WAVE_FIXTURE_HOST=0.0.0.0 npm run companion:mobile-fixture
 ```
 
 An Android emulator can reach that listener at `http://10.0.2.2:8787`. The fixture provides
-deterministic sessions, assistant deltas, sanitized tool lifecycle events, and history restoration.
+deterministic sessions, assistant deltas, sanitized tool lifecycle events, and history restoration,
+plus the Realtime voice catalog with locally synthesized per-voice preview tones so the settings
+voice previews work without OpenAI; live Realtime calls stay unavailable.
 The tool event includes deterministic raw input/output for exercising the collapsed disclosure. See
 the companion README before using it; the fixture is not a production entrypoint and all of its
 state disappears when it stops.

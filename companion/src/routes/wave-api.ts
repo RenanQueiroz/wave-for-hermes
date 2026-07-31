@@ -16,7 +16,9 @@ import {
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
   WaveRevokeCurrentDeviceResponseSchema,
+  WaveRealtimeVoiceIdSchema,
   WaveRealtimeVoiceListResponseSchema,
+  WAVE_REALTIME_VOICE_SAMPLE_CONTENT_TYPE,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
@@ -52,6 +54,8 @@ import { normalizeHermesError, WaveHttpError } from '../http/errors.ts';
 import type { InteractionStore } from '../interactions/interaction-store.ts';
 import { createUnifiedTimeline } from '../interactions/timeline.ts';
 import type { RealtimeCallRegistry } from '../realtime/realtime-call-registry.ts';
+import { RealtimeProviderError } from '../realtime/realtime-provider.ts';
+import type { RealtimeVoiceSampleSource } from '../realtime/realtime-voice-sampler.ts';
 
 const SERVICE_VERSION = '0.1.0';
 const SessionParamsSchema = z
@@ -79,12 +83,18 @@ const RealtimeCallParamsSchema = z
     callId: WaveIdentifierSchema,
   })
   .strict();
+const VoiceSampleParamsSchema = z
+  .object({
+    voiceId: WaveRealtimeVoiceIdSchema,
+  })
+  .strict();
 
 interface WaveApiServices {
   deviceStore: DeviceStore;
   hermesClient: HermesClient;
   interactionStore: InteractionStore;
   realtimeCallRegistry?: RealtimeCallRegistry;
+  realtimeVoiceSampler?: RealtimeVoiceSampleSource;
   turnRegistry: ActiveTurnRegistry;
 }
 
@@ -282,8 +292,52 @@ export function registerWaveApi(
         WaveRealtimeVoiceListResponseSchema.parse({
           ...responseMetadata(request),
           ...realtimeCallRegistry.getVoiceCatalog(),
+          ...(services.realtimeVoiceSampler
+            ? { samplesVersion: services.realtimeVoiceSampler.samplesVersion }
+            : {}),
         }),
       );
+    },
+  );
+
+  app.get(
+    '/v1/realtime/voices/:voiceId/sample',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+      onRequest: authenticateDevice,
+    },
+    async (request, reply) => {
+      const { voiceId } = VoiceSampleParamsSchema.parse(request.params);
+      const realtimeCallRegistry = requireRealtimeCallRegistry(
+        services.realtimeCallRegistry,
+      );
+      const sampler = requireRealtimeVoiceSampler(
+        services.realtimeVoiceSampler,
+      );
+      const catalog = realtimeCallRegistry.getVoiceCatalog();
+      if (!catalog.voices.some((voice) => voice.id === voiceId)) {
+        throw new WaveHttpError(
+          'The requested Wave voice is not available on this Gateway.',
+          {
+            code: 'not_found',
+            statusCode: 404,
+          },
+        );
+      }
+      let sample: Buffer;
+      try {
+        sample = await sampler.getSample(voiceId);
+      } catch (error) {
+        throw normalizeSampleError(error);
+      }
+      return reply
+        .header('content-type', WAVE_REALTIME_VOICE_SAMPLE_CONTENT_TYPE)
+        .send(sample);
     },
   );
 
@@ -558,6 +612,62 @@ function requireRealtimeCallRegistry(
     );
   }
   return realtimeCallRegistry;
+}
+
+function requireRealtimeVoiceSampler(
+  realtimeVoiceSampler: RealtimeVoiceSampleSource | undefined,
+) {
+  if (!realtimeVoiceSampler) {
+    throw new WaveHttpError(
+      'Voice previews are not available on this Wave Companion.',
+      {
+        code: 'upstream_unavailable',
+        statusCode: 503,
+      },
+    );
+  }
+  return realtimeVoiceSampler;
+}
+
+function normalizeSampleError(error: unknown) {
+  if (!(error instanceof RealtimeProviderError)) {
+    return new WaveHttpError(
+      'OpenAI Realtime could not generate the voice sample.',
+      {
+        code: 'upstream_unavailable',
+        retryable: true,
+        statusCode: 503,
+      },
+    );
+  }
+  switch (error.kind) {
+    case 'rate_limited':
+      return new WaveHttpError('OpenAI Realtime is rate limited.', {
+        code: 'rate_limited',
+        retryable: true,
+        statusCode: 429,
+      });
+    case 'timeout':
+      return new WaveHttpError(
+        'OpenAI Realtime did not generate the voice sample before the timeout.',
+        {
+          code: 'timeout',
+          retryable: true,
+          statusCode: 504,
+        },
+      );
+    case 'authentication':
+    case 'protocol':
+    case 'unavailable':
+      return new WaveHttpError(
+        'OpenAI Realtime could not generate the voice sample.',
+        {
+          code: 'upstream_unavailable',
+          retryable: error.retryable,
+          statusCode: 503,
+        },
+      );
+  }
 }
 
 async function streamTurn(

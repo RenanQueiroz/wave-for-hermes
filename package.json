@@ -12,6 +12,8 @@
     "@tanstack/react-query": "^5.101.4",
     "@wave/contracts": "0.1.0",
     "expo": "~57.0.9",
+    "expo-asset": "~57.0.8",
+    "expo-audio": "~57.0.3",
     "expo-build-properties": "~57.0.8",
     "expo-constants": "~57.0.8",
     "expo-dev-client": "~57.0.10",

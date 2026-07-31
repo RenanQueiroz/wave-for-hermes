@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { WaveRealtimeVoiceId } from '@wave/contracts';
 import Constants from 'expo-constants';
 import { Redirect, useRouter } from 'expo-router';
 import {
@@ -20,6 +21,10 @@ import {
   realtimeVoicePreferenceQueryKey,
   realtimeVoicePreferenceStore,
 } from '@/features/realtime/realtime-voice-preference';
+import {
+  useVoicePreview,
+  type VoicePreviewState,
+} from '@/features/realtime/use-voice-preview';
 import { REALTIME_DEFAULT_VOICE_PREFERENCE } from '@/services/realtime/realtime-voice-preference-record';
 
 export function SettingsScreen() {
@@ -95,6 +100,11 @@ function ConnectedSettingsScreen({
   const defaultVoice = catalog.data?.voices.find(
     (voice) => voice.id === catalog.data?.defaultVoiceId,
   );
+  const preview = useVoicePreview({
+    client,
+    samplesVersion: catalog.data?.samplesVersion,
+  });
+  const canPreview = catalog.data?.samplesVersion !== undefined;
   const shareDiagnostics = async () => {
     if (!diagnostics.data) return;
     await Share.share({
@@ -240,17 +250,43 @@ function ConnectedSettingsScreen({
                     defaultVoice ? ` (${defaultVoice.label})` : ''
                   }.`}
                   label="Gateway default"
-                  value={REALTIME_DEFAULT_VOICE_PREFERENCE}
-                />
+                  value={REALTIME_DEFAULT_VOICE_PREFERENCE}>
+                  {canPreview && defaultVoice ? (
+                    <VoicePreviewButton
+                      preview={preview}
+                      voiceId={defaultVoice.id}
+                      voiceLabel={defaultVoice.label}
+                    />
+                  ) : null}
+                </RadioGroup.Item>
                 {catalog.data.voices.map((voice) => (
                   <RadioGroup.Item
                     key={voice.id}
                     description={voice.description}
                     label={voice.label}
-                    value={voice.id}
-                  />
+                    value={voice.id}>
+                    {canPreview ? (
+                      <VoicePreviewButton
+                        preview={preview}
+                        voiceId={voice.id}
+                        voiceLabel={voice.label}
+                      />
+                    ) : null}
+                  </RadioGroup.Item>
                 ))}
               </RadioGroup>
+            ) : null}
+            {preview.error ? (
+              <Alert
+                className="mt-3"
+                variant="destructive"
+                testID="voice-preview-error">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>Preview unavailable</Alert.Title>
+                  <Alert.Description>{preview.error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
             ) : null}
             {preference.error || savePreference.error ? (
               <Alert
@@ -294,6 +330,35 @@ function ConnectedSettingsScreen({
           not in this app.
         </Typography.Paragraph>
       </ScrollView>
+    </View>
+  );
+}
+
+function VoicePreviewButton({
+  preview,
+  voiceId,
+  voiceLabel,
+}: {
+  preview: VoicePreviewState;
+  voiceId: WaveRealtimeVoiceId;
+  voiceLabel: string;
+}) {
+  const isActive = preview.activeVoiceId === voiceId;
+  const isLoading = isActive && preview.isLoading;
+  return (
+    <View className="mt-2 flex-row">
+      <Button
+        size="sm"
+        variant="outline"
+        accessibilityLabel={
+          isActive
+            ? `Stop the ${voiceLabel} voice preview`
+            : `Preview the ${voiceLabel} voice`
+        }
+        testID={`voice-preview-${voiceId}`}
+        onPress={() => preview.toggle(voiceId)}>
+        {isLoading ? 'Loading…' : isActive ? 'Stop' : 'Preview'}
+      </Button>
     </View>
   );
 }

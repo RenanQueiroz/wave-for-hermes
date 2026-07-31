@@ -87,6 +87,19 @@ Residual risk: the instruction is user/model-controlled content sent to a capabl
 Strict transport validation prevents protocol broadening, but it cannot make a permitted Hermes
 tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 
+### Voice preview generation
+
+- `GET /v1/realtime/voices/:voiceId/sample` is device-authenticated, rate-limited, and only
+  accepts voice IDs present in the Gateway-owned catalog.
+- Samples are generated server-side over a short OpenAI Realtime WebSocket session using a fixed
+  Wave-owned phrase; no user or model-controlled content is sent upstream, and the standard OpenAI
+  key never leaves the Companion.
+- Generation is serialized process-wide with an in-process cache, and the sample response is
+  bounded (`WAVE_MAX_REALTIME_VOICE_SAMPLE_BYTES`) with connect and total-generation timeouts.
+- Clients receive only an opaque model-derived samples version. They cache downloaded samples on
+  device keyed by that version and drop other versions, so cached audio is refreshed exactly when
+  the Gateway's Realtime model changes and no provider identifier crosses the Wave API.
+
 ### Cross-device and lifecycle races
 
 - Account-wide session visibility is intentional and covered by cross-device tests.

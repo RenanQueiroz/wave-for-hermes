@@ -19,6 +19,10 @@ import { normalizeHermesError, WaveHttpError } from './http/errors.ts';
 import type { InteractionStore } from './interactions/interaction-store.ts';
 import { OpenAIRealtimeProvider } from './realtime/openai-realtime-provider.ts';
 import { RealtimeCallRegistry } from './realtime/realtime-call-registry.ts';
+import {
+  RealtimeVoiceSampler,
+  type RealtimeVoiceSampleSource,
+} from './realtime/realtime-voice-sampler.ts';
 import { registerWaveApi } from './routes/wave-api.ts';
 
 export interface BuildCompanionServerOptions {
@@ -28,6 +32,7 @@ export interface BuildCompanionServerOptions {
   logger?: FastifyServerOptions['logger'];
   now?: () => Date;
   realtimeCallRegistry?: RealtimeCallRegistry;
+  realtimeVoiceSampler?: RealtimeVoiceSampleSource;
   turnRegistry?: ActiveTurnRegistry;
 }
 
@@ -68,6 +73,9 @@ export function buildCompanionServer(
           },
         )
       : undefined);
+  const realtimeVoiceSampler =
+    options.realtimeVoiceSampler ??
+    (config.openAI ? new RealtimeVoiceSampler(config.openAI) : undefined);
   const app = Fastify({
     bodyLimit: WAVE_MAX_REQUEST_BODY_BYTES,
     logger: options.logger ?? false,
@@ -106,6 +114,7 @@ export function buildCompanionServer(
         hermesClient,
         interactionStore,
         realtimeCallRegistry,
+        realtimeVoiceSampler,
         turnRegistry,
       },
       {

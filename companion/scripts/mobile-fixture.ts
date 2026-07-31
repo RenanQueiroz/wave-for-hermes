@@ -1,6 +1,14 @@
+import type { WaveRealtimeVoiceId } from '@wave/contracts';
+
 import { buildCompanionServer } from '../src/app.ts';
 import { SqliteDeviceStore } from '../src/auth/sqlite-device-store.ts';
 import type { CompanionConfig } from '../src/config.ts';
+import { RealtimeCallRegistry } from '../src/realtime/realtime-call-registry.ts';
+import {
+  RealtimeProviderError,
+  type RealtimeProvider,
+} from '../src/realtime/realtime-provider.ts';
+import { wrapPcmInWav } from '../src/realtime/realtime-voice-sampler.ts';
 import type {
   HermesCapabilityReport,
   HermesClient,
@@ -33,9 +41,37 @@ const config: CompanionConfig = {
   realtimeCallTtlMs: 1_800_000,
   realtimeToolTimeoutMs: 120_000,
 };
+// The fixture cannot reach OpenAI, so live calls stay unavailable while the
+// voice catalog and previews work end to end with locally synthesized tones.
+const fixtureRealtimeProvider: RealtimeProvider = {
+  createCall: async () => {
+    throw new RealtimeProviderError(
+      'The Wave mobile fixture cannot create live Realtime calls.',
+      { kind: 'unavailable' },
+    );
+  },
+};
 const app = buildCompanionServer(config, {
   deviceStore: store,
   hermesClient: hermes,
+  realtimeCallRegistry: new RealtimeCallRegistry(
+    {
+      callTtlMs: config.realtimeCallTtlMs,
+      defaultVoiceId: 'marin',
+      maxActiveCalls: config.maxActiveRealtimeCalls,
+      toolTimeoutMs: config.realtimeToolTimeoutMs,
+    },
+    {
+      deviceStore: store,
+      hermesClient: hermes,
+      interactionStore: store,
+      provider: fixtureRealtimeProvider,
+    },
+  ),
+  realtimeVoiceSampler: {
+    getSample: async (voice) => createFixtureToneSample(voice),
+    samplesVersion: 'fixture-tones-1',
+  },
 });
 let closing = false;
 
@@ -65,6 +101,26 @@ async function close() {
   closing = true;
   await app.close();
   store.close();
+}
+
+function createFixtureToneSample(voice: WaveRealtimeVoiceId) {
+  const sampleRateHz = 24_000;
+  const durationSeconds = 1.2;
+  // A distinct pitch per voice keeps fixture previews tellable apart by ear.
+  const voiceSeed = [...voice].reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0,
+  );
+  const frequencyHz = 220 + ((60 * voiceSeed) % 660);
+  const frameCount = Math.floor(sampleRateHz * durationSeconds);
+  const pcm = Buffer.alloc(frameCount * 2);
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const fade = Math.min(1, (frameCount - frame) / (sampleRateHz * 0.1));
+    const amplitude =
+      Math.sin((2 * Math.PI * frequencyHz * frame) / sampleRateHz) * 0.3 * fade;
+    pcm.writeInt16LE(Math.round(amplitude * 32_767), frame * 2);
+  }
+  return wrapPcmInWav(pcm, sampleRateHz);
 }
 
 function displayHost(value: string) {
