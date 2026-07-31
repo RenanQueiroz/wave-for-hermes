@@ -4,20 +4,24 @@ This roadmap records product work that remains after the first authenticated tex
 live-voice vertical slice. It is ordered by user impact and production risk, not by implementation
 convenience.
 
+## Completed: physical Android background work
+
+The physical Android background-work barge-in gate passed on a Google Pixel 8 Pro on 2026-07-30.
+While the first Hermes request occupied the full configured 120-second execution window, Wave
+answered a direct spoken follow-up, admitted a second `ask_hermes` request, and kept it waiting
+instead of cancelling the active request or reporting an in-flight conflict. Hermes history then
+recorded the second request and response after the first slot released, and hangup refreshed that
+ordered canonical history immediately in the text UI.
+
 ## Now: production voice behavior
 
-1. Complete the physical Android background-work barge-in gate. Interruption and conversational
-   recovery passed when the user spoke while the assistant was voicing an already completed Hermes
-   result. Repeat while Hermes is still running: the request must continue in the background and
-   later `ask_hermes` calls must wait in bounded order rather than cancelling it or failing merely
-   because it is in flight.
-2. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
+1. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
    when hardware is available.
-3. Validate speaker, receiver, Bluetooth, and wired-headset selection and route changes on physical
+2. Validate speaker, receiver, Bluetooth, and wired-headset selection and route changes on physical
    devices.
-4. Validate phone/audio interruptions, app backgrounding, device lock, permission denial and
+3. Validate phone/audio interruptions, app backgrounding, device lock, permission denial and
    recovery, and bounded reconnect behavior.
-5. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
+4. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
 
 The detailed evidence and acceptance gates live in
 [`webrtc-foundation.md`](./webrtc-foundation.md).

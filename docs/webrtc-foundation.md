@@ -141,15 +141,20 @@ The production path also passed on a physical Google Pixel 8 Pro on 2026-07-30:
 - a strict `ask_hermes` call completed and persisted the expected Hermes user/assistant turn;
 - speaking while the assistant voiced that Hermes result interrupted the response, preserved the
   Realtime conversation, and produced a correct direct follow-up answer;
+- in a separate overlapping-work call, the first Hermes request remained active through the full
+  configured 120-second execution window while Wave answered a direct spoken math question;
+- a second `ask_hermes` request made during that window was accepted, waited for the first queue
+  slot to release, and then appeared with its response after the first request in canonical Hermes
+  history instead of failing with an in-flight conflict;
 - hangup immediately refreshed canonical Hermes history, including the real bounded Terminal input
   and output behind a collapsed expandable task row;
 - microphone mute/unmute changed the live media state; and
 - explicit hangup returned to chat and removed the development state provider after cleanup.
 
-This physical Android proof demonstrates audible bidirectional audio and barge-in after Hermes
-completed. Hermes finished before the interruption, so the proof does **not** yet establish that
-active Hermes work survives barge-in or that later `ask_hermes` calls wait in order. It also does
-not establish alternate audio routes, physical iOS behavior, or release readiness.
+Together, these physical Android proofs establish audible bidirectional audio, conversational
+barge-in, preservation of active Hermes work through that barge-in, bounded ordered follow-up
+`ask_hermes` dispatch, and immediate post-call history refresh. They do not establish alternate
+audio routes, physical iOS behavior, or release readiness.
 
 ## Remaining production voice gates
 
@@ -157,8 +162,6 @@ Before declaring voice production-ready, validate:
 
 - physical iOS microphone capture and assistant playback;
 - full-duplex barge-in and assistant-audio interruption on physical iOS;
-- preservation of active background Hermes work across barge-in, including ordered follow-up
-  `ask_hermes` requests, with the background-work portion repeated on physical Android;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
 - permission denial and later recovery;

@@ -75,8 +75,8 @@ currently includes:
   state, ephemeral transcripts, mute/unmute, explicit hangup, stable automation identifiers, and
   canonical Hermes-history refresh before returning to text chat, plus
   validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators,
-  plus audible microphone/assistant playback and `ask_hermes` dispatch on a physical Android
-  device;
+  plus audible microphone/assistant playback, background-work barge-in, and bounded ordered
+  `ask_hermes` follow-ups on a physical Android device;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can clear local
   access explicitly;
@@ -107,8 +107,8 @@ live-wave control based on whether trimmed text is present, so both are never sh
 an active chat, the live-wave control opens the live-voice route, establishes a native WebRTC call
 through the Companion, and can automatically
 dispatch a strictly validated `ask_hermes({ instruction })` call against the trusted active Hermes
-session. Physical iOS, audio-route, interruption, barge-in, release-build, and realistic network
-validation remain before live voice is production-ready. See the tracked
+session. Physical iOS (including barge-in), audio-route, interruption, release-build, and realistic
+network validation remain before live voice is production-ready. See the tracked
 [`docs/roadmap.md`](./docs/roadmap.md) for the prioritized remaining work.
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
