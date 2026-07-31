@@ -4,7 +4,12 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import type { WaveTimelineResponse, WaveTurnInput } from '@wave/contracts';
-import { Redirect, useNavigation, useRouter } from 'expo-router';
+import {
+  Redirect,
+  useFocusEffect,
+  useNavigation,
+  useRouter,
+} from 'expo-router';
 import {
   Alert,
   Attachment,
@@ -173,29 +178,44 @@ function ConnectedChatScreen({
       .catch(() => undefined);
   }, [activeSessionStore, connectionId, sessionId]);
 
-  useEffect(() => {
-    if (
-      !(timeline.error instanceof WaveBackendError) ||
-      timeline.error.kind !== 'not_found'
-    ) {
-      return;
-    }
-    void activeSessionStore
-      .clear()
-      .then(() =>
-        queryClient.invalidateQueries({
+  const sessionNotFound =
+    timeline.error instanceof WaveBackendError &&
+    timeline.error.kind === 'not_found';
+
+  // Only the focused screen may leave a deleted conversation. This screen can
+  // stay mounted under the drawer after navigating away, and a background
+  // redirect here would steal navigation from the destination screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (!sessionNotFound) return;
+      let cancelled = false;
+      void (async () => {
+        const activeSessionId = await activeSessionStore
+          .load(connectionId)
+          .catch(() => undefined);
+        if (activeSessionId === sessionId) {
+          await activeSessionStore.clear().catch(() => undefined);
+        }
+        void queryClient.invalidateQueries({
           queryKey: waveSessionQueryKey(connectionId, baseUrl),
-        }),
-      )
-      .finally(() => router.replace('/new'));
-  }, [
-    activeSessionStore,
-    baseUrl,
-    connectionId,
-    timeline.error,
-    queryClient,
-    router,
-  ]);
+        });
+        if (!cancelled) {
+          router.replace('/new');
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [
+      activeSessionStore,
+      baseUrl,
+      connectionId,
+      queryClient,
+      router,
+      sessionId,
+      sessionNotFound,
+    ]),
+  );
 
   const timelineEntries = useMemo(
     () =>

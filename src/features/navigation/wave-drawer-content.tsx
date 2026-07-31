@@ -96,20 +96,24 @@ function ConnectedWaveDrawerContent({
   const renameMutation = useMutation({
     mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
       client.updateSession(sessionId, { title }),
-    onSuccess: async () => {
+    onSuccess: () => {
       setRenameSession(undefined);
-      await queryClient.invalidateQueries({ queryKey: sessionsKey });
+      void queryClient.invalidateQueries({ queryKey: sessionsKey });
     },
   });
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => client.deleteSession(sessionId),
     onSuccess: async (result) => {
-      const activeSessionId = await activeSessionStore.load(connectionId);
+      // The dialog close and the navigation away from the deleted session
+      // must not wait on the list refetch or fail on a store error.
+      const activeSessionId = await activeSessionStore
+        .load(connectionId)
+        .catch(() => undefined);
       if (activeSessionId === result.sessionId) {
-        await activeSessionStore.clear();
+        await activeSessionStore.clear().catch(() => undefined);
       }
       setDeleteSession(undefined);
-      await queryClient.invalidateQueries({ queryKey: sessionsKey });
+      void queryClient.invalidateQueries({ queryKey: sessionsKey });
       if (pathname.includes(result.sessionId)) {
         navigation.closeDrawer();
         router.replace('/new');

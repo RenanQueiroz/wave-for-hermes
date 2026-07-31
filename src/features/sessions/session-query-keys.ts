@@ -1,5 +1,8 @@
+// The list key must never be a prefix of waveTimelineQueryKey: list
+// invalidations would otherwise refetch every mounted conversation timeline,
+// including deleted sessions whose refetch re-arms their not-found redirect.
 export function waveSessionQueryKey(connectionId: string, baseUrl: string) {
-  return ['wave', connectionId, baseUrl, 'sessions'] as const;
+  return ['wave', connectionId, baseUrl, 'session-list'] as const;
 }
 
 export function waveTimelineQueryKey(

@@ -40,8 +40,13 @@ function ConnectedNewConversationScreen({
   const createSession = useMutation({
     mutationFn: () => client.createSession(),
     onSuccess: async (result) => {
-      await activeSessionStore.save(connectionId, result.session.id);
-      await queryClient.invalidateQueries({
+      // Navigation must not depend on the list refetch or the store write:
+      // the chat screen re-saves the active session on mount, and a stranded
+      // success here would leave this screen on its spinner forever.
+      await activeSessionStore
+        .save(connectionId, result.session.id)
+        .catch(() => undefined);
+      void queryClient.invalidateQueries({
         queryKey: waveSessionQueryKey(connectionId, baseUrl),
       });
       router.replace({
