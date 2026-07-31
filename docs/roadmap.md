@@ -75,6 +75,9 @@ instead of implying that server access was revoked.
   opaque Wave request ID carried by metadata/errors, while Companion logs retain only that ID,
   method/status, duration, and reviewed lifecycle fields. URLs, network addresses, headers,
   conversation identifiers, and content are excluded.
+- Finite retryable reads now use an explicit bounded exponential-jitter delay and stop after two
+  retries. Mutations, streamed turns, and Realtime setup remain non-retrying after ambiguous
+  failures; their existing reconciliation and explicit retry paths preserve server truth.
 - Use [`security.md`](./security.md) as the release-security checklist. Deterministic
   self-revocation, lifecycle-race, schema, resource-bound, production-bundle, exact-edge, and
   private-deployment validation now pass. The exact-edge work also aligned Nginx with Wave's

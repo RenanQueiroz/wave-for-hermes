@@ -6,6 +6,7 @@ import {
 import { useEffect, useState, type PropsWithChildren } from 'react';
 import { AppState } from 'react-native';
 
+import { calculateBoundedRetryDelay } from '@/services/query/retry-policy';
 import { WaveBackendError } from '@/services/wave/wave-backend-client';
 
 export function WaveQueryProvider({ children }: PropsWithChildren) {
@@ -24,6 +25,8 @@ export function WaveQueryProvider({ children }: PropsWithChildren) {
             retry: (failureCount, error) =>
               failureCount < 2 &&
               (!(error instanceof WaveBackendError) || error.retryable),
+            retryDelay: (attemptIndex) =>
+              calculateBoundedRetryDelay(attemptIndex),
             staleTime: 15_000,
           },
         },

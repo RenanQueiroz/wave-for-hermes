@@ -330,7 +330,8 @@ protocol messages.
   lifecycle records; it stores no raw audio, partial transcripts, or hidden reasoning.
 - TanStack Query owns finite server state such as status, paginated account sessions, the
   cursor-paginated unified timeline, read-only scheduled jobs, diagnostics, and the Realtime voice
-  catalog.
+  catalog. Retryable finite reads retry at most twice with the shared 500 ms exponential-jitter
+  policy capped at 8 seconds; mutations never retry automatically.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.

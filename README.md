@@ -70,8 +70,8 @@ currently includes:
   Realtime voice/catalog, call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
   strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
-  limits, authenticated Realtime call start/end methods, safe normalized errors, and no direct
-  Hermes or OpenAI transport;
+  limits, authenticated Realtime call start/end methods, safe normalized errors, bounded
+  exponential-jitter retries for finite retryable reads, and no direct Hermes or OpenAI transport;
 - an audio-only native `RealtimeTransport` and focused lifecycle controller that own microphone
   tracks, WebRTC negotiation, data-channel events, reconnect bounds, cancellation, expiry, and
   explicit companion cleanup outside React components;
