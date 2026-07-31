@@ -12,6 +12,7 @@ import { FlatList, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/navigation/screen-header';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useReturnToActiveConversation } from '@/features/navigation/use-return-to-active-conversation';
 import {
   flattenWaveSessions,
   useWaveSessions,
@@ -41,6 +42,8 @@ function ConnectedSessionSearchScreen({
   client: NonNullable<ReturnType<typeof useWaveConnection>['client']>;
   connectionId: string;
 }) {
+  const returnToActiveConversation =
+    useReturnToActiveConversation(connectionId);
   const router = useRouter();
   const [search, setSearch] = useState('');
   const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
@@ -82,7 +85,10 @@ function ConnectedSessionSearchScreen({
 
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Search conversations" />
+      <ScreenHeader
+        title="Search conversations"
+        onBack={returnToActiveConversation}
+      />
       <View className="px-4 py-3">
         <InputGroup>
           <InputGroup.Prefix>

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Button, Spinner, Typography } from 'panelui-native';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
@@ -50,12 +50,23 @@ function ConnectedNewConversationScreen({
       });
     },
   });
+  const createNewSession = createSession.mutate;
+  const resetCreateSession = createSession.reset;
 
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    createSession.mutate();
-  }, [createSession]);
+  useFocusEffect(
+    useCallback(() => {
+      if (startedRef.current) return;
+      startedRef.current = true;
+      resetCreateSession();
+      createNewSession();
+
+      // Drawer routes stay mounted after navigation, so the next visit must
+      // explicitly become eligible to create a fresh conversation.
+      return () => {
+        startedRef.current = false;
+      };
+    }, [createNewSession, resetCreateSession]),
+  );
 
   return (
     <View

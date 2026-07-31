@@ -5,6 +5,7 @@ import { ScrollView, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/navigation/screen-header';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useReturnToActiveConversation } from '@/features/navigation/use-return-to-active-conversation';
 
 export function ScheduledJobsScreen() {
   const connection = useWaveConnection();
@@ -29,6 +30,8 @@ function ConnectedScheduledJobsScreen({
   client: NonNullable<ReturnType<typeof useWaveConnection>['client']>;
   connectionId: string;
 }) {
+  const returnToActiveConversation =
+    useReturnToActiveConversation(connectionId);
   const jobs = useQuery({
     queryFn: ({ signal }) => client.listScheduledJobs(signal),
     queryKey: ['wave', connectionId, baseUrl, 'operations', 'jobs'],
@@ -36,7 +39,10 @@ function ConnectedScheduledJobsScreen({
 
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Scheduled jobs" />
+      <ScreenHeader
+        title="Scheduled jobs"
+        onBack={returnToActiveConversation}
+      />
       <ScrollView
         className="flex-1"
         contentContainerClassName="gap-3 px-4 py-4">

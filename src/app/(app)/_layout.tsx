@@ -8,6 +8,7 @@ export default function AppLayout() {
 
   return (
     <Drawer
+      backBehavior="history"
       drawerContent={(props) => <WaveDrawerContent {...props} />}
       screenOptions={{
         drawerStyle: {

@@ -120,7 +120,7 @@ function ConnectedWaveDrawerContent({
     pathname: '/new' | '/search' | '/operations/jobs' | '/settings',
   ) => {
     navigation.closeDrawer();
-    router.push(pathname);
+    navigation.navigate(pathname.slice(1));
   };
   const openSession = async (sessionId: string) => {
     try {

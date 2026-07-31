@@ -7,10 +7,15 @@ import { MenuButton } from './menu-button';
 
 interface ScreenHeaderProps {
   mode?: 'back' | 'menu';
+  onBack?: () => void;
   title: string;
 }
 
-export function ScreenHeader({ mode = 'back', title }: ScreenHeaderProps) {
+export function ScreenHeader({
+  mode = 'back',
+  onBack,
+  title,
+}: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const router = useRouter();
@@ -33,7 +38,7 @@ export function ScreenHeader({ mode = 'back', title }: ScreenHeaderProps) {
           variant="ghost"
           accessibilityLabel="Go back"
           testID="screen-back-button"
-          onPress={() => router.back()}>
+          onPress={onBack ?? (() => router.back())}>
           <ChevronLeftIcon size={22} />
         </Button>
       )}
