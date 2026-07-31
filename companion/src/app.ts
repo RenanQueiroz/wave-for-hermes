@@ -80,8 +80,9 @@ export function buildCompanionServer(
     timeWindow: '1 minute',
   });
 
-  app.addHook('onSend', async (_request, reply, payload) => {
+  app.addHook('onSend', async (request, reply, payload) => {
     reply.header('cache-control', 'no-store');
+    reply.header('x-wave-request-id', request.id);
     return payload;
   });
 

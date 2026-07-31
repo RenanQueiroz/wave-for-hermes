@@ -76,6 +76,12 @@ node companion/dist/admin.js devices
 node companion/dist/admin.js revoke <device-id>
 ```
 
+Every HTTP response carries the same opaque Wave request ID in its normalized metadata or safe
+error correlation field and in `X-Wave-Request-Id`. Production request logs retain that correlation
+ID, method, status, duration, and explicitly reviewed lifecycle fields. Their serializer omits
+request URLs, network addresses, headers, conversation identifiers, and content; credential
+redaction remains enabled as defense in depth.
+
 ## Pair and revoke devices
 
 Generate a cryptographically random one-time pairing code:
@@ -263,7 +269,7 @@ Deleting the parent session removes its interaction ledger in the same Wave life
 | `WAVE_DATABASE_PATH`                        | `./data/wave-companion.sqlite` | Persistent device authorization database                     |
 | `WAVE_HOST`                                 | `127.0.0.1`                    | Listener address                                             |
 | `WAVE_PORT`                                 | `8787`                         | Listener port                                                |
-| `WAVE_LOG_LEVEL`                            | `info`                         | Fastify/Pino log level                                       |
+| `WAVE_LOG_LEVEL`                            | `info`                         | Metadata-only Fastify/Pino log level                         |
 | `WAVE_PAIRING_CODE_TTL_SECONDS`             | `600`                          | Pairing expiry, from 60 through 3600 seconds                 |
 | `WAVE_MAX_ACTIVE_TURNS`                     | `4`                            | Process-wide active-turn maximum, from 1 through 32          |
 | `WAVE_MAX_ACTIVE_REALTIME_CALLS`            | `2`                            | Process-wide active-call maximum, from 1 through 16          |

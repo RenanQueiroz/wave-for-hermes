@@ -141,7 +141,8 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
 The companion lives in `companion/` and provides:
 
 - a separately buildable Node.js 24 TypeScript entrypoint;
-- Fastify with authorization and credential/cookie log redaction;
+- Fastify with authorization, metadata-only correlated request logging, and credential/cookie
+  redaction;
 - strict server-only configuration validation;
 - graceful `SIGINT` and `SIGTERM` shutdown;
 - a public, non-sensitive `GET /v1/status`;

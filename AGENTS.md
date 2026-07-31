@@ -160,7 +160,10 @@ documentation before implementing UI.
   preview values explicitly.
 - Preserve turn-aware radii: only the final item in an assistant turn keeps the avatar-facing
   pointer corner.
-- Do not log access tokens, full authorization headers, or sensitive conversation payloads.
+- Do not log access tokens, full authorization headers, request URLs, network addresses, opaque
+  conversation identifiers, or sensitive conversation payloads. Production request logs keep only
+  the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle
+  fields.
 
 ## WebRTC foundation
 

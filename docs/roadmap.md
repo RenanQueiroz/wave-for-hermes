@@ -71,6 +71,10 @@ instead of implying that server access was revoked.
 - Use the authenticated Settings diagnostics report for user support. It includes only app/platform
   details, Companion version/uptime and feature availability, and normalized Hermes compatibility;
   it excludes credentials, server addresses, device identifiers, and conversation content.
+- Production request observability is now correlation-safe: each HTTP response exposes the same
+  opaque Wave request ID carried by metadata/errors, while Companion logs retain only that ID,
+  method/status, duration, and reviewed lifecycle fields. URLs, network addresses, headers,
+  conversation identifiers, and content are excluded.
 - Use [`security.md`](./security.md) as the release-security checklist. Deterministic
   self-revocation, lifecycle-race, schema, resource-bound, production-bundle, exact-edge, and
   private-deployment validation now pass. The exact-edge work also aligned Nginx with Wave's

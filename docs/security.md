@@ -119,8 +119,11 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 
 - Safe errors contain a Wave code, retryability, user-safe message, and optional Wave request ID;
   they omit upstream bodies, headers, stack traces, URLs, and provider identifiers.
-- Operational logs redact credentials and authorization headers. The production edge uses a
-  pathless Wave access log so session and turn identifiers are omitted.
+- Operational logs redact credentials and authorization headers. The Companion request serializer
+  also omits URLs, network addresses, headers, conversation identifiers, and content while keeping
+  the opaque request correlation ID, method/status, and timing. Every response returns the same
+  request ID in `X-Wave-Request-Id` and normalized metadata or safe errors. The production edge
+  uses a pathless Wave access log.
 - Diagnostics exclude credentials, server addresses, device identifiers, and conversation
   content.
 - Tool details are bounded and rendered as inert code, never Markdown. The interaction ledger

@@ -1,21 +1,13 @@
 import { buildCompanionServer } from './app.ts';
 import { CompanionConfigError, loadCompanionConfig } from './config.ts';
+import { createCompanionLoggerOptions } from './logging.ts';
 
 async function main() {
   const config = loadCompanionConfig();
   const app = buildCompanionServer(config, {
-    logger: {
-      level: process.env.WAVE_LOG_LEVEL?.trim() || 'info',
-      redact: {
-        censor: '[REDACTED]',
-        paths: [
-          'req.headers.authorization',
-          'req.headers.cookie',
-          'request.headers.authorization',
-          'request.headers.cookie',
-        ],
-      },
-    },
+    logger: createCompanionLoggerOptions(
+      process.env.WAVE_LOG_LEVEL?.trim() || 'info',
+    ),
   });
 
   const stop = async (signal: NodeJS.Signals) => {

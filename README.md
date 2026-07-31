@@ -60,7 +60,7 @@ currently includes:
 - a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable
   account-scoped device credentials, paginated Hermes conversation lifecycle routes, bounded
   streamed chat and attachments, an idempotent finalized-voice interaction ledger, normalized
-  errors, redacted logs, and graceful shutdown;
+  errors, metadata-only correlated request logs, and graceful shutdown;
 - the official OpenAI JavaScript SDK in the Companion only for unified WebRTC call setup and
   lifecycle requests, plus the documented authenticated `ws` sideband connection, opaque
   Wave-owned call identifiers, bounded call state, background Hermes request serialization,
