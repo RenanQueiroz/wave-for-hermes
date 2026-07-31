@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { WaveErrorResponseSchema, WaveStatusResponseSchema } from '@wave/contracts';
+import {
+  WaveErrorResponseSchema,
+  WaveStatusResponseSchema,
+} from '@wave/contracts';
 
 import { buildCompanionServer } from '../src/app.ts';
 import type { CompanionConfig } from '../src/config.ts';

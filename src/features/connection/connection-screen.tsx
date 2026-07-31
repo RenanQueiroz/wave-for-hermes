@@ -30,10 +30,7 @@ export function ConnectionScreen() {
   const [pairingCode, setPairingCode] = useState('');
   const [validationError, setValidationError] =
     useState<FieldValidationError>();
-  const code = useMemo(
-    () => pairingCode.replace(/-/g, ''),
-    [pairingCode],
-  );
+  const code = useMemo(() => pairingCode.replace(/-/g, ''), [pairingCode]);
 
   if (state.phase === 'connected') {
     return <Redirect href="/new" />;
@@ -156,11 +153,7 @@ export function ConnectionScreen() {
               variant="filled"
               onChangeText={(value) => {
                 setBaseUrl(value);
-                clearFieldError(
-                  validationError,
-                  'baseUrl',
-                  setValidationError,
-                );
+                clearFieldError(validationError, 'baseUrl', setValidationError);
               }}
             />
             <Input

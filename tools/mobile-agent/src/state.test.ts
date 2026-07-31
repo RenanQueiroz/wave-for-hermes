@@ -23,7 +23,10 @@ test('recursively redacts sensitive state keys', () => {
 });
 
 test('enforces depth and byte limits', () => {
-  const depthLimited = sanitizeState({ one: { two: { three: true } } }, { maxDepth: 1 });
+  const depthLimited = sanitizeState(
+    { one: { two: { three: true } } },
+    { maxDepth: 1 },
+  );
   assert.deepEqual(depthLimited.value, { one: { two: '[MAX_DEPTH]' } });
   assert.equal(depthLimited.depthLimited, true);
 

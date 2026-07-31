@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { WaveTurnInput } from '@wave/contracts';
 
-import {
-  initialWaveChatState,
-  waveChatReducer,
-} from './chat-state';
+import { initialWaveChatState, waveChatReducer } from './chat-state';
 import {
   WaveBackendClient,
   WaveBackendError,
@@ -23,10 +20,7 @@ export function useWaveChat({
   reconcileHistory,
   sessionId,
 }: UseWaveChatOptions) {
-  const [state, dispatch] = useReducer(
-    waveChatReducer,
-    initialWaveChatState,
-  );
+  const [state, dispatch] = useReducer(waveChatReducer, initialWaveChatState);
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const turnIdRef = useRef<string | undefined>(undefined);
   const busyRef = useRef(false);
@@ -48,11 +42,7 @@ export function useWaveChat({
       const displayText =
         optimisticText?.trim() ??
         (typeof input === 'string' ? input.trim() : '');
-      if (
-        !displayText ||
-        busyRef.current ||
-        !mountedRef.current
-      ) {
+      if (!displayText || busyRef.current || !mountedRef.current) {
         return;
       }
       busyRef.current = true;

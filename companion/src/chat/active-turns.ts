@@ -30,11 +30,7 @@ export class ActiveTurnRegistry {
 
   cancel(deviceId: string, sessionId: string, turnId: string) {
     const turn = this.turns.get(turnId);
-    if (
-      !turn ||
-      turn.deviceId !== deviceId ||
-      turn.sessionId !== sessionId
-    ) {
+    if (!turn || turn.deviceId !== deviceId || turn.sessionId !== sessionId) {
       return false;
     }
     turn.abort('cancelled');
@@ -63,10 +59,7 @@ export class ActiveTurnRegistry {
   }
 
   reserveSessionDeletion(sessionId: string) {
-    if (
-      this.deletingSessionIds.has(sessionId) ||
-      this.hasSession(sessionId)
-    ) {
+    if (this.deletingSessionIds.has(sessionId) || this.hasSession(sessionId)) {
       return false;
     }
     this.deletingSessionIds.add(sessionId);
@@ -75,13 +68,10 @@ export class ActiveTurnRegistry {
 
   start(deviceId: string, sessionId: string): ActiveTurn {
     if (this.deletingSessionIds.has(sessionId)) {
-      throw new WaveHttpError(
-        'This Hermes session is being deleted.',
-        {
-          code: 'conflict',
-          statusCode: 409,
-        },
-      );
+      throw new WaveHttpError('This Hermes session is being deleted.', {
+        code: 'conflict',
+        statusCode: 409,
+      });
     }
     if (this.turns.size >= this.maxActiveTurns) {
       throw new WaveHttpError(

@@ -71,13 +71,19 @@ export interface SerializedHierarchy {
 }
 
 const MAX_SNAPSHOTS = 12;
-type XmlElement = NonNullable<ReturnType<DOMParser['parseFromString']>['documentElement']>;
+type XmlElement = NonNullable<
+  ReturnType<DOMParser['parseFromString']>['documentElement']
+>;
 
 export class HierarchyStore {
   private readonly snapshots = new Map<string, HierarchySnapshot>();
   private readonly latestBySession = new Map<string, string>();
 
-  capture(xml: string, sessionId: string, platform: MobilePlatform): HierarchySnapshot {
+  capture(
+    xml: string,
+    sessionId: string,
+    platform: MobilePlatform,
+  ): HierarchySnapshot {
     const snapshot = parseHierarchy(xml, sessionId, platform);
     this.snapshots.set(snapshot.id, snapshot);
     this.latestBySession.set(sessionId, snapshot.id);
@@ -194,13 +200,18 @@ export function findHierarchyNodes(
     if (query.interactiveOnly && !isInteractive(node)) return false;
     if (!matches(node.role, query.role, exact)) return false;
     if (!matches(node.type, query.type, exact)) return false;
-    if (!matches(node.accessibilityId, query.accessibilityId, exact)) return false;
+    if (!matches(node.accessibilityId, query.accessibilityId, exact))
+      return false;
     if (!matches(node.resourceId, query.resourceId, exact)) return false;
     if (
       query.text &&
-      ![node.name, node.label, node.text, node.value, node.accessibilityId].some((value) =>
-        matches(value, query.text, exact),
-      )
+      ![
+        node.name,
+        node.label,
+        node.text,
+        node.value,
+        node.accessibilityId,
+      ].some((value) => matches(value, query.text, exact))
     ) {
       return false;
     }
@@ -208,10 +219,15 @@ export function findHierarchyNodes(
   });
 }
 
-export function nodeById(snapshot: HierarchySnapshot, nodeId: string): HierarchyNode {
+export function nodeById(
+  snapshot: HierarchySnapshot,
+  nodeId: string,
+): HierarchyNode {
   const node = snapshot.nodes.find((candidate) => candidate.id === nodeId);
   if (!node) {
-    throw new Error(`Node ${nodeId} does not exist in snapshot ${snapshot.id}.`);
+    throw new Error(
+      `Node ${nodeId} does not exist in snapshot ${snapshot.id}.`,
+    );
   }
   return node;
 }
@@ -231,7 +247,9 @@ function visitElement(
   const attributes = readAttributes(element);
   const type = attributes.type || element.tagName;
   const id = `node-${createHash('sha256')
-    .update(`${platform}:${path}:${type}:${attributes.name ?? ''}:${attributes['resource-id'] ?? ''}`)
+    .update(
+      `${platform}:${path}:${type}:${attributes.name ?? ''}:${attributes['resource-id'] ?? ''}`,
+    )
     .digest('hex')
     .slice(0, 16)}`;
   const node = normalizeNode(id, parentId, path, type, attributes, platform);
@@ -278,12 +296,15 @@ function normalizeNode(
   const label = firstNonEmpty(attributes.label, attributes['content-desc']);
   const text = firstNonEmpty(attributes.text);
   const value = firstNonEmpty(attributes.value);
-  const locator = accessibilityId && (!isIos || accessible || type.endsWith('Button'))
-    ? { strategy: 'accessibility id' as const, selector: accessibilityId }
-    : resourceId
-      ? { strategy: 'id' as const, selector: resourceId }
-      : undefined;
-  const bounds = isIos ? iosBounds(attributes) : androidBounds(attributes.bounds);
+  const locator =
+    accessibilityId && (!isIos || accessible || type.endsWith('Button'))
+      ? { strategy: 'accessibility id' as const, selector: accessibilityId }
+      : resourceId
+        ? { strategy: 'id' as const, selector: resourceId }
+        : undefined;
+  const bounds = isIos
+    ? iosBounds(attributes)
+    : androidBounds(attributes.bounds);
   const role = normalizeRole(type, attributes);
 
   return {
@@ -308,7 +329,9 @@ function normalizeNode(
       booleanAttribute(attributes.clickable, false) ||
       type.endsWith('Button') ||
       type === 'android.widget.Button',
-    selected: booleanAttribute(attributes.selected, false) || /\bSelected\b/.test(attributes.traits ?? ''),
+    selected:
+      booleanAttribute(attributes.selected, false) ||
+      /\bSelected\b/.test(attributes.traits ?? ''),
     ...(bounds ? { bounds } : {}),
     ...(locator ? { locator } : {}),
     childIds: [],
@@ -322,7 +345,9 @@ function enrichAndroidInteractiveLabels(nodes: HierarchyNode[]): void {
       continue;
     }
     const descendants = descendantNodes(node, byId);
-    const textValues = uniqueNonEmpty(descendants.map((descendant) => descendant.text));
+    const textValues = uniqueNonEmpty(
+      descendants.map((descendant) => descendant.text),
+    );
     const semanticValues =
       textValues.length > 0
         ? textValues
@@ -333,7 +358,8 @@ function enrichAndroidInteractiveLabels(nodes: HierarchyNode[]): void {
               descendant.accessibilityId,
             ]),
           );
-    const semanticValue = semanticValues.length === 1 ? semanticValues[0] : undefined;
+    const semanticValue =
+      semanticValues.length === 1 ? semanticValues[0] : undefined;
     if (semanticValue) {
       node.label = semanticValue;
     }
@@ -376,16 +402,31 @@ function readAttributes(element: XmlElement): Record<string, string> {
   return result;
 }
 
-function booleanAttribute(value: string | undefined, fallback: boolean): boolean {
+function booleanAttribute(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
   if (value === undefined) return fallback;
   return value === 'true' || value === '1';
 }
 
-function iosBounds(attributes: Record<string, string>): ElementBounds | undefined {
-  const values = [attributes.x, attributes.y, attributes.width, attributes.height].map(Number);
+function iosBounds(
+  attributes: Record<string, string>,
+): ElementBounds | undefined {
+  const values = [
+    attributes.x,
+    attributes.y,
+    attributes.width,
+    attributes.height,
+  ].map(Number);
   if (values.some((value) => !Number.isFinite(value))) return undefined;
   const [x, y, width, height] = values;
-  if (x === undefined || y === undefined || width === undefined || height === undefined) {
+  if (
+    x === undefined ||
+    y === undefined ||
+    width === undefined ||
+    height === undefined
+  ) {
     return undefined;
   }
   return { x, y, width, height };
@@ -395,15 +436,26 @@ function androidBounds(value: string | undefined): ElementBounds | undefined {
   const match = value?.match(/^\[(-?\d+),(-?\d+)]\[(-?\d+),(-?\d+)]$/);
   if (!match) return undefined;
   const [, x1, y1, x2, y2] = match.map(Number);
-  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+  if (
+    x1 === undefined ||
+    y1 === undefined ||
+    x2 === undefined ||
+    y2 === undefined
+  ) {
     return undefined;
   }
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
-function normalizeRole(type: string, attributes: Record<string, string>): string {
-  const raw = type.replace(/^XCUIElementType/, '').replace(/^android\.widget\./, '');
-  if (/button/i.test(raw) || booleanAttribute(attributes.clickable, false)) return 'button';
+function normalizeRole(
+  type: string,
+  attributes: Record<string, string>,
+): string {
+  const raw = type
+    .replace(/^XCUIElementType/, '')
+    .replace(/^android\.widget\./, '');
+  if (/button/i.test(raw) || booleanAttribute(attributes.clickable, false))
+    return 'button';
   if (/text(field|view)|edittext/i.test(raw)) return 'text-input';
   if (/statictext|textview/i.test(raw)) return 'text';
   if (/image/i.test(raw)) return 'image';
@@ -414,11 +466,17 @@ function normalizeRole(type: string, attributes: Record<string, string>): string
   return raw.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase() || 'element';
 }
 
-function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+function firstNonEmpty(
+  ...values: Array<string | undefined>
+): string | undefined {
   return values.find((value) => Boolean(value?.trim()));
 }
 
-function matches(value: string | undefined, query: string | undefined, exact: boolean): boolean {
+function matches(
+  value: string | undefined,
+  query: string | undefined,
+  exact: boolean,
+): boolean {
   if (query === undefined) return true;
   if (value === undefined) return false;
   return exact

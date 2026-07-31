@@ -38,8 +38,7 @@ test('normalizes only bounded Realtime activity and transcript events', () => {
     parseRealtimeServerEvent(
       JSON.stringify({
         transcript: 'Hi Wave',
-        type:
-          'conversation.item.input_audio_transcription.completed',
+        type: 'conversation.item.input_audio_transcription.completed',
       }),
     ),
     {

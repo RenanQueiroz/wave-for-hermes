@@ -50,8 +50,6 @@ try {
 }
 
 function printUsageAndExit(): never {
-  console.error(
-    'Usage: admin.js pair | devices | revoke <device-id>',
-  );
+  console.error('Usage: admin.js pair | devices | revoke <device-id>');
   process.exit(1);
 }

@@ -75,9 +75,7 @@ export function serializeWaveConnectionRecord(
   record: WaveConnectionRecord,
   options: { allowInsecureHttp?: boolean } = {},
 ) {
-  return JSON.stringify(
-    createWaveConnectionRecord(record, options),
-  );
+  return JSON.stringify(createWaveConnectionRecord(record, options));
 }
 
 export function toWaveConnectionSummary(

@@ -1,7 +1,4 @@
-import {
-  useInfiniteQuery,
-  type InfiniteData,
-} from '@tanstack/react-query';
+import { useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
 import type {
   WaveSessionListResponse,
   WaveSessionSummary,
@@ -30,9 +27,7 @@ export function useWaveSessions({
     number
   >({
     getNextPageParam: (lastPage) =>
-      lastPage.hasMore
-        ? lastPage.offset + lastPage.sessions.length
-        : undefined,
+      lastPage.hasMore ? lastPage.offset + lastPage.sessions.length : undefined,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       client.listSessions(

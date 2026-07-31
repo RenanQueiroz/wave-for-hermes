@@ -72,18 +72,13 @@ export class WaveRealtimeController {
   private callId?: string;
   private expiryTimer?: ReturnType<typeof setTimeout>;
   private failingOperation?: number;
-  private readonly listeners = new Set<
-    (state: WaveRealtimeState) => void
-  >();
+  private readonly listeners = new Set<(state: WaveRealtimeState) => void>();
   private operation = 0;
   private state: WaveRealtimeState = INITIAL_STATE;
   private transportSession?: PreparedRealtimeTransport;
   private readonly transport: RealtimeTransport;
 
-  constructor({
-    backend,
-    transport,
-  }: WaveRealtimeControllerOptions) {
+  constructor({ backend, transport }: WaveRealtimeControllerOptions) {
     this.backend = backend;
     this.transport = transport;
   }
@@ -159,10 +154,7 @@ export class WaveRealtimeController {
   }
 
   setMicrophoneEnabled(enabled: boolean) {
-    if (
-      this.state.phase === 'idle' ||
-      this.state.phase === 'stopping'
-    ) {
+    if (this.state.phase === 'idle' || this.state.phase === 'stopping') {
       return;
     }
     this.transportSession?.setMicrophoneEnabled(enabled);
@@ -209,10 +201,7 @@ export class WaveRealtimeController {
     this.expiryTimer = undefined;
   }
 
-  private async failAndCleanup(
-    operation: number,
-    error: unknown,
-  ) {
+  private async failAndCleanup(operation: number, error: unknown) {
     if (this.failingOperation === operation) return;
     this.failingOperation = operation;
     this.abortController?.abort();
@@ -279,14 +268,11 @@ export class WaveRealtimeController {
         } else if (event.state === 'disconnected') {
           this.patchState({ phase: 'reconnecting' });
         } else if (event.state === 'failed') {
-          void this.failAndCleanup(
-            operation,
-            {
-              kind: 'connection',
-              message: 'The Realtime connection failed.',
-              retryable: true,
-            },
-          );
+          void this.failAndCleanup(operation, {
+            kind: 'connection',
+            message: 'The Realtime connection failed.',
+            retryable: true,
+          });
         }
         return;
       case 'remote_audio_tracks':
@@ -304,13 +290,9 @@ export class WaveRealtimeController {
     event: Extract<RealtimeTransportEvent, { type: 'transcript' }>,
   ) {
     const key =
-      event.role === 'assistant'
-        ? 'assistantTranscript'
-        : 'userTranscript';
+      event.role === 'assistant' ? 'assistantTranscript' : 'userTranscript';
     const previous = this.state[key];
-    const text = event.final
-      ? event.text
-      : `${previous}${event.text}`;
+    const text = event.final ? event.text : `${previous}${event.text}`;
     this.patchState({
       [key]: text.slice(0, MAX_TRANSCRIPT_LENGTH),
     });
@@ -318,8 +300,7 @@ export class WaveRealtimeController {
 
   private isCurrent(operation: number) {
     return (
-      operation === this.operation &&
-      !this.abortController?.signal.aborted
+      operation === this.operation && !this.abortController?.signal.aborted
     );
   }
 
@@ -340,10 +321,7 @@ export class WaveRealtimeController {
     if (!Number.isFinite(expiry)) return;
     const delay = Math.max(
       0,
-      Math.min(
-        expiry - Date.now() - CALL_EXPIRY_LEEWAY_MS,
-        2_147_000_000,
-      ),
+      Math.min(expiry - Date.now() - CALL_EXPIRY_LEEWAY_MS, 2_147_000_000),
     );
     this.expiryTimer = setTimeout(() => {
       if (operation === this.operation) void this.stop();
@@ -351,16 +329,11 @@ export class WaveRealtimeController {
   }
 }
 
-function activityToPhase(
-  activity: RealtimeActivity,
-): WaveRealtimePhase {
+function activityToPhase(activity: RealtimeActivity): WaveRealtimePhase {
   return activity;
 }
 
-function toControllerError(
-  error: unknown,
-  fallbackMessage: string,
-) {
+function toControllerError(error: unknown, fallbackMessage: string) {
   if (isSafeControllerError(error)) {
     return {
       kind: error.kind,
@@ -395,7 +368,9 @@ function isSafeControllerError(
 
 function sanitizeMessage(message: string) {
   return (
-    message.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 300) ||
-    'Wave could not complete the live voice operation.'
+    message
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, 300) || 'Wave could not complete the live voice operation.'
   );
 }

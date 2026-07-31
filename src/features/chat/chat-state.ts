@@ -5,11 +5,7 @@ import type {
 } from '@wave/contracts';
 import { WAVE_TOOL_DETAIL_MAX_CHARS } from '@wave/contracts';
 
-export type WaveChatTaskStatus =
-  | 'complete'
-  | 'error'
-  | 'pending'
-  | 'running';
+export type WaveChatTaskStatus = 'complete' | 'error' | 'pending' | 'running';
 
 export type WaveChatPart =
   | {
@@ -33,11 +29,7 @@ export interface WaveChatMessage {
 }
 
 export type WaveChatStatus =
-  | 'cancelling'
-  | 'error'
-  | 'idle'
-  | 'streaming'
-  | 'submitting';
+  'cancelling' | 'error' | 'idle' | 'streaming' | 'submitting';
 
 export interface WaveChatState {
   activeTurnId?: string;
@@ -162,8 +154,7 @@ export function historyToWaveChatMessages(
 
   history.forEach((message, index) => {
     const id =
-      message.id ??
-      `history-${index}-${message.createdAt ?? 'undated'}`;
+      message.id ?? `history-${index}-${message.createdAt ?? 'undated'}`;
     if (message.role === 'user' || message.role === 'system') {
       flushAssistantTurn();
       if (message.content) {
@@ -180,14 +171,11 @@ export function historyToWaveChatMessages(
     if (message.role === 'tool') {
       part = {
         id: `${id}-tool`,
-        ...(message.toolInput
-          ? { input: message.toolInput }
-          : {}),
+        ...(message.toolInput ? { input: message.toolInput } : {}),
         ...(message.toolOutput || message.content
           ? {
               output:
-                message.toolOutput ??
-                boundedLegacyToolOutput(message.content),
+                message.toolOutput ?? boundedLegacyToolOutput(message.content),
             }
           : {}),
         status: 'complete',
@@ -251,10 +239,7 @@ function applyEvent(
         status: 'streaming',
       };
     case 'turn.error':
-      if (
-        event.error.code === 'cancelled' &&
-        state.status === 'cancelling'
-      ) {
+      if (event.error.code === 'cancelled' && state.status === 'cancelling') {
         return {
           ...state,
           activeTurnId: undefined,
@@ -290,10 +275,7 @@ function updateAssistant(
 function appendAssistantText(parts: WaveChatPart[], delta: string) {
   const last = parts.at(-1);
   if (last?.type === 'text') {
-    return [
-      ...parts.slice(0, -1),
-      { ...last, text: `${last.text}${delta}` },
-    ];
+    return [...parts.slice(0, -1), { ...last, text: `${last.text}${delta}` }];
   }
   return [...parts, { text: delta, type: 'text' as const }];
 }
@@ -327,25 +309,19 @@ function updateTaskPart(
     parts[index]?.type === 'task' &&
     !(
       event.status === 'started' &&
-      (parts[index].status === 'complete' ||
-        parts[index].status === 'error')
+      (parts[index].status === 'complete' || parts[index].status === 'error')
     )
   ) {
     return parts.map((part, partIndex) =>
       partIndex === index && part.type === 'task'
         ? {
             ...part,
-            ...(event.toolInput
-              ? { input: event.toolInput }
-              : {}),
-            ...(event.toolOutput
-              ? { output: event.toolOutput }
-              : {}),
+            ...(event.toolInput ? { input: event.toolInput } : {}),
+            ...(event.toolOutput ? { output: event.toolOutput } : {}),
             ...(event.toolOutputIsPreview === undefined
               ? {}
               : {
-                  outputIsPreview:
-                    event.toolOutputIsPreview,
+                  outputIsPreview: event.toolOutputIsPreview,
                 }),
             status,
           }
@@ -377,10 +353,7 @@ function boundedLegacyToolOutput(content: string): WaveToolDetail {
 }
 
 function taskStatus(
-  status: Extract<
-    WaveTurnEvent,
-    { type: 'tool.status' }
-  >['status'],
+  status: Extract<WaveTurnEvent, { type: 'tool.status' }>['status'],
 ): WaveChatTaskStatus {
   switch (status) {
     case 'started':

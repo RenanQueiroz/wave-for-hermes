@@ -1,0 +1,10 @@
+.agents/
+.claude/skills/
+.expo/
+.mobile-agent/
+android/
+ios/
+**/dist/
+**/node_modules/
+plans/
+uniwind-types.d.ts

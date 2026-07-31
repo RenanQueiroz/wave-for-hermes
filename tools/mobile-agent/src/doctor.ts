@@ -18,7 +18,9 @@ import type {
   ToolchainDiscovery,
 } from './types.js';
 
-export async function runDoctor(config: MobileAgentConfig): Promise<DoctorReport> {
+export async function runDoctor(
+  config: MobileAgentConfig,
+): Promise<DoctorReport> {
   const [toolchain, ios, android, metro] = await Promise.all([
     discoverToolchain(),
     discoverIos(config),
@@ -28,7 +30,9 @@ export async function runDoctor(config: MobileAgentConfig): Promise<DoctorReport
   const commonDiagnostics = toolchain.diagnostics.filter(
     (diagnostic) => !diagnostic.code.startsWith('XCODE_'),
   );
-  const commonReady = !commonDiagnostics.some((diagnostic) => diagnostic.status === 'error');
+  const commonReady = !commonDiagnostics.some(
+    (diagnostic) => diagnostic.status === 'error',
+  );
   const metroReady = Boolean(
     metro.selected?.targets.some((target) => target.appId === ANDROID_PACKAGE),
   );
@@ -80,7 +84,9 @@ async function discoverToolchain(): Promise<ToolchainDiscovery> {
   let appiumMcpVersion: string | undefined;
   try {
     const require = createRequire(import.meta.url);
-    const appiumPackage = require('appium-mcp/package.json') as { version?: string };
+    const appiumPackage = require('appium-mcp/package.json') as {
+      version?: string;
+    };
     appiumMcpVersion = appiumPackage.version;
     diagnostics.push({
       code: 'APPIUM_MCP_VERSION',
@@ -104,7 +110,9 @@ async function discoverToolchain(): Promise<ToolchainDiscovery> {
 
   let xcodeVersion: string | undefined;
   if (process.platform === 'darwin') {
-    const xcode = await runCommand('xcodebuild', ['-version'], { timeoutMs: 10_000 });
+    const xcode = await runCommand('xcodebuild', ['-version'], {
+      timeoutMs: 10_000,
+    });
     if (xcode.ok) {
       xcodeVersion = xcode.stdout.trim().replace(/\r?\n/g, ' / ');
       diagnostics.push({
@@ -116,8 +124,10 @@ async function discoverToolchain(): Promise<ToolchainDiscovery> {
       diagnostics.push({
         code: 'XCODE_NOT_READY',
         status: 'error',
-        message: xcode.stderr.trim() || xcode.error || 'xcodebuild is unavailable.',
-        recovery: 'Install/select Xcode and accept its license before running iOS automation.',
+        message:
+          xcode.stderr.trim() || xcode.error || 'xcodebuild is unavailable.',
+        recovery:
+          'Install/select Xcode and accept its license before running iOS automation.',
       });
     }
   }

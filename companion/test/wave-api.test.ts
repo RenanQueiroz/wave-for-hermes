@@ -316,8 +316,7 @@ test('exposes canonical Hermes sessions to every paired device', async () => {
   });
   assert.equal(history.statusCode, 200);
   assert.equal(
-    WaveSessionHistoryResponseSchema.parse(history.json()).messages[0]
-      ?.content,
+    WaveSessionHistoryResponseSchema.parse(history.json()).messages[0]?.content,
     'Hello from Hermes',
   );
 
@@ -415,9 +414,7 @@ test('pairs and bounds raw Hermes tool details without exposing call identifiers
     url: '/v1/sessions/existing-session/messages',
   });
   assert.equal(response.statusCode, 200);
-  const history = WaveSessionHistoryResponseSchema.parse(
-    response.json(),
-  );
+  const history = WaveSessionHistoryResponseSchema.parse(response.json());
   const tool = history.messages[1];
   assert.equal(tool?.content, '');
   assert.equal(tool?.toolInput?.text.length, 64_000);
@@ -538,8 +535,7 @@ test('validates attachments and maps them to the pinned Hermes multimodal contra
       type: 'image_url',
     },
     {
-      text:
-        '[Attached text file: notes.md (text/markdown)]\n\n# Notes',
+      text: '[Attached text file: notes.md (text/markdown)]\n\n# Notes',
       type: 'text',
     },
   ]);
@@ -589,10 +585,7 @@ test('streams only normalized Wave events with ordered metadata', async () => {
     url: '/v1/sessions/existing-session/turns',
   });
   assert.equal(response.statusCode, 200);
-  assert.match(
-    response.headers['content-type'] ?? '',
-    /^text\/event-stream/,
-  );
+  assert.match(response.headers['content-type'] ?? '', /^text\/event-stream/);
   const events = parseSseEvents(response.body);
   assert.deepEqual(
     events.map((event) => event.type),
@@ -611,19 +604,13 @@ test('streams only normalized Wave events with ordered metadata', async () => {
   );
   assert.equal(response.body.includes('run-1'), false);
   assert.equal(response.body.includes('server-only-hermes-key'), false);
-  const toolEvent = events.find(
-    (event) => event.type === 'tool.status',
-  );
+  const toolEvent = events.find((event) => event.type === 'tool.status');
   assert.equal(
-    toolEvent?.type === 'tool.status'
-      ? toolEvent.toolInput?.text
-      : undefined,
+    toolEvent?.type === 'tool.status' ? toolEvent.toolInput?.text : undefined,
     '{"command":"pwd"}',
   );
   assert.equal(
-    toolEvent?.type === 'tool.status'
-      ? toolEvent.toolOutput?.text
-      : undefined,
+    toolEvent?.type === 'tool.status' ? toolEvent.toolOutput?.text : undefined,
     '/repo',
   );
   await closeContext(context);
@@ -821,9 +808,7 @@ async function closeContext(context: ReturnType<typeof createContext>) {
 }
 
 function pairDevice(store: SqliteDeviceStore, name: string) {
-  const pairing = store.issuePairingCode(
-    new Date('2026-07-30T02:10:00.000Z'),
-  );
+  const pairing = store.issuePairingCode(new Date('2026-07-30T02:10:00.000Z'));
   const paired = store.redeemPairingCode(pairing.code, name);
   assert.ok(paired);
   return paired;

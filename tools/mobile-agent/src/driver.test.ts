@@ -57,14 +57,15 @@ test('text values are sent directly to the selected native element', async () =>
   await setNativeElementValue(driver, 'element-1', 'private text');
   await setNativeElementValue(driver, 'element-1', '');
 
-  assert.deepEqual(calls, [
-    { text: 'private text', elementId: 'element-1' },
-  ]);
+  assert.deepEqual(calls, [{ text: 'private text', elementId: 'element-1' }]);
   assert.deepEqual(cleared, ['element-1', 'element-1']);
 });
 
 test('safe lifecycle and deep-link helpers use platform-specific mobile commands', async () => {
-  const commands: Array<{ command: string; parameters?: Record<string, unknown> }> = [];
+  const commands: Array<{
+    command: string;
+    parameters?: Record<string, unknown>;
+  }> = [];
   const driver = fakeDriver({
     execute: async (command, parameters) => {
       commands.push({ command, ...(parameters ? { parameters } : {}) });
@@ -141,7 +142,9 @@ function resolved(
 function pointerActions(operation: unknown[] | undefined): unknown[] {
   assert.ok(operation);
   const sequence = operation[0];
-  assert.ok(sequence && typeof sequence === 'object' && !Array.isArray(sequence));
+  assert.ok(
+    sequence && typeof sequence === 'object' && !Array.isArray(sequence),
+  );
   const actions = (sequence as Record<string, unknown>).actions;
   assert.ok(Array.isArray(actions));
   return actions;

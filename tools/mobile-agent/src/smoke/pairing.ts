@@ -16,8 +16,7 @@ const CHAT_RESPONSE_TEXT = 'Fixture response from Hermes.';
 const CHAT_STOP_BUTTON_ID = 'chat-stop-button';
 const CHAT_TOOL_COLLAPSE_LABEL =
   'Fixture lookup, completed. Collapse tool details';
-const CHAT_TOOL_EXPAND_LABEL =
-  'Fixture lookup, completed. Expand tool details';
+const CHAT_TOOL_EXPAND_LABEL = 'Fixture lookup, completed. Expand tool details';
 const CHAT_TOOL_INPUT = JSON.stringify({
   query: 'Run the Wave chat fixture',
 });
@@ -139,13 +138,9 @@ export async function runPairingSmoke(
       ok: true,
     });
 
-    const state = await callToolText(
-      connection.client,
-      'mobile_read_state',
-      {
-        provider: 'wave-connection',
-      },
-    );
+    const state = await callToolText(connection.client, 'mobile_read_state', {
+      provider: 'wave-connection',
+    });
     assertToolSucceeded('read-connection-state', state);
     if (/\b(authorization|credential|token)\b/i.test(state.text)) {
       throw new Error(
@@ -338,11 +333,7 @@ export async function runChatSmoke(
       CHAT_COMPOSER_ID,
       CHAT_CANCELLATION_PROMPT,
     );
-    await submitChat(
-      connection.client,
-      sessionId,
-      options.platform,
-    );
+    await submitChat(connection.client, sessionId, options.platform);
     await waitForText(
       connection.client,
       sessionId,
@@ -379,11 +370,7 @@ export async function runChatSmoke(
       CHAT_COMPOSER_ID,
       'Run the Wave chat fixture',
     );
-    await submitChat(
-      connection.client,
-      sessionId,
-      options.platform,
-    );
+    await submitChat(connection.client, sessionId, options.platform);
     await waitForText(
       connection.client,
       sessionId,
@@ -583,11 +570,7 @@ async function pairDevice(
   await lifecycle(client, sessionId, 'terminate');
   await lifecycle(client, sessionId, 'activate');
   writeSmokeProgress(smokeName, 'app relaunched; waiting for pairing screen');
-  await ensurePairingScreen(
-    client,
-    sessionId,
-    options.platform,
-  );
+  await ensurePairingScreen(client, sessionId, options.platform);
   writeSmokeProgress(smokeName, 'pairing screen ready');
   await replaceNodeText(
     client,
@@ -614,7 +597,10 @@ async function pairDevice(
   );
   await revealNextPairingField(client, sessionId, options.platform);
   await submitPairing(client, sessionId, options.platform);
-  writeSmokeProgress(smokeName, 'pairing submitted; waiting for compatibility check');
+  writeSmokeProgress(
+    smokeName,
+    'pairing submitted; waiting for compatibility check',
+  );
   await waitForNode(
     client,
     sessionId,
@@ -749,13 +735,7 @@ async function replaceNodeText(
   stableId: string,
   text: string,
 ) {
-  let node = await waitForNode(
-    client,
-    sessionId,
-    platform,
-    stableId,
-    true,
-  );
+  let node = await waitForNode(client, sessionId, platform, stableId, true);
   const cleared = await callToolText(client, 'mobile_clear_text', {
     captureTrace: false,
     nodeId: node.nodeId,
@@ -766,13 +746,7 @@ async function replaceNodeText(
   await new Promise((resolve) => setTimeout(resolve, 250));
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    node = await waitForNode(
-      client,
-      sessionId,
-      platform,
-      stableId,
-      true,
-    );
+    node = await waitForNode(client, sessionId, platform, stableId, true);
     const typed = await callToolText(client, 'mobile_type_text', {
       captureTrace: false,
       nodeId: node.nodeId,
@@ -847,19 +821,13 @@ async function waitForAccessibilityNode(
       sessionId,
     });
     if (!found.isError) {
-      const result = parseJsonObject(
-        found.text,
-        `${accessibilityLabel} query`,
-      );
+      const result = parseJsonObject(found.text, `${accessibilityLabel} query`);
       const nodes = result.nodes;
       if (Array.isArray(nodes) && nodes.length === 1) {
         const node = nodes[0];
         if (node && typeof node === 'object' && !Array.isArray(node)) {
           return {
-            nodeId: readString(
-              node as Record<string, unknown>,
-              'id',
-            ),
+            nodeId: readString(node as Record<string, unknown>, 'id'),
             snapshotId: readString(result, 'snapshotId'),
           };
         }
@@ -923,14 +891,7 @@ async function ensurePairingScreen(
         platform,
         CONNECTION_DISCONNECT_BUTTON_ID,
       );
-      await waitForNode(
-        client,
-        sessionId,
-        platform,
-        PAIR_BUTTON_ID,
-        true,
-        60,
-      );
+      await waitForNode(client, sessionId, platform, PAIR_BUTTON_ID, true, 60);
       return;
     }
 
@@ -942,26 +903,9 @@ async function ensurePairingScreen(
       true,
     );
     if (menuButton) {
-      await tapNode(
-        client,
-        sessionId,
-        platform,
-        OPEN_DRAWER_BUTTON_ID,
-      );
-      await tapNode(
-        client,
-        sessionId,
-        platform,
-        DRAWER_DISCONNECT_BUTTON_ID,
-      );
-      await waitForNode(
-        client,
-        sessionId,
-        platform,
-        PAIR_BUTTON_ID,
-        true,
-        60,
-      );
+      await tapNode(client, sessionId, platform, OPEN_DRAWER_BUTTON_ID);
+      await tapNode(client, sessionId, platform, DRAWER_DISCONNECT_BUTTON_ID);
+      await waitForNode(client, sessionId, platform, PAIR_BUTTON_ID, true, 60);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1016,13 +960,7 @@ async function waitForNodeValue(
   attempts: number,
 ) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const node = await findNode(
-      client,
-      sessionId,
-      platform,
-      stableId,
-      true,
-    );
+    const node = await findNode(client, sessionId, platform, stableId, true);
     if (node?.currentValue === expectedValue) return true;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -1079,9 +1017,7 @@ async function assertTextAbsent(
       strategy: 'accessibility id',
     });
     if (!found.isError) {
-      throw new Error(
-        `Collapsed fixture detail "${value}" was rendered.`,
-      );
+      throw new Error(`Collapsed fixture detail "${value}" was rendered.`);
     }
     return;
   }
@@ -1095,9 +1031,7 @@ async function assertTextAbsent(
   assertToolSucceeded(`query-hidden-text-${value}`, found);
   const result = parseJsonObject(found.text, `${value} absence query`);
   if (!Array.isArray(result.nodes) || result.nodes.length !== 0) {
-    throw new Error(
-      `Collapsed fixture detail "${value}" was rendered.`,
-    );
+    throw new Error(`Collapsed fixture detail "${value}" was rendered.`);
   }
 }
 
@@ -1107,10 +1041,7 @@ function assertToolSucceeded(step: string, result: ToolTextResult) {
   }
 }
 
-function parseJsonObject(
-  text: string,
-  label: string,
-): Record<string, unknown> {
+function parseJsonObject(text: string, label: string): Record<string, unknown> {
   const parsed = JSON.parse(text) as unknown;
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`The ${label} response was not a JSON object.`);

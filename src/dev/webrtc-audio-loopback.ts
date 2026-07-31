@@ -89,7 +89,9 @@ export class WebRtcAudioLoopbackProof {
       const localAudioTracks = localStream.getAudioTracks();
       if (localAudioTracks.length === 0) {
         releaseStream(localStream);
-        throw new Error('The native media device returned no microphone audio track.');
+        throw new Error(
+          'The native media device returned no microphone audio track.',
+        );
       }
 
       this.patchState({
@@ -116,26 +118,48 @@ export class WebRtcAudioLoopbackProof {
         if (attempt !== this.attempt) return;
         this.patchState({ callerConnectionState: caller.connectionState });
         if (caller.connectionState === 'failed') {
-          this.failAttempt(attempt, new Error('The caller peer connection failed.'));
+          this.failAttempt(
+            attempt,
+            new Error('The caller peer connection failed.'),
+          );
         }
       };
       receiver.onconnectionstatechange = () => {
         if (attempt !== this.attempt) return;
         this.patchState({ receiverConnectionState: receiver.connectionState });
         if (receiver.connectionState === 'failed') {
-          this.failAttempt(attempt, new Error('The receiver peer connection failed.'));
+          this.failAttempt(
+            attempt,
+            new Error('The receiver peer connection failed.'),
+          );
         }
       };
 
       caller.onicecandidate = (event: unknown) => {
-        const candidate = getEventProperty<RTCIceCandidate | null>(event, 'candidate');
+        const candidate = getEventProperty<RTCIceCandidate | null>(
+          event,
+          'candidate',
+        );
         if (!candidate || attempt !== this.attempt) return;
-        this.addOrQueueCandidate(attempt, receiver, candidatesForReceiver, candidate);
+        this.addOrQueueCandidate(
+          attempt,
+          receiver,
+          candidatesForReceiver,
+          candidate,
+        );
       };
       receiver.onicecandidate = (event: unknown) => {
-        const candidate = getEventProperty<RTCIceCandidate | null>(event, 'candidate');
+        const candidate = getEventProperty<RTCIceCandidate | null>(
+          event,
+          'candidate',
+        );
         if (!candidate || attempt !== this.attempt) return;
-        this.addOrQueueCandidate(attempt, caller, candidatesForCaller, candidate);
+        this.addOrQueueCandidate(
+          attempt,
+          caller,
+          candidatesForCaller,
+          candidate,
+        );
       };
 
       receiver.ontrack = (event: unknown) => {
@@ -201,7 +225,9 @@ export class WebRtcAudioLoopbackProof {
       this.patchState({ phase: 'verifying' });
 
       await withTimeout(
-        Promise.all([remoteAudioReady.promise, dataEchoReady.promise]).then(() => undefined),
+        Promise.all([remoteAudioReady.promise, dataEchoReady.promise]).then(
+          () => undefined,
+        ),
         PROOF_TIMEOUT_MS,
       );
 
@@ -300,7 +326,12 @@ function getEventProperty<T>(event: unknown, property: string) {
 
 function normalizeError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 300) || 'WebRTC proof failed.';
+  return (
+    message
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, 300) || 'WebRTC proof failed.'
+  );
 }
 
 function releaseStream(stream: MediaStream) {
@@ -314,7 +345,12 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timeout = setTimeout(
-      () => reject(new Error(`WebRTC proof timed out after ${timeoutMs / 1000} seconds.`)),
+      () =>
+        reject(
+          new Error(
+            `WebRTC proof timed out after ${timeoutMs / 1000} seconds.`,
+          ),
+        ),
       timeoutMs,
     );
   });

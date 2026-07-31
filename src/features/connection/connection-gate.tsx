@@ -17,13 +17,5 @@ export function ConnectionGate() {
       </View>
     );
   }
-  return (
-    <Redirect
-      href={
-        state.phase === 'connected'
-          ? '/new'
-          : '/connect'
-      }
-    />
-  );
+  return <Redirect href={state.phase === 'connected' ? '/new' : '/connect'} />;
 }

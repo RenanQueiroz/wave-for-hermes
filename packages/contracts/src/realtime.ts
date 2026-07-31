@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-import {
-  WaveIdentifierSchema,
-  WaveResponseMetadataSchema,
-} from './common.ts';
+import { WaveIdentifierSchema, WaveResponseMetadataSchema } from './common.ts';
 
 export const WAVE_MAX_REALTIME_SDP_LENGTH = 48_000;
 export const WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH = 8_000;
@@ -66,10 +63,7 @@ export const WaveAskHermesToolErrorCodeSchema = z.enum([
 export const WaveAskHermesToolResultSchema = z.discriminatedUnion('ok', [
   z
     .object({
-      answer: z
-        .string()
-        .min(1)
-        .max(WAVE_MAX_ASK_HERMES_ANSWER_LENGTH),
+      answer: z.string().min(1).max(WAVE_MAX_ASK_HERMES_ANSWER_LENGTH),
       ok: z.literal(true),
       truncated: z.boolean(),
     })

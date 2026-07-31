@@ -24,14 +24,15 @@ if (!process.env.ANDROID_HOME && !process.env.ANDROID_SDK_ROOT) {
 
 // Appium resolves the Android SDK while its modules are loading, so discover and
 // export the SDK root before importing the core package.
-const { createAppiumMcpServer, verifyAppiumMcpNames } = await import(
-  'appium-mcp/core'
-);
+const { createAppiumMcpServer, verifyAppiumMcpNames } =
+  await import('appium-mcp/core');
 
 const plugins = [new WaveMobileAgentPlugin()];
 const verification = verifyAppiumMcpNames({ plugins });
 if (!verification.ok) {
-  throw new Error(`Invalid mobile-agent MCP registration: ${JSON.stringify(verification)}`);
+  throw new Error(
+    `Invalid mobile-agent MCP registration: ${JSON.stringify(verification)}`,
+  );
 }
 
 const server = await createAppiumMcpServer({

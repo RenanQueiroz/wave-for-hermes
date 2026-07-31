@@ -23,10 +23,7 @@ export class SecureWaveCredentialStore implements WaveCredentialStore {
   async clear() {
     await this.requireAvailability();
     try {
-      await SecureStore.deleteItemAsync(
-        CONNECTION_KEY,
-        SECURE_STORE_OPTIONS,
-      );
+      await SecureStore.deleteItemAsync(CONNECTION_KEY, SECURE_STORE_OPTIONS);
     } catch {
       throw new WaveCredentialStoreError(
         'Wave could not clear the saved connection.',

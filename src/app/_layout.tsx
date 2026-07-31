@@ -1,11 +1,6 @@
 import '../global.css';
 
-import {
-  DarkTheme,
-  DefaultTheme,
-  Stack,
-  ThemeProvider,
-} from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { PanelUIProvider, useThemeMode } from 'panelui-native';
 import { useEffect, useMemo } from 'react';
@@ -20,7 +15,10 @@ import { WaveQueryProvider } from '@/services/query/wave-query-provider';
 
 SplashScreen.preventAutoHideAsync();
 
-function resolveColor(value: string | number | undefined, fallback: ColorValue): ColorValue {
+function resolveColor(
+  value: string | number | undefined,
+  fallback: ColorValue,
+): ColorValue {
   return typeof value === 'string' ? value : fallback;
 }
 

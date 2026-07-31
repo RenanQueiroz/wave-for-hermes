@@ -141,21 +141,21 @@ All request and response bodies are validated with the strict runtime schemas in
 Authorization: Bearer <device-credential>
 ```
 
-| Method and path | Authentication | Purpose |
-| --- | --- | --- |
-| `GET /v1/status` | Public | Non-sensitive service and feature status |
-| `POST /v1/pairings/redeem` | One-time code | Create a named device and return its credential once |
-| `GET /v1/compatibility` | Device | Probe the live Hermes capability contract |
-| `GET /v1/operations/jobs` | Device | Read normalized scheduled-job status without prompts or controls |
-| `GET /v1/sessions?limit=&offset=` | Device | Page through top-level Hermes sessions |
-| `POST /v1/sessions` | Device | Create a Hermes session |
-| `PATCH /v1/sessions/:sessionId` | Device | Rename a Hermes session |
-| `DELETE /v1/sessions/:sessionId` | Device | Delete an idle Hermes session |
-| `GET /v1/sessions/:sessionId/messages` | Device | Read normalized history |
-| `POST /v1/sessions/:sessionId/turns` | Device | Stream normalized Wave SSE events |
-| `POST /v1/sessions/:sessionId/turns/:turnId/cancel` | Device | Cancel that device's active turn |
-| `POST /v1/sessions/:sessionId/realtime/calls` | Device | Exchange a bounded SDP offer for transient Wave call state |
-| `POST /v1/realtime/calls/:callId/end` | Device and call owner | End and discard a Wave Realtime call |
+| Method and path                                     | Authentication        | Purpose                                                          |
+| --------------------------------------------------- | --------------------- | ---------------------------------------------------------------- |
+| `GET /v1/status`                                    | Public                | Non-sensitive service and feature status                         |
+| `POST /v1/pairings/redeem`                          | One-time code         | Create a named device and return its credential once             |
+| `GET /v1/compatibility`                             | Device                | Probe the live Hermes capability contract                        |
+| `GET /v1/operations/jobs`                           | Device                | Read normalized scheduled-job status without prompts or controls |
+| `GET /v1/sessions?limit=&offset=`                   | Device                | Page through top-level Hermes sessions                           |
+| `POST /v1/sessions`                                 | Device                | Create a Hermes session                                          |
+| `PATCH /v1/sessions/:sessionId`                     | Device                | Rename a Hermes session                                          |
+| `DELETE /v1/sessions/:sessionId`                    | Device                | Delete an idle Hermes session                                    |
+| `GET /v1/sessions/:sessionId/messages`              | Device                | Read normalized history                                          |
+| `POST /v1/sessions/:sessionId/turns`                | Device                | Stream normalized Wave SSE events                                |
+| `POST /v1/sessions/:sessionId/turns/:turnId/cancel` | Device                | Cancel that device's active turn                                 |
+| `POST /v1/sessions/:sessionId/realtime/calls`       | Device                | Exchange a bounded SDP offer for transient Wave call state       |
+| `POST /v1/realtime/calls/:callId/end`               | Device and call owner | End and discard a Wave Realtime call                             |
 
 The client cannot select a Hermes model, provider, endpoint, header, run ID, or arbitrary
 operation. Unknown fields fail validation. The scheduled-jobs route is a fixed read-only adapter,
@@ -217,28 +217,28 @@ prompt; Hermes's own tool safety policy remains authoritative.
 
 ## Configuration
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `HERMES_API_URL` | Required | Server-only Hermes API Server base URL |
-| `HERMES_API_KEY` | Required | Server-only Hermes bearer credential |
-| `OPENAI_API_KEY` | unset | Server-only OpenAI credential; enables Realtime when present |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1-mini` | Server-selected cost-efficient Realtime model |
-| `OPENAI_REALTIME_VOICE` | `marin` | Server-selected Realtime voice |
-| `HERMES_ALLOW_INSECURE_HTTP` | `false` | Allow explicit private/local HTTP upstream traffic |
-| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device authorization database |
-| `WAVE_HOST` | `127.0.0.1` | Listener address |
-| `WAVE_PORT` | `8787` | Listener port |
-| `WAVE_LOG_LEVEL` | `info` | Fastify/Pino log level |
-| `WAVE_PAIRING_CODE_TTL_SECONDS` | `600` | Pairing expiry, from 60 through 3600 seconds |
-| `WAVE_MAX_ACTIVE_TURNS` | `4` | Process-wide active-turn maximum, from 1 through 32 |
-| `WAVE_MAX_ACTIVE_REALTIME_CALLS` | `2` | Process-wide active-call maximum, from 1 through 16 |
-| `WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS` | `30000` | Time to the first upstream event |
-| `WAVE_HERMES_IDLE_TIMEOUT_MS` | `60000` | Maximum gap between upstream events |
-| `WAVE_HERMES_TOTAL_TIMEOUT_MS` | `600000` | Maximum total turn duration |
-| `WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS` | `15000` | OpenAI setup/hangup request timeout |
-| `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000` | Sideband connection timeout |
-| `WAVE_REALTIME_CALL_TTL_MS` | `1800000` | Maximum call lifetime, from 1 minute through 2 hours |
-| `WAVE_REALTIME_TOOL_TIMEOUT_MS` | `120000` | Per-tool timeout, from 10 seconds through 10 minutes |
+| Variable                                    | Default                        | Meaning                                                      |
+| ------------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| `HERMES_API_URL`                            | Required                       | Server-only Hermes API Server base URL                       |
+| `HERMES_API_KEY`                            | Required                       | Server-only Hermes bearer credential                         |
+| `OPENAI_API_KEY`                            | unset                          | Server-only OpenAI credential; enables Realtime when present |
+| `OPENAI_REALTIME_MODEL`                     | `gpt-realtime-2.1-mini`        | Server-selected cost-efficient Realtime model                |
+| `OPENAI_REALTIME_VOICE`                     | `marin`                        | Server-selected Realtime voice                               |
+| `HERMES_ALLOW_INSECURE_HTTP`                | `false`                        | Allow explicit private/local HTTP upstream traffic           |
+| `WAVE_DATABASE_PATH`                        | `./data/wave-companion.sqlite` | Persistent device authorization database                     |
+| `WAVE_HOST`                                 | `127.0.0.1`                    | Listener address                                             |
+| `WAVE_PORT`                                 | `8787`                         | Listener port                                                |
+| `WAVE_LOG_LEVEL`                            | `info`                         | Fastify/Pino log level                                       |
+| `WAVE_PAIRING_CODE_TTL_SECONDS`             | `600`                          | Pairing expiry, from 60 through 3600 seconds                 |
+| `WAVE_MAX_ACTIVE_TURNS`                     | `4`                            | Process-wide active-turn maximum, from 1 through 32          |
+| `WAVE_MAX_ACTIVE_REALTIME_CALLS`            | `2`                            | Process-wide active-call maximum, from 1 through 16          |
+| `WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS`        | `30000`                        | Time to the first upstream event                             |
+| `WAVE_HERMES_IDLE_TIMEOUT_MS`               | `60000`                        | Maximum gap between upstream events                          |
+| `WAVE_HERMES_TOTAL_TIMEOUT_MS`              | `600000`                       | Maximum total turn duration                                  |
+| `WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS`   | `15000`                        | OpenAI setup/hangup request timeout                          |
+| `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000`                        | Sideband connection timeout                                  |
+| `WAVE_REALTIME_CALL_TTL_MS`                 | `1800000`                      | Maximum call lifetime, from 1 minute through 2 hours         |
+| `WAVE_REALTIME_TOOL_TIMEOUT_MS`             | `120000`                       | Per-tool timeout, from 10 seconds through 10 minutes         |
 
 The Hermes total timeout must exceed both event timeouts, and the Realtime call lifetime must
 exceed its tool timeout. Request bodies are limited to 6,000,000 bytes; stricter turn and

@@ -67,9 +67,7 @@ const TEXT_FILE_EXTENSIONS = new Set([
 const MAX_TEXT_FILE_BYTES = WAVE_MAX_TEXT_ATTACHMENT_CHARS * 4;
 
 export function useChatAttachments() {
-  const [attachments, setAttachments] = useState<
-    PendingChatAttachment[]
-  >([]);
+  const [attachments, setAttachments] = useState<PendingChatAttachment[]>([]);
   const [error, setError] = useState<string>();
   const idRef = useRef(0);
   const attachmentsRef = useRef(attachments);
@@ -78,32 +76,26 @@ export function useChatAttachments() {
     attachmentsRef.current = attachments;
   }, [attachments]);
 
-  const addPart = useCallback(
-    (part: AttachmentPart, description: string) => {
-      if (
-        attachmentsRef.current.length >=
-        WAVE_MAX_TURN_ATTACHMENTS
-      ) {
-        setError(
-          `You can attach up to ${WAVE_MAX_TURN_ATTACHMENTS} files to one message.`,
-        );
-        return;
-      }
-      idRef.current += 1;
-      const next = [
-        ...attachmentsRef.current,
-        {
-          description,
-          id: `${Date.now()}-${idRef.current}`,
-          part,
-        },
-      ];
-      attachmentsRef.current = next;
-      setAttachments(next);
-      setError(undefined);
-    },
-    [],
-  );
+  const addPart = useCallback((part: AttachmentPart, description: string) => {
+    if (attachmentsRef.current.length >= WAVE_MAX_TURN_ATTACHMENTS) {
+      setError(
+        `You can attach up to ${WAVE_MAX_TURN_ATTACHMENTS} files to one message.`,
+      );
+      return;
+    }
+    idRef.current += 1;
+    const next = [
+      ...attachmentsRef.current,
+      {
+        description,
+        id: `${Date.now()}-${idRef.current}`,
+        part,
+      },
+    ];
+    attachmentsRef.current = next;
+    setAttachments(next);
+    setError(undefined);
+  }, []);
 
   const addImageResult = useCallback(
     (result: ImagePicker.ImagePickerResult) => {
@@ -114,10 +106,7 @@ export function useChatAttachments() {
         return;
       }
       const size = decodedBase64Size(asset.base64);
-      if (
-        size <= 0 ||
-        size > WAVE_MAX_IMAGE_ATTACHMENT_BYTES
-      ) {
+      if (size <= 0 || size > WAVE_MAX_IMAGE_ATTACHMENT_BYTES) {
         setError(
           `Images must be smaller than ${formatBytes(WAVE_MAX_IMAGE_ATTACHMENT_BYTES)}.`,
         );
@@ -153,8 +142,7 @@ export function useChatAttachments() {
   const takePhoto = useCallback(async () => {
     setError(undefined);
     try {
-      const permission =
-        await ImagePicker.requestCameraPermissionsAsync();
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
         setError('Camera access is required to take a photo.');
         return;

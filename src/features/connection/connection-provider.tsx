@@ -66,8 +66,9 @@ interface WaveConnectionContextValue {
   state: WaveConnectionState;
 }
 
-const WaveConnectionContext =
-  createContext<WaveConnectionContextValue | null>(null);
+const WaveConnectionContext = createContext<WaveConnectionContextValue | null>(
+  null,
+);
 
 export function WaveConnectionProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();

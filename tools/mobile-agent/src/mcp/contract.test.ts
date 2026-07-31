@@ -61,7 +61,10 @@ test('registers the Wave and Appium tools required by architecture sections 6 th
       ],
     );
     assert.deepEqual(
-      enumValues(toolsByName.get('appium_app_lifecycle')?.inputSchema, 'action'),
+      enumValues(
+        toolsByName.get('appium_app_lifecycle')?.inputSchema,
+        'action',
+      ),
       [
         'activate',
         'terminate',
@@ -76,7 +79,10 @@ test('registers the Wave and Appium tools required by architecture sections 6 th
       ],
     );
     assert.deepEqual(
-      enumValues(toolsByName.get('mobile_app_lifecycle')?.inputSchema, 'action'),
+      enumValues(
+        toolsByName.get('mobile_app_lifecycle')?.inputSchema,
+        'action',
+      ),
       ['activate', 'terminate', 'background'],
     );
     assert.deepEqual(
@@ -84,11 +90,17 @@ test('registers the Wave and Appium tools required by architecture sections 6 th
       ['back', 'home'],
     );
     assert.equal(
-      defaultValue(toolsByName.get('mobile_type_text')?.inputSchema, 'captureTrace'),
+      defaultValue(
+        toolsByName.get('mobile_type_text')?.inputSchema,
+        'captureTrace',
+      ),
       false,
     );
     assert.equal(
-      defaultValue(toolsByName.get('mobile_open_deep_link')?.inputSchema, 'captureTrace'),
+      defaultValue(
+        toolsByName.get('mobile_open_deep_link')?.inputSchema,
+        'captureTrace',
+      ),
       false,
     );
     assert.equal(names.has('mobile_install_app'), false);
@@ -96,11 +108,15 @@ test('registers the Wave and Appium tools required by architecture sections 6 th
     assert.equal(names.has('mobile_clear_app_data'), false);
 
     const secret = 'should-never-appear-in-action-output';
-    const textFailure = await callToolText(connection.client, 'mobile_type_text', {
-      snapshotId: '00000000-0000-4000-8000-000000000000',
-      nodeId: 'node-missing',
-      text: secret,
-    });
+    const textFailure = await callToolText(
+      connection.client,
+      'mobile_type_text',
+      {
+        snapshotId: '00000000-0000-4000-8000-000000000000',
+        nodeId: 'node-missing',
+        text: secret,
+      },
+    );
     assert.equal(textFailure.isError, true);
     assert.equal(textFailure.text.includes(secret), false);
   } finally {
@@ -108,13 +124,15 @@ test('registers the Wave and Appium tools required by architecture sections 6 th
   }
 });
 
-function enumValues(
-  schema: unknown,
-  property: string,
-): unknown[] {
+function enumValues(schema: unknown, property: string): unknown[] {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return [];
   const properties = (schema as Record<string, unknown>).properties;
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return [];
+  if (
+    !properties ||
+    typeof properties !== 'object' ||
+    Array.isArray(properties)
+  )
+    return [];
   const value = (properties as Record<string, unknown>)[property];
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
   const enumValue = (value as Record<string, unknown>).enum;
@@ -122,10 +140,17 @@ function enumValues(
 }
 
 function defaultValue(schema: unknown, property: string): unknown {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return undefined;
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema))
+    return undefined;
   const properties = (schema as Record<string, unknown>).properties;
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return undefined;
+  if (
+    !properties ||
+    typeof properties !== 'object' ||
+    Array.isArray(properties)
+  )
+    return undefined;
   const value = (properties as Record<string, unknown>)[property];
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
   return (value as Record<string, unknown>).default;
 }

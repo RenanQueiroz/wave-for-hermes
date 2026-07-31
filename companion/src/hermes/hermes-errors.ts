@@ -41,7 +41,10 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function redactHermesErrorText(value: unknown, secrets: readonly string[] = []) {
+export function redactHermesErrorText(
+  value: unknown,
+  secrets: readonly string[] = [],
+) {
   let text = typeof value === 'string' ? value : 'Hermes request failed';
 
   for (const secret of secrets) {

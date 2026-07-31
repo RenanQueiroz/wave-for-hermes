@@ -1,12 +1,6 @@
-import type {
-  FastifyReply,
-  FastifyRequest,
-} from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import type {
-  AuthenticatedDevice,
-  DeviceStore,
-} from './device-store.ts';
+import type { AuthenticatedDevice, DeviceStore } from './device-store.ts';
 import { WaveHttpError } from '../http/errors.ts';
 
 declare module 'fastify' {
@@ -25,17 +19,12 @@ export function createDeviceAuthenticator(store: DeviceStore) {
       typeof authorization === 'string'
         ? /^Bearer ([^\s]+)$/.exec(authorization)
         : undefined;
-    const device = match?.[1]
-      ? store.authenticateDevice(match[1])
-      : undefined;
+    const device = match?.[1] ? store.authenticateDevice(match[1]) : undefined;
     if (!device) {
-      throw new WaveHttpError(
-        'A valid Wave device credential is required.',
-        {
-          code: 'unauthorized',
-          statusCode: 401,
-        },
-      );
+      throw new WaveHttpError('A valid Wave device credential is required.', {
+        code: 'unauthorized',
+        statusCode: 401,
+      });
     }
     request.waveDevice = device;
   };
@@ -43,13 +32,10 @@ export function createDeviceAuthenticator(store: DeviceStore) {
 
 export function requireAuthenticatedDevice(request: FastifyRequest) {
   if (!request.waveDevice) {
-    throw new WaveHttpError(
-      'A valid Wave device credential is required.',
-      {
-        code: 'unauthorized',
-        statusCode: 401,
-      },
-    );
+    throw new WaveHttpError('A valid Wave device credential is required.', {
+      code: 'unauthorized',
+      statusCode: 401,
+    });
   }
   return request.waveDevice;
 }

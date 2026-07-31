@@ -33,10 +33,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseEndpoints(value: unknown) {
   if (!isRecord(value)) {
-    throw new HermesClientError('Hermes returned invalid endpoint capabilities.', {
-      code: 'invalid_capabilities',
-      kind: 'protocol',
-    });
+    throw new HermesClientError(
+      'Hermes returned invalid endpoint capabilities.',
+      {
+        code: 'invalid_capabilities',
+        kind: 'protocol',
+      },
+    );
   }
 
   const endpoints: Record<string, HermesEndpointCapability> = {};
@@ -57,10 +60,13 @@ function parseEndpoints(value: unknown) {
 
 function parseFeatures(value: unknown) {
   if (!isRecord(value)) {
-    throw new HermesClientError('Hermes returned invalid feature capabilities.', {
-      code: 'invalid_capabilities',
-      kind: 'protocol',
-    });
+    throw new HermesClientError(
+      'Hermes returned invalid feature capabilities.',
+      {
+        code: 'invalid_capabilities',
+        kind: 'protocol',
+      },
+    );
   }
 
   const features: Record<string, HermesFeatureValue> = {};
@@ -87,10 +93,13 @@ export function parseHermesCapabilities(value: unknown): HermesCapabilities {
     typeof value.auth.type !== 'string' ||
     typeof value.auth.required !== 'boolean'
   ) {
-    throw new HermesClientError('Hermes returned an invalid capability response.', {
-      code: 'invalid_capabilities',
-      kind: 'protocol',
-    });
+    throw new HermesClientError(
+      'Hermes returned an invalid capability response.',
+      {
+        code: 'invalid_capabilities',
+        kind: 'protocol',
+      },
+    );
   }
 
   return {
@@ -116,7 +125,10 @@ export function reportHermesCapabilities(
     (endpoint) => capabilities.endpoints[endpoint] === undefined,
   );
 
-  if (capabilities.auth.type !== 'bearer' || capabilities.auth.required !== true) {
+  if (
+    capabilities.auth.type !== 'bearer' ||
+    capabilities.auth.required !== true
+  ) {
     missingFeatures.push('bearer_authentication');
   }
 

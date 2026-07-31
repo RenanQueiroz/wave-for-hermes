@@ -1,8 +1,4 @@
-import type {
-  FastifyInstance,
-  FastifyReply,
-  FastifyRequest,
-} from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import {
@@ -47,10 +43,7 @@ import {
   normalizeHermesSession,
   WaveTurnEventFactory,
 } from '../hermes/wave-normalizers.ts';
-import {
-  normalizeHermesError,
-  WaveHttpError,
-} from '../http/errors.ts';
+import { normalizeHermesError, WaveHttpError } from '../http/errors.ts';
 import type { RealtimeCallRegistry } from '../realtime/realtime-call-registry.ts';
 
 const SERVICE_VERSION = '0.1.0';
@@ -62,12 +55,7 @@ const SessionParamsSchema = z
 const SessionListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(200).default(50),
-    offset: z.coerce
-      .number()
-      .int()
-      .nonnegative()
-      .max(1_000_000)
-      .default(0),
+    offset: z.coerce.number().int().nonnegative().max(1_000_000).default(0),
   })
   .strict();
 const TurnParamsSchema = SessionParamsSchema.extend({
@@ -259,9 +247,8 @@ export function registerWaveApi(
         );
       }
       const realtimeReserved =
-        services.realtimeCallRegistry?.reserveSessionDeletion(
-          sessionId,
-        ) ?? true;
+        services.realtimeCallRegistry?.reserveSessionDeletion(sessionId) ??
+        true;
       if (!realtimeReserved) {
         services.turnRegistry.releaseSessionDeletion(sessionId);
         throw new WaveHttpError(
@@ -273,8 +260,7 @@ export function registerWaveApi(
         );
       }
       try {
-        const deleted =
-          await services.hermesClient.deleteSession(sessionId);
+        const deleted = await services.hermesClient.deleteSession(sessionId);
         if (!deleted) {
           throw new WaveHttpError(
             'The requested Hermes session was not found.',
@@ -293,9 +279,7 @@ export function registerWaveApi(
         );
       } finally {
         services.turnRegistry.releaseSessionDeletion(sessionId);
-        services.realtimeCallRegistry?.releaseSessionDeletion(
-          sessionId,
-        );
+        services.realtimeCallRegistry?.releaseSessionDeletion(sessionId);
       }
     },
   );
@@ -440,11 +424,7 @@ async function streamTurn(
   input: WaveTurnInput,
   now: () => Date,
 ) {
-  const events = new WaveTurnEventFactory(
-    turn.sessionId,
-    turn.turnId,
-    now,
-  );
+  const events = new WaveTurnEventFactory(turn.sessionId, turn.turnId, now);
   let idleTimer: NodeJS.Timeout | undefined;
   const totalTimer = setTimeout(
     () => turn.abort('total_timeout'),
@@ -545,9 +525,7 @@ function toHermesChatContent(input: WaveTurnInput) {
 
 function streamFailureEvent(
   events: WaveTurnEventFactory,
-  reason: ReturnType<
-    ReturnType<ActiveTurnRegistry['start']>['abortReason']
-  >,
+  reason: ReturnType<ReturnType<ActiveTurnRegistry['start']>['abortReason']>,
   error: unknown,
 ) {
   switch (reason) {
@@ -593,11 +571,7 @@ function streamFailureEvent(
 
 function asStreamErrorCode(
   code: WaveErrorCode,
-):
-  | 'cancelled'
-  | 'timeout'
-  | 'upstream_incompatible'
-  | 'upstream_unavailable' {
+): 'cancelled' | 'timeout' | 'upstream_incompatible' | 'upstream_unavailable' {
   switch (code) {
     case 'cancelled':
     case 'timeout':

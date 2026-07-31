@@ -7,7 +7,10 @@ import { HermesClientError } from './hermes-errors.ts';
 import type { HermesStreamEvent } from './hermes-types.ts';
 
 const token = 'test-token-that-must-never-appear-in-errors';
-const fixtureUrl = new URL('./__fixtures__/capabilities-v2026.7.20.json', import.meta.url);
+const fixtureUrl = new URL(
+  './__fixtures__/capabilities-v2026.7.20.json',
+  import.meta.url,
+);
 
 function createClient(fetch: typeof globalThis.fetch) {
   return new HttpHermesClient(
@@ -55,7 +58,9 @@ test('normalizes server-side base URLs and enforces HTTPS by default', () => {
     'https://hermes.test/p/default',
   );
   assert.equal(
-    normalizeHermesBaseUrl('http://127.0.0.1:8642/', { allowInsecureHttp: true }),
+    normalizeHermesBaseUrl('http://127.0.0.1:8642/', {
+      allowInsecureHttp: true,
+    }),
     'http://127.0.0.1:8642',
   );
   assert.throws(
@@ -68,9 +73,17 @@ test('normalizes server-side base URLs and enforces HTTPS by default', () => {
 test('probes and validates the pinned Hermes capability contract', async () => {
   const fixture = await readFile(fixtureUrl, 'utf8');
   const fetch = async (input: string | URL | Request, init?: RequestInit) => {
-    assert.equal(String(input), 'https://hermes.test/p/default/v1/capabilities');
-    assert.equal(new Headers(init?.headers).get('Authorization'), `Bearer ${token}`);
-    return new Response(fixture, { headers: { 'Content-Type': 'application/json' } });
+    assert.equal(
+      String(input),
+      'https://hermes.test/p/default/v1/capabilities',
+    );
+    assert.equal(
+      new Headers(init?.headers).get('Authorization'),
+      `Bearer ${token}`,
+    );
+    return new Response(fixture, {
+      headers: { 'Content-Type': 'application/json' },
+    });
   };
 
   const report = await createClient(fetch).probeCapabilities();
@@ -100,7 +113,12 @@ test('creates, lists, and loads normalized session history', async () => {
     }),
     jsonResponse({
       data: [
-        { content: 'Hello', id: 'message-1', role: 'user', session_id: 'session-1' },
+        {
+          content: 'Hello',
+          id: 'message-1',
+          role: 'user',
+          session_id: 'session-1',
+        },
         {
           content: '',
           id: 'message-2',
@@ -148,7 +166,10 @@ test('creates, lists, and loads normalized session history', async () => {
   };
   const client = createClient(fetch);
 
-  const created = await client.createSession({ id: 'session-1', title: 'Wave' });
+  const created = await client.createSession({
+    id: 'session-1',
+    title: 'Wave',
+  });
   const sessions = await client.listSessions();
   const messages = await client.getSessionMessages('session-1');
 
@@ -172,7 +193,10 @@ test('creates, lists, and loads normalized session history', async () => {
     },
   ]);
   assert.equal(messages[2]?.toolCallId, 'call-1');
-  assert.deepEqual(JSON.parse(requests[0]?.body ?? '{}'), { id: 'session-1', title: 'Wave' });
+  assert.deepEqual(JSON.parse(requests[0]?.body ?? '{}'), {
+    id: 'session-1',
+    title: 'Wave',
+  });
   assert.equal(requests[1]?.url.includes('include_children=false'), true);
 });
 
@@ -208,10 +232,7 @@ test('loads, renames, deletes sessions and reads scheduled jobs through exact pi
       ],
     }),
   ];
-  const fetch = async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ) => {
+  const fetch = async (input: string | URL | Request, init?: RequestInit) => {
     requests.push({
       body: init?.body as string | undefined,
       method: init?.method,
@@ -270,8 +291,7 @@ test('loads, renames, deletes sessions and reads scheduled jobs through exact pi
       {
         body: undefined,
         method: 'GET',
-        url:
-          'https://hermes.test/p/default/api/jobs?include_disabled=true',
+        url: 'https://hermes.test/p/default/api/jobs?include_disabled=true',
       },
     ],
   );
@@ -380,7 +400,10 @@ test('normalizes authentication and server errors without exposing the bearer to
     ),
   );
   const serverClient = createClient(async () =>
-    jsonResponse({ error: { code: 'server_error', message: 'Hermes unavailable' } }, 503),
+    jsonResponse(
+      { error: { code: 'server_error', message: 'Hermes unavailable' } },
+      503,
+    ),
   );
 
   await assert.rejects(
@@ -394,7 +417,9 @@ test('normalizes authentication and server errors without exposing the bearer to
   await assert.rejects(
     serverClient.probeCapabilities(),
     (error: unknown) =>
-      error instanceof HermesClientError && error.kind === 'server' && error.retryable,
+      error instanceof HermesClientError &&
+      error.kind === 'server' &&
+      error.retryable,
   );
 });
 
@@ -416,7 +441,8 @@ test('maps caller aborts to cancellation', async () => {
 
   await assert.rejects(
     nextEvent,
-    (error: unknown) => error instanceof HermesClientError && error.kind === 'cancelled',
+    (error: unknown) =>
+      error instanceof HermesClientError && error.kind === 'cancelled',
   );
 });
 
@@ -465,11 +491,13 @@ test('rejects unknown and truncated event streams', async () => {
   await assert.rejects(
     collect(unknownClient.streamChat('session-1', { input: 'Hello' })),
     (error: unknown) =>
-      error instanceof HermesClientError && error.code === 'unknown_stream_event',
+      error instanceof HermesClientError &&
+      error.code === 'unknown_stream_event',
   );
   await assert.rejects(
     collect(truncatedClient.streamChat('session-1', { input: 'Hello' })),
     (error: unknown) =>
-      error instanceof HermesClientError && error.code === 'truncated_sse_stream',
+      error instanceof HermesClientError &&
+      error.code === 'truncated_sse_stream',
   );
 });

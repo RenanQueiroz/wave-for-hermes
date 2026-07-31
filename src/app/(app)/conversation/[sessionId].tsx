@@ -6,8 +6,6 @@ export default function ChatRoute() {
   const { sessionId } = useLocalSearchParams<{
     sessionId?: string | string[];
   }>();
-  const value = Array.isArray(sessionId)
-    ? sessionId[0]
-    : sessionId;
+  const value = Array.isArray(sessionId) ? sessionId[0] : sessionId;
   return <ChatScreen sessionId={value ?? ''} />;
 }

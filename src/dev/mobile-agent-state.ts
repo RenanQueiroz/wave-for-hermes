@@ -24,11 +24,15 @@ if (__DEV__) {
     read: (name) => {
       const provider = providers.get(name);
       if (!provider) {
-        throw new Error(`Mobile-agent state provider "${name}" is not registered.`);
+        throw new Error(
+          `Mobile-agent state provider "${name}" is not registered.`,
+        );
       }
       const serialized = JSON.stringify(provider.read());
       if (serialized === undefined) {
-        throw new Error(`Mobile-agent state provider "${name}" returned a non-serializable value.`);
+        throw new Error(
+          `Mobile-agent state provider "${name}" returned a non-serializable value.`,
+        );
       }
       return JSON.parse(serialized) as unknown;
     },

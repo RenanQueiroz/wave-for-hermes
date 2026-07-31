@@ -13,7 +13,11 @@ import { runObservabilitySmoke } from './smoke/observability.js';
 import { runChatSmoke, runPairingSmoke } from './smoke/pairing.js';
 import { runProductionBridgeSmoke } from './smoke/production.js';
 import type { MobilePlatform } from './types.js';
-import { ensureSimulatorWda, expectedWdaAppPath, hasPreparedWda } from './wda.js';
+import {
+  ensureSimulatorWda,
+  expectedWdaAppPath,
+  hasPreparedWda,
+} from './wda.js';
 
 async function main(args = process.argv.slice(2)): Promise<number> {
   const command = args[0] ?? 'help';
@@ -22,7 +26,9 @@ async function main(args = process.argv.slice(2)): Promise<number> {
 
   if (command === 'doctor') {
     const report = await runDoctor(config);
-    process.stdout.write(`${json ? JSON.stringify(report, null, 2) : formatDoctor(report)}\n`);
+    process.stdout.write(
+      `${json ? JSON.stringify(report, null, 2) : formatDoctor(report)}\n`,
+    );
     return report.ok ? 0 : 1;
   }
 
@@ -37,14 +43,18 @@ async function main(args = process.argv.slice(2)): Promise<number> {
     const platform = readPlatform(args);
     const report = await runDoctor(config);
     if (platform === 'ios' && !hasPreparedWda(config)) {
-      throw new Error('Run mobile-agent prepare-ios before requesting iOS capabilities.');
+      throw new Error(
+        'Run mobile-agent prepare-ios before requesting iOS capabilities.',
+      );
     }
     process.stdout.write(
       `${JSON.stringify(
         capabilitiesFor(
           report,
           platform,
-          platform === 'ios' ? { prebuiltWdaPath: expectedWdaAppPath(config) } : {},
+          platform === 'ios'
+            ? { prebuiltWdaPath: expectedWdaAppPath(config) }
+            : {},
         ),
         null,
         2,
@@ -54,7 +64,9 @@ async function main(args = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === 'prepare-ios') {
-    process.stdout.write(`${JSON.stringify(await ensureSimulatorWda(config), null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify(await ensureSimulatorWda(config), null, 2)}\n`,
+    );
     return 0;
   }
 
@@ -62,7 +74,9 @@ async function main(args = process.argv.slice(2)): Promise<number> {
     const report = await runDoctor(config);
     const platform =
       readOptionalPlatform(args) ??
-      (report.readyPlatforms.length === 1 ? report.readyPlatforms[0] : undefined);
+      (report.readyPlatforms.length === 1
+        ? report.readyPlatforms[0]
+        : undefined);
     if (!platform) {
       throw new Error(
         'Reload target is ambiguous. Pass --platform ios or --platform android.',
@@ -197,8 +211,11 @@ function reloadIdentity(
     );
   }
   const deviceId =
-    platform === 'ios' ? report.ios.selected?.udid : report.android.selected?.serial;
-  if (!deviceId) throw new Error(`No selected ${platform} device is available.`);
+    platform === 'ios'
+      ? report.ios.selected?.udid
+      : report.android.selected?.serial;
+  if (!deviceId)
+    throw new Error(`No selected ${platform} device is available.`);
   return {
     platform,
     deviceId,
@@ -242,6 +259,8 @@ function requiredEnvironment(name: string): string {
 try {
   process.exitCode = await main();
 } catch (error: unknown) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(
+    `${error instanceof Error ? error.message : String(error)}\n`,
+  );
   process.exitCode = 1;
 }

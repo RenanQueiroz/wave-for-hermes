@@ -47,12 +47,12 @@ origin. The LAN Nginx listener has no Wave route.
 
 ## Workspace boundaries
 
-| Path | Runtime | Responsibility |
-| --- | --- | --- |
-| `src/` | Expo / React Native | Native mobile routes, UI, features, and client-side service adapters |
-| `packages/contracts/` | Runtime-neutral TypeScript | Strict Zod schemas and inferred types for the Wave protocol |
-| `companion/` | Node.js 24 | Fastify API, authentication, Hermes transport, and OpenAI Realtime integration |
-| `tools/mobile-agent/` | Development tooling | Repository-local native automation and observability |
+| Path                  | Runtime                    | Responsibility                                                                 |
+| --------------------- | -------------------------- | ------------------------------------------------------------------------------ |
+| `src/`                | Expo / React Native        | Native mobile routes, UI, features, and client-side service adapters           |
+| `packages/contracts/` | Runtime-neutral TypeScript | Strict Zod schemas and inferred types for the Wave protocol                    |
+| `companion/`          | Node.js 24                 | Fastify API, authentication, Hermes transport, and OpenAI Realtime integration |
+| `tools/mobile-agent/` | Development tooling        | Repository-local native automation and observability                           |
 
 The repository root remains both the Expo application and npm workspace root. Do not move it into
 an `apps/mobile` directory.
@@ -181,26 +181,26 @@ npm run companion:start
 
 Optional variables:
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `WAVE_HOST` | `127.0.0.1` | Listener address |
-| `WAVE_PORT` | `8787` | Listener port |
-| `WAVE_LOG_LEVEL` | `info` | Fastify/Pino log level |
-| `WAVE_DATABASE_PATH` | `./data/wave-companion.sqlite` | Persistent device authorization database |
-| `WAVE_PAIRING_CODE_TTL_SECONDS` | `600` | One-time pairing-code lifetime |
-| `WAVE_MAX_ACTIVE_TURNS` | `4` | Process-wide active turn limit |
-| `WAVE_MAX_ACTIVE_REALTIME_CALLS` | `2` | Process-wide active Realtime-call limit |
-| `WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS` | `30000` | Time allowed to receive the first Hermes event |
-| `WAVE_HERMES_IDLE_TIMEOUT_MS` | `60000` | Time allowed between Hermes events |
-| `WAVE_HERMES_TOTAL_TIMEOUT_MS` | `600000` | Maximum total turn duration |
-| `OPENAI_API_KEY` | unset | Server-only credential; enables Realtime when present |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1-mini` | Server-selected cost-efficient Realtime model |
-| `OPENAI_REALTIME_VOICE` | `marin` | Server-selected Realtime voice |
-| `WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS` | `15000` | Unified setup and hangup request timeout |
-| `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000` | Sideband WebSocket connection timeout |
-| `WAVE_REALTIME_CALL_TTL_MS` | `1800000` | Maximum process-local call lifetime |
-| `WAVE_REALTIME_TOOL_TIMEOUT_MS` | `120000` | Maximum duration of one `ask_hermes` dispatch |
-| `HERMES_ALLOW_INSECURE_HTTP` | `false` | Allows an explicit private/local HTTP Hermes URL |
+| Variable                                    | Default                        | Meaning                                               |
+| ------------------------------------------- | ------------------------------ | ----------------------------------------------------- |
+| `WAVE_HOST`                                 | `127.0.0.1`                    | Listener address                                      |
+| `WAVE_PORT`                                 | `8787`                         | Listener port                                         |
+| `WAVE_LOG_LEVEL`                            | `info`                         | Fastify/Pino log level                                |
+| `WAVE_DATABASE_PATH`                        | `./data/wave-companion.sqlite` | Persistent device authorization database              |
+| `WAVE_PAIRING_CODE_TTL_SECONDS`             | `600`                          | One-time pairing-code lifetime                        |
+| `WAVE_MAX_ACTIVE_TURNS`                     | `4`                            | Process-wide active turn limit                        |
+| `WAVE_MAX_ACTIVE_REALTIME_CALLS`            | `2`                            | Process-wide active Realtime-call limit               |
+| `WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS`        | `30000`                        | Time allowed to receive the first Hermes event        |
+| `WAVE_HERMES_IDLE_TIMEOUT_MS`               | `60000`                        | Time allowed between Hermes events                    |
+| `WAVE_HERMES_TOTAL_TIMEOUT_MS`              | `600000`                       | Maximum total turn duration                           |
+| `OPENAI_API_KEY`                            | unset                          | Server-only credential; enables Realtime when present |
+| `OPENAI_REALTIME_MODEL`                     | `gpt-realtime-2.1-mini`        | Server-selected cost-efficient Realtime model         |
+| `OPENAI_REALTIME_VOICE`                     | `marin`                        | Server-selected Realtime voice                        |
+| `WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS`   | `15000`                        | Unified setup and hangup request timeout              |
+| `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000`                        | Sideband WebSocket connection timeout                 |
+| `WAVE_REALTIME_CALL_TTL_MS`                 | `1800000`                      | Maximum process-local call lifetime                   |
+| `WAVE_REALTIME_TOOL_TIMEOUT_MS`             | `120000`                       | Maximum duration of one `ask_hermes` dispatch         |
+| `HERMES_ALLOW_INSECURE_HTTP`                | `false`                        | Allows an explicit private/local HTTP Hermes URL      |
 
 `HERMES_API_URL` must not contain credentials, a query, or a fragment. HTTP is rejected unless
 `HERMES_ALLOW_INSECURE_HTTP=1` is explicitly set for a trusted private/local path. The externally
@@ -335,6 +335,9 @@ npm run verify:boundaries
 npx expo install --check
 npm run mobile:smoke:production
 ```
+
+The root `npm run lint` command includes the workspace ESLint checks and Prettier verification.
+Use `npm run format` to apply the repository's shared formatting configuration.
 
 Runtime-affecting changes also require the relevant iOS and Android flows. Native dependency or app
 configuration changes require clean prebuilds, affected native builds, and Expo Doctor as described

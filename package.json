@@ -12,6 +12,7 @@
     "@tanstack/react-query": "^5.101.4",
     "@wave/contracts": "0.1.0",
     "expo": "~57.0.9",
+    "expo-build-properties": "~57.0.8",
     "expo-constants": "~57.0.8",
     "expo-dev-client": "~57.0.10",
     "expo-device": "~57.0.1",
@@ -49,7 +50,9 @@
     "cross-env": "^10.1.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.1",
+    "eslint-config-prettier": "^10.1.8",
     "expo-mcp": "~0.2.1",
+    "prettier": "^3.9.6",
     "typescript": "~6.0.3"
   },
   "expo": {
@@ -76,7 +79,9 @@
     "companion:pair": "npm run admin --workspace @wave/companion -- pair",
     "companion:revoke": "npm run admin --workspace @wave/companion -- revoke",
     "companion:start": "npm run start --workspace @wave/companion",
-    "lint": "expo lint && npm run lint --workspace @wave/contracts && npm run lint --workspace @wave/companion",
+    "format": "prettier --write --ignore-unknown .",
+    "format:check": "prettier --check --ignore-unknown .",
+    "lint": "expo lint && npm run lint --workspace @wave/contracts && npm run lint --workspace @wave/companion && npm run format:check",
     "test": "npm run test:mobile && npm run test --workspace @wave/contracts && npm run test --workspace @wave/companion",
     "test:mobile": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test test/mobile/*.test.ts",
     "test:hermes": "npm run test:hermes --workspace @wave/companion",

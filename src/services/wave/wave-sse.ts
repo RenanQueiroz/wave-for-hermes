@@ -1,7 +1,4 @@
-import {
-  WaveTurnEventSchema,
-  type WaveTurnEvent,
-} from '@wave/contracts';
+import { WaveTurnEventSchema, type WaveTurnEvent } from '@wave/contracts';
 
 const MAX_EVENT_BYTES = 2 * 1024 * 1024;
 
@@ -75,9 +72,7 @@ function parseFrame(frame: string) {
     const separator = line.indexOf(':');
     const field = separator < 0 ? line : line.slice(0, separator);
     const value =
-      separator < 0
-        ? ''
-        : line.slice(separator + 1).replace(/^ /, '');
+      separator < 0 ? '' : line.slice(separator + 1).replace(/^ /, '');
     switch (field) {
       case 'data':
         data.push(value);

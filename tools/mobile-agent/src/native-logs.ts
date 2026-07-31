@@ -45,7 +45,8 @@ async function readIosLogs(
 }> {
   const discovery = await discoverIos(config);
   const device = discovery.selected;
-  if (!device) throw new Error('No unique booted Radon iOS simulator is available.');
+  if (!device)
+    throw new Error('No unique booted Radon iOS simulator is available.');
   const processId = await findIosProcessId(config, device.udid);
   const result = await runCommand(
     'xcrun',
@@ -67,7 +68,9 @@ async function readIosLogs(
     { timeoutMs: 20_000, maxBuffer: 20 * 1024 * 1024 },
   );
   if (!result.ok) {
-    throw new Error(result.stderr.trim() || result.error || 'Could not read iOS native logs.');
+    throw new Error(
+      result.stderr.trim() || result.error || 'Could not read iOS native logs.',
+    );
   }
   const allEntries = parseIosLogNdjson(result.stdout);
   return {
@@ -79,10 +82,17 @@ async function readIosLogs(
   };
 }
 
-async function findIosProcessId(config: MobileAgentConfig, udid: string): Promise<number> {
-  const found = await runCommand('ps', ['-axo', 'pid=,command='], { timeoutMs: 5_000 });
+async function findIosProcessId(
+  config: MobileAgentConfig,
+  udid: string,
+): Promise<number> {
+  const found = await runCommand('ps', ['-axo', 'pid=,command='], {
+    timeoutMs: 5_000,
+  });
   if (!found.ok) {
-    throw new Error(found.stderr.trim() || found.error || 'Could not inspect iOS processes.');
+    throw new Error(
+      found.stderr.trim() || found.error || 'Could not inspect iOS processes.',
+    );
   }
   const pids = findIosProcessIds(found.stdout, config.iosDeviceSetPath, udid);
   if (pids.length !== 1 || pids[0] === undefined) {
@@ -110,9 +120,14 @@ export function findIosProcessIds(
     const executableIndex = command.indexOf(executableMarker);
     if (executableIndex < 0) continue;
     const executableEnd = executableIndex + executableMarker.length;
-    if (command.length > executableEnd && !/\s/.test(command[executableEnd] ?? '')) continue;
+    if (
+      command.length > executableEnd &&
+      !/\s/.test(command[executableEnd] ?? '')
+    )
+      continue;
     const processId = Number.parseInt(rawProcessId, 10);
-    if (Number.isInteger(processId) && processId > 0) processIds.push(processId);
+    if (Number.isInteger(processId) && processId > 0)
+      processIds.push(processId);
   }
 
   return processIds;
@@ -138,7 +153,10 @@ async function readAndroidLogs(
     ['-s', device.serial, 'shell', 'pidof', 'com.renanqueiroz.wave'],
     { timeoutMs: 5_000 },
   );
-  const processId = Number.parseInt(pidResult.stdout.trim().split(/\s+/)[0] ?? '', 10);
+  const processId = Number.parseInt(
+    pidResult.stdout.trim().split(/\s+/)[0] ?? '',
+    10,
+  );
   if (!pidResult.ok || !Number.isInteger(processId) || processId <= 0) {
     throw new Error(
       `com.renanqueiroz.wave is not running on Android device ${device.serial}. Launch Wave and try again.`,
@@ -162,7 +180,11 @@ async function readAndroidLogs(
     { timeoutMs: 15_000, maxBuffer: 20 * 1024 * 1024 },
   );
   if (!result.ok) {
-    throw new Error(result.stderr.trim() || result.error || 'Could not read Android native logs.');
+    throw new Error(
+      result.stderr.trim() ||
+        result.error ||
+        'Could not read Android native logs.',
+    );
   }
   const cutoff = Date.now() - options.sinceSeconds * 1_000;
   const allEntries = parseAndroidLogcat(result.stdout).filter((entry) => {
@@ -189,19 +211,29 @@ export function parseIosLogNdjson(value: string): NativeLogEntry[] {
     } catch {
       continue;
     }
-    if (raw.eventType !== 'logEvent' || typeof raw.eventMessage !== 'string') continue;
+    if (raw.eventType !== 'logEvent' || typeof raw.eventMessage !== 'string')
+      continue;
     const process =
       typeof raw.processImagePath === 'string'
         ? raw.processImagePath.split('/').at(-1)
         : undefined;
     entries.push({
-      ...(typeof raw.timestamp === 'string' ? { timestamp: normalizeIosTimestamp(raw.timestamp) } : {}),
+      ...(typeof raw.timestamp === 'string'
+        ? { timestamp: normalizeIosTimestamp(raw.timestamp) }
+        : {}),
       platform: 'ios',
       source: 'native',
-      severity: typeof raw.messageType === 'string' ? raw.messageType.toLocaleLowerCase() : 'default',
+      severity:
+        typeof raw.messageType === 'string'
+          ? raw.messageType.toLocaleLowerCase()
+          : 'default',
       ...(process ? { process } : {}),
-      ...(typeof raw.subsystem === 'string' && raw.subsystem ? { subsystem: raw.subsystem } : {}),
-      ...(typeof raw.category === 'string' && raw.category ? { category: raw.category } : {}),
+      ...(typeof raw.subsystem === 'string' && raw.subsystem
+        ? { subsystem: raw.subsystem }
+        : {}),
+      ...(typeof raw.category === 'string' && raw.category
+        ? { category: raw.category }
+        : {}),
       message: redactText(raw.eventMessage),
     });
   }
@@ -230,7 +262,10 @@ export function parseAndroidLogcat(value: string): NativeLogEntry[] {
 }
 
 function normalizeIosTimestamp(value: string): string {
-  const normalized = value.replace(/(\.\d{3})\d*([+-]\d{2})(\d{2})$/, '$1$2:$3');
+  const normalized = value.replace(
+    /(\.\d{3})\d*([+-]\d{2})(\d{2})$/,
+    '$1$2:$3',
+  );
   const timestamp = new Date(normalized);
   return Number.isNaN(timestamp.valueOf()) ? value : timestamp.toISOString();
 }

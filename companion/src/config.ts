@@ -51,12 +51,7 @@ const CompanionEnvironmentSchema = z.object({
     .max(3_600_000)
     .default(600_000),
   WAVE_HOST: z.string().trim().min(1).default('127.0.0.1'),
-  WAVE_MAX_ACTIVE_TURNS: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(32)
-    .default(4),
+  WAVE_MAX_ACTIVE_TURNS: z.coerce.number().int().min(1).max(32).default(4),
   WAVE_MAX_ACTIVE_REALTIME_CALLS: z.coerce
     .number()
     .int()
@@ -208,8 +203,7 @@ export function loadCompanionConfig(
       baseUrl: parsed.data.HERMES_API_URL,
       bearerToken: parsed.data.HERMES_API_KEY,
     },
-    hermesFirstEventTimeoutMs:
-      parsed.data.WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS,
+    hermesFirstEventTimeoutMs: parsed.data.WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS,
     hermesIdleTimeoutMs: parsed.data.WAVE_HERMES_IDLE_TIMEOUT_MS,
     hermesTotalTimeoutMs: parsed.data.WAVE_HERMES_TOTAL_TIMEOUT_MS,
     host: parsed.data.WAVE_HOST,

@@ -20,10 +20,7 @@ test('refreshes canonical Hermes history before returning from live voice', asyn
     'https://wave.example.test',
     'session-1',
   );
-  queryClient.setQueryData(
-    queryKey,
-    historyResponse('Before voice'),
-  );
+  queryClient.setQueryData(queryKey, historyResponse('Before voice'));
   let loadCount = 0;
 
   const refreshed = await refreshWaveSessionHistory({
@@ -47,9 +44,7 @@ test('refreshes canonical Hermes history before returning from live voice', asyn
   queryClient.clear();
 });
 
-function historyResponse(
-  content: string,
-): WaveSessionHistoryResponse {
+function historyResponse(content: string): WaveSessionHistoryResponse {
   return {
     apiVersion: 'v1',
     messages: [

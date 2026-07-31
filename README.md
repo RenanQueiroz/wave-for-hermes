@@ -138,6 +138,10 @@ launch/Metro server so the Uniwind transform is reloaded.
 Wave does not support React Native Web. Web dependencies, scripts, configuration, and
 platform-specific implementations should not be added.
 
+Repository formatting is defined by `prettier.config.js`. Run `npm run format` to format supported
+files; the normal `npm run lint` handoff also runs `npm run format:check`, while
+`eslint-config-prettier` keeps ESLint's style rules from conflicting with Prettier.
+
 The root is also the npm workspace root. Build and run the companion separately:
 
 ```bash
@@ -194,6 +198,11 @@ Native identifiers are configured in `app.json`:
 
 - iOS bundle identifier: `com.renanqueiroz.wave`
 - Android application ID: `com.renanqueiroz.wave`
+
+Android release builds enable R8 code minification and resource shrinking through the
+`expo-build-properties` config plugin. These optimizations intentionally do not apply to development
+clients, which include Metro and debugging infrastructure and are therefore substantially larger
+than store-ready release artifacts.
 
 ### Pair a mobile development build
 

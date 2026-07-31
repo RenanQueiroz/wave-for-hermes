@@ -48,7 +48,11 @@ import {
 import { readNativeLogs } from '../native-logs.js';
 import { ObservabilityCollector, redactUrl } from '../observability.js';
 import { sanitizeState } from '../state.js';
-import { ensureSimulatorWda, expectedWdaAppPath, hasPreparedWda } from '../wda.js';
+import {
+  ensureSimulatorWda,
+  expectedWdaAppPath,
+  hasPreparedWda,
+} from '../wda.js';
 
 const capabilitiesParameters = z.object({
   platform: z.enum(['ios', 'android']),
@@ -185,9 +189,18 @@ const requestParameters = z.object({
 });
 
 const stateParameters = z.object({
-  provider: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9._-]*$/),
+  provider: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9][a-z0-9._-]*$/),
   maxDepth: z.number().int().min(1).max(20).default(8),
-  maxBytes: z.number().int().min(1_024).max(256 * 1_024).default(32 * 1_024),
+  maxBytes: z
+    .number()
+    .int()
+    .min(1_024)
+    .max(256 * 1_024)
+    .default(32 * 1_024),
 });
 
 const nativeLogsParameters = z.object({
@@ -274,14 +287,19 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             capabilities: capabilitiesFor(
               report,
               platform,
-              platform === 'ios' ? { prebuiltWdaPath: expectedWdaAppPath(config) } : {},
+              platform === 'ios'
+                ? { prebuiltWdaPath: expectedWdaAppPath(config) }
+                : {},
             ),
           });
         } catch (error: unknown) {
           return {
             isError: true as const,
             content: [
-              { type: 'text' as const, text: error instanceof Error ? error.message : String(error) },
+              {
+                type: 'text' as const,
+                text: error instanceof Error ? error.message : String(error),
+              },
             ],
           };
         }
@@ -333,7 +351,9 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
           const parsed = findParameters.parse(args);
           const snapshot = parsed.snapshotId
             ? this.requireSnapshot(parsed.snapshotId)
-            : await this.captureHierarchy(resolveNativeDriver(core, parsed.sessionId));
+            : await this.captureHierarchy(
+                resolveNativeDriver(core, parsed.sessionId),
+              );
           if (parsed.sessionId && parsed.sessionId !== snapshot.sessionId) {
             throw new MobileAgentError(
               'SESSION_MISMATCH',
@@ -372,7 +392,11 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
           );
           const node = requireActionableNode(snapshot, parsed.nodeId);
           const useNativeLocator = hasUniqueLocator(snapshot, node);
-          requireNodeActionMethod(node, useNativeLocator, parsed.allowCoordinateFallback);
+          requireNodeActionMethod(
+            node,
+            useNativeLocator,
+            parsed.allowCoordinateFallback,
+          );
           const target = nodeActionTarget(snapshot, node, useNativeLocator);
           context.identity = identityFromDriver(resolved);
           context.target = target;
@@ -384,7 +408,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             captureTrace: parsed.captureTrace,
             beforeSnapshot: snapshot,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               if (useNativeLocator && node.locator) {
                 const elementId = await findNativeElementId(
@@ -395,7 +420,10 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
                 await clickNativeElement(resolved.driver, elementId);
                 return { method: 'native-element', locator: node.locator };
               }
-              if (!node.bounds) throw new Error('Validated coordinate bounds became unavailable.');
+              if (!node.bounds)
+                throw new Error(
+                  'Validated coordinate bounds became unavailable.',
+                );
               const point = center(node.bounds);
               await tapPoint(resolved.driver, point.x, point.y);
               return { method: 'snapshot-coordinates', bounds: node.bounds };
@@ -431,7 +459,11 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             parsed.allowCoordinateFallback,
           );
           const target = {
-            ...nodeActionTarget(snapshot, node, point.method === 'native-element'),
+            ...nodeActionTarget(
+              snapshot,
+              node,
+              point.method === 'native-element',
+            ),
             durationMs: parsed.durationMs,
           };
           context.identity = identityFromDriver(resolved);
@@ -444,7 +476,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             captureTrace: parsed.captureTrace,
             beforeSnapshot: snapshot,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               await longPressPoint(
                 resolved.driver,
@@ -496,15 +529,23 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             captureTrace: parsed.captureTrace,
             beforeSnapshot: snapshot,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               const elementId = await findNativeElementId(
                 resolved.driver,
                 locator.strategy,
                 locator.selector,
               );
-              await setNativeElementValue(resolved.driver, elementId, parsed.text);
-              return { method: 'native-element', charactersWritten: parsed.text.length };
+              await setNativeElementValue(
+                resolved.driver,
+                elementId,
+                parsed.text,
+              );
+              return {
+                method: 'native-element',
+                charactersWritten: parsed.text.length,
+              };
             },
           });
         }),
@@ -547,7 +588,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             captureTrace: parsed.captureTrace,
             beforeSnapshot: snapshot,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               const elementId = await findNativeElementId(
                 resolved.driver,
@@ -595,7 +637,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             target,
             captureTrace: parsed.captureTrace,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               await swipePoints(
                 resolved.driver,
@@ -640,7 +683,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             target,
             captureTrace: parsed.captureTrace,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               await swipePoints(
                 resolved.driver,
@@ -677,8 +721,14 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             parsed.sessionId,
             context,
           );
-          const sourceNode = requireActionableNode(snapshot, parsed.sourceNodeId);
-          const targetNode = requireActionableNode(snapshot, parsed.targetNodeId);
+          const sourceNode = requireActionableNode(
+            snapshot,
+            parsed.sourceNodeId,
+          );
+          const targetNode = requireActionableNode(
+            snapshot,
+            parsed.targetNodeId,
+          );
           const source = await resolveNodePoint(
             resolved,
             snapshot,
@@ -710,7 +760,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             captureTrace: parsed.captureTrace,
             beforeSnapshot: snapshot,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               await dragPoints(
                 resolved.driver,
@@ -749,7 +800,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             target,
             captureTrace: parsed.captureTrace,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               await pressNativeKey(resolved, parsed.key);
               return { method: 'native-driver' };
@@ -777,7 +829,9 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             const resolved = resolveNativeDriver(core, parsed.sessionId);
             const target = {
               lifecycleAction: parsed.action,
-              ...(parsed.action === 'background' ? { seconds: parsed.seconds } : {}),
+              ...(parsed.action === 'background'
+                ? { seconds: parsed.seconds }
+                : {}),
             };
             context.identity = identityFromDriver(resolved);
             context.target = target;
@@ -787,8 +841,10 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
               action: parsed.action,
               target,
               captureTrace: parsed.captureTrace,
-              captureHierarchy: async () => await this.captureHierarchy(resolved),
-              invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+              captureHierarchy: async () =>
+                await this.captureHierarchy(resolved),
+              invalidateHierarchy: () =>
+                this.hierarchy.invalidate(resolved.sessionId),
               operation: async () => {
                 switch (parsed.action) {
                   case 'activate':
@@ -836,7 +892,8 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
             target,
             captureTrace: parsed.captureTrace,
             captureHierarchy: async () => await this.captureHierarchy(resolved),
-            invalidateHierarchy: () => this.hierarchy.invalidate(resolved.sessionId),
+            invalidateHierarchy: () =>
+              this.hierarchy.invalidate(resolved.sessionId),
             operation: async () => {
               await openNativeDeepLink(
                 resolved,
@@ -935,7 +992,10 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
         withToolErrors('NETWORK_REQUEST_READ_FAILED', async () => {
           const parsed = requestParameters.parse(args);
           await this.observability.ensureConnected();
-          return await this.observability.getRequest(parsed.requestId, parsed.includeBody);
+          return await this.observability.getRequest(
+            parsed.requestId,
+            parsed.includeBody,
+          );
         }),
     });
 
@@ -1059,7 +1119,10 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
           }
           return {
             provider: parsed.provider,
-            ...sanitizeState(await this.observability.readStateProvider(parsed.provider), parsed),
+            ...sanitizeState(
+              await this.observability.readStateProvider(parsed.provider),
+              parsed,
+            ),
           };
         }),
     });
@@ -1070,7 +1133,10 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
   ): Promise<HierarchySnapshot> {
     const xml = await resolved.driver.getPageSource();
     if (!xml?.trim()) {
-      throw new MobileAgentError('EMPTY_HIERARCHY', 'The native driver returned an empty hierarchy.');
+      throw new MobileAgentError(
+        'EMPTY_HIERARCHY',
+        'The native driver returned an empty hierarchy.',
+      );
     }
     return this.hierarchy.capture(xml, resolved.sessionId, resolved.platform);
   }
@@ -1085,7 +1151,10 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
     resolved: ResolvedDriver;
   } {
     const snapshot = this.requireSnapshot(snapshotId);
-    const resolved = resolveNativeDriver(core, requestedSessionId ?? snapshot.sessionId);
+    const resolved = resolveNativeDriver(
+      core,
+      requestedSessionId ?? snapshot.sessionId,
+    );
     if (context) {
       context.identity = identityFromDriver(resolved);
       context.target = { snapshotId: snapshot.id };
@@ -1117,7 +1186,9 @@ export class WaveMobileAgentPlugin implements AppiumMcpPlugin {
   }
 }
 
-function jsonResult(value: unknown): { content: [{ type: 'text'; text: string }] } {
+function jsonResult(value: unknown): {
+  content: [{ type: 'text'; text: string }];
+} {
   return {
     content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
   };
@@ -1145,7 +1216,9 @@ async function withToolErrors(
               error: {
                 code: known ? error.code : fallbackCode,
                 message: error instanceof Error ? error.message : String(error),
-                ...(known && error.recovery ? { recovery: error.recovery } : {}),
+                ...(known && error.recovery
+                  ? { recovery: error.recovery }
+                  : {}),
               },
             },
             null,
@@ -1176,7 +1249,13 @@ async function withActionErrors(
         {
           type: 'text',
           text: JSON.stringify(
-            actionErrorEnvelope(action, fallbackCode, error, startedAtMs, context),
+            actionErrorEnvelope(
+              action,
+              fallbackCode,
+              error,
+              startedAtMs,
+              context,
+            ),
             null,
             2,
           ),
@@ -1193,12 +1272,16 @@ function locatorIsUnique(
   return (
     snapshot.nodes.filter(
       (node) =>
-        node.locator?.strategy === locator.strategy && node.locator.selector === locator.selector,
+        node.locator?.strategy === locator.strategy &&
+        node.locator.selector === locator.selector,
     ).length === 1
   );
 }
 
-function hasUniqueLocator(snapshot: HierarchySnapshot, node: HierarchyNode): boolean {
+function hasUniqueLocator(
+  snapshot: HierarchySnapshot,
+  node: HierarchyNode,
+): boolean {
   return Boolean(node.locator && locatorIsUnique(snapshot, node.locator));
 }
 
@@ -1281,7 +1364,11 @@ async function resolveNodePoint(
   snapshot: HierarchySnapshot,
   node: HierarchyNode,
   allowCoordinateFallback: boolean,
-): Promise<{ x: number; y: number; method: 'native-element' | 'snapshot-coordinates' }> {
+): Promise<{
+  x: number;
+  y: number;
+  method: 'native-element' | 'snapshot-coordinates';
+}> {
   const useNativeLocator = hasUniqueLocator(snapshot, node);
   requireNodeActionMethod(node, useNativeLocator, allowCoordinateFallback);
   if (useNativeLocator && node.locator) {
@@ -1293,11 +1380,17 @@ async function resolveNodePoint(
     const rect = await getNativeElementRect(resolved.driver, elementId);
     return { ...center(rect), method: 'native-element' };
   }
-  if (!node.bounds) throw new Error('Validated coordinate bounds became unavailable.');
+  if (!node.bounds)
+    throw new Error('Validated coordinate bounds became unavailable.');
   return { ...center(node.bounds), method: 'snapshot-coordinates' };
 }
 
-function center(rect: { x: number; y: number; width: number; height: number }): {
+function center(rect: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): {
   x: number;
   y: number;
 } {
@@ -1362,9 +1455,12 @@ function scrollPoints(
 }
 
 function lifecycleActionName(args: unknown): MobileActionName {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return 'app_lifecycle';
+  if (!args || typeof args !== 'object' || Array.isArray(args))
+    return 'app_lifecycle';
   const action = (args as Record<string, unknown>).action;
-  return action === 'activate' || action === 'terminate' || action === 'background'
+  return action === 'activate' ||
+    action === 'terminate' ||
+    action === 'background'
     ? action
     : 'app_lifecycle';
 }
@@ -1372,7 +1468,8 @@ function lifecycleActionName(args: unknown): MobileActionName {
 function validateDeepLink(value: string): void {
   try {
     const url = new URL(value);
-    if (!url.protocol || url.protocol === ':') throw new Error('missing protocol');
+    if (!url.protocol || url.protocol === ':')
+      throw new Error('missing protocol');
   } catch {
     throw new MobileAgentError(
       'INVALID_DEEP_LINK',
@@ -1419,7 +1516,9 @@ async function resolveReloadIdentity(
     );
   }
   const deviceId =
-    platform === 'ios' ? report.ios.selected?.udid : report.android.selected?.serial;
+    platform === 'ios'
+      ? report.ios.selected?.udid
+      : report.android.selected?.serial;
   if (!deviceId) {
     throw new MobileAgentError(
       'DEVICE_NOT_FOUND',

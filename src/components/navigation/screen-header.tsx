@@ -10,10 +10,7 @@ interface ScreenHeaderProps {
   title: string;
 }
 
-export function ScreenHeader({
-  mode = 'back',
-  title,
-}: ScreenHeaderProps) {
+export function ScreenHeader({ mode = 'back', title }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const router = useRouter();

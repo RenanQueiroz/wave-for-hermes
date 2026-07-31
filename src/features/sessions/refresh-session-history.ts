@@ -1,6 +1,4 @@
-import {
-  type QueryClient,
-} from '@tanstack/react-query';
+import { type QueryClient } from '@tanstack/react-query';
 import type { WaveSessionHistoryResponse } from '@wave/contracts';
 
 import { waveHistoryQueryKey } from './session-query-keys.ts';
@@ -20,11 +18,7 @@ export function refreshWaveSessionHistory({
 }) {
   return queryClient.fetchQuery({
     queryFn: ({ signal }) => load(signal),
-    queryKey: waveHistoryQueryKey(
-      connectionId,
-      baseUrl,
-      sessionId,
-    ),
+    queryKey: waveHistoryQueryKey(connectionId, baseUrl, sessionId),
     staleTime: 0,
   });
 }

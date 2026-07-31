@@ -86,7 +86,10 @@ export async function completeActionTrace(
   afterSnapshot?: HierarchySnapshot,
 ): Promise<ActionTraceResult> {
   if (afterSnapshot) {
-    await writeJson(join(context.directory, 'after-hierarchy.json'), afterSnapshot);
+    await writeJson(
+      join(context.directory, 'after-hierarchy.json'),
+      afterSnapshot,
+    );
   }
   const afterScreenshotPath = await saveScreenshot(
     resolved,

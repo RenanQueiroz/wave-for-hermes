@@ -27,7 +27,8 @@ export async function runObservabilitySmoke(
     if (
       doctor.metro.selected?.targets.some(
         (candidate) =>
-          candidate.appId === 'com.renanqueiroz.wave' && candidate.webSocketDebuggerUrl,
+          candidate.appId === 'com.renanqueiroz.wave' &&
+          candidate.webSocketDebuggerUrl,
       )
     ) {
       break;
@@ -38,12 +39,15 @@ export async function runObservabilitySmoke(
   const metro = doctor.metro.selected;
   const targets =
     metro?.targets.filter(
-    (candidate) =>
-      candidate.appId === 'com.renanqueiroz.wave' && candidate.webSocketDebuggerUrl,
+      (candidate) =>
+        candidate.appId === 'com.renanqueiroz.wave' &&
+        candidate.webSocketDebuggerUrl,
     ) ?? [];
   const target = selectTarget(targets, options.targetId);
   if (!metro || !target?.webSocketDebuggerUrl) {
-    throw new Error('Wave must be connected to a Metro Hermes inspector target.');
+    throw new Error(
+      'Wave must be connected to a Metro Hermes inspector target.',
+    );
   }
   const platform = selectPlatform(doctor.readyPlatforms, options.platform);
   const report: ObservabilitySmokeReport = {
@@ -64,15 +68,23 @@ export async function runObservabilitySmoke(
     extraEnv: { MOBILE_AGENT_OBSERVABILITY_TARGET_ID: target.id },
   });
   try {
-    const statusResult = await callToolText(connection.client, 'mobile_observability_status');
+    const statusResult = await callToolText(
+      connection.client,
+      'mobile_observability_status',
+    );
     assertToolSucceeded('observability-status', statusResult);
     const status = parseJsonObject(statusResult.text, 'observability status');
     report.connected = status.state === 'connected';
     if (!report.connected) {
-      throw new Error(`Observability did not connect: ${status.error ?? 'unknown error'}`);
+      throw new Error(
+        `Observability did not connect: ${status.error ?? 'unknown error'}`,
+      );
     }
 
-    const cleared = await callToolText(connection.client, 'mobile_clear_observability');
+    const cleared = await callToolText(
+      connection.client,
+      'mobile_clear_observability',
+    );
     assertToolSucceeded('clear-observability', cleared);
 
     const probeResult = await callToolText(
@@ -92,7 +104,9 @@ export async function runObservabilitySmoke(
         }),
       ]);
       if (logsResult.isError || requestsResult.isError) {
-        lastReadError = logsResult.isError ? logsResult.text : requestsResult.text;
+        lastReadError = logsResult.isError
+          ? logsResult.text
+          : requestsResult.text;
         await new Promise((resolve) => setTimeout(resolve, 250));
         continue;
       }
@@ -116,14 +130,16 @@ export async function runObservabilitySmoke(
         : undefined;
       report.networkObserved = Boolean(matchingRequest);
       if (matchingRequest && typeof matchingRequest === 'object') {
-        const requestId = (matchingRequest as Record<string, unknown>).requestId;
+        const requestId = (matchingRequest as Record<string, unknown>)
+          .requestId;
         if (typeof requestId === 'string') report.requestId = requestId;
       }
       if (report.logObserved && report.networkObserved) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    report.ok = report.connected && report.logObserved && report.networkObserved;
+    report.ok =
+      report.connected && report.logObserved && report.networkObserved;
     if (!report.ok) {
       throw new Error(
         `Observability probe incomplete: logObserved=${report.logObserved}, networkObserved=${report.networkObserved}.${lastReadError ? ` Last error: ${lastReadError}` : ''}`,
@@ -136,7 +152,10 @@ export async function runObservabilitySmoke(
         'mobile_list_state_providers',
       );
       if (!providersResult.isError) {
-        const providers = parseJsonObject(providersResult.text, 'state providers').providers;
+        const providers = parseJsonObject(
+          providersResult.text,
+          'state providers',
+        ).providers;
         report.stateProviderObserved =
           Array.isArray(providers) && providers.includes('app-shell');
         if (report.stateProviderObserved) break;
@@ -144,25 +163,39 @@ export async function runObservabilitySmoke(
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     if (!report.stateProviderObserved) {
-      throw new Error('The development app did not register the app-shell state provider.');
+      throw new Error(
+        'The development app did not register the app-shell state provider.',
+      );
     }
-    const stateResult = await callToolText(connection.client, 'mobile_read_state', {
-      provider: 'app-shell',
-    });
+    const stateResult = await callToolText(
+      connection.client,
+      'mobile_read_state',
+      {
+        provider: 'app-shell',
+      },
+    );
     assertToolSucceeded('read-state', stateResult);
     const state = parseJsonObject(stateResult.text, 'state result');
     const value = asRecord(state.value);
     report.stateRead =
       value?.platform === platform &&
-      (value.colorScheme === 'light' || value.colorScheme === 'dark' || value.colorScheme === null);
+      (value.colorScheme === 'light' ||
+        value.colorScheme === 'dark' ||
+        value.colorScheme === null);
     if (!report.stateRead) {
-      throw new Error(`The app-shell state provider returned unexpected data: ${stateResult.text}`);
+      throw new Error(
+        `The app-shell state provider returned unexpected data: ${stateResult.text}`,
+      );
     }
-    const nativeLogsResult = await callToolText(connection.client, 'mobile_get_native_logs', {
-      platform,
-      sinceSeconds: 600,
-      limit: 10,
-    });
+    const nativeLogsResult = await callToolText(
+      connection.client,
+      'mobile_get_native_logs',
+      {
+        platform,
+        sinceSeconds: 600,
+        limit: 10,
+      },
+    );
     assertToolSucceeded('read-native-logs', nativeLogsResult);
     const nativeLogs = parseJsonObject(nativeLogsResult.text, 'native logs');
     report.nativeLogsRead =
@@ -170,7 +203,9 @@ export async function runObservabilitySmoke(
       typeof nativeLogs.processId === 'number' &&
       Array.isArray(nativeLogs.entries);
     if (!report.nativeLogsRead) {
-      throw new Error(`The ${platform} native log response was invalid: ${nativeLogsResult.text}`);
+      throw new Error(
+        `The ${platform} native log response was invalid: ${nativeLogsResult.text}`,
+      );
     }
     report.ok =
       report.ok &&
@@ -224,7 +259,10 @@ function selectTarget(
   return targets[0];
 }
 
-function assertToolSucceeded(step: string, result: { isError: boolean; text: string }): void {
+function assertToolSucceeded(
+  step: string,
+  result: { isError: boolean; text: string },
+): void {
   if (result.isError) throw new Error(`${step} failed: ${result.text}`);
 }
 

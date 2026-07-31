@@ -7,13 +7,7 @@
     "wave-mobile-agent": {
       "type": "stdio",
       "command": "npm",
-      "args": [
-        "--silent",
-        "--prefix",
-        "tools/mobile-agent",
-        "run",
-        "mcp"
-      ]
+      "args": ["--silent", "--prefix", "tools/mobile-agent", "run", "mcp"]
     }
   }
 }

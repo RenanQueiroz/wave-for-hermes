@@ -51,7 +51,9 @@ const contractsPackage = await readJson('packages/contracts/package.json');
 const claudeGuide = await readFile(join(projectRoot, 'CLAUDE.md'), 'utf8');
 
 if (claudeGuide !== '@AGENTS.md\n') {
-  throw new Error('CLAUDE.md must contain exactly @AGENTS.md followed by a newline.');
+  throw new Error(
+    'CLAUDE.md must contain exactly @AGENTS.md followed by a newline.',
+  );
 }
 
 assertNoKeys(
@@ -81,7 +83,9 @@ if (
 }
 
 const mobileFiles = await listFiles(join(projectRoot, 'src'));
-for (const file of mobileFiles.filter((candidate) => /\.[cm]?[jt]sx?$/.test(candidate))) {
+for (const file of mobileFiles.filter((candidate) =>
+  /\.[cm]?[jt]sx?$/.test(candidate),
+)) {
   const source = await readFile(file, 'utf8');
   for (const pattern of forbiddenMobileImports) {
     if (pattern.test(source)) {
@@ -161,17 +165,14 @@ console.log(
   `Workspace boundaries verified across ${mobileFiles.length} mobile files and ${companionDependencies.size} companion production dependencies.`,
 );
 
-function assertNoKeys(
-  dependencies,
-  forbidden,
-  label,
-  allowed = new Set(),
-) {
+function assertNoKeys(dependencies, forbidden, label, allowed = new Set()) {
   const violations = Object.keys(dependencies).filter(
     (name) => forbidden.has(name) && !allowed.has(name),
   );
   if (violations.length > 0) {
-    throw new Error(`${label} contains forbidden packages: ${violations.join(', ')}.`);
+    throw new Error(
+      `${label} contains forbidden packages: ${violations.join(', ')}.`,
+    );
   }
 }
 

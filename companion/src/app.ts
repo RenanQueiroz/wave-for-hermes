@@ -5,10 +5,7 @@ import {
   WaveErrorResponseSchema,
   type WaveErrorResponse,
 } from '@wave/contracts';
-import Fastify, {
-  type FastifyReply,
-  type FastifyServerOptions,
-} from 'fastify';
+import Fastify, { type FastifyReply, type FastifyServerOptions } from 'fastify';
 import { ZodError } from 'zod';
 
 import type { DeviceStore } from './auth/device-store.ts';
@@ -18,10 +15,7 @@ import type { CompanionConfig } from './config.ts';
 import { HttpHermesClient } from './hermes/hermes-client.ts';
 import { HermesClientError } from './hermes/hermes-errors.ts';
 import type { HermesClient } from './hermes/hermes-types.ts';
-import {
-  normalizeHermesError,
-  WaveHttpError,
-} from './http/errors.ts';
+import { normalizeHermesError, WaveHttpError } from './http/errors.ts';
 import { OpenAIRealtimeProvider } from './realtime/openai-realtime-provider.ts';
 import { RealtimeCallRegistry } from './realtime/realtime-call-registry.ts';
 import { registerWaveApi } from './routes/wave-api.ts';

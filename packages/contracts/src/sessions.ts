@@ -41,13 +41,12 @@ export const WaveSessionSummarySchema = z
   })
   .strict();
 
-export const WaveSessionListResponseSchema =
-  WaveResponseMetadataSchema.extend({
-    hasMore: z.boolean(),
-    limit: z.number().int().min(1).max(200),
-    offset: z.number().int().nonnegative().max(1_000_000),
-    sessions: z.array(WaveSessionSummarySchema).max(200),
-  }).strict();
+export const WaveSessionListResponseSchema = WaveResponseMetadataSchema.extend({
+  hasMore: z.boolean(),
+  limit: z.number().int().min(1).max(200),
+  offset: z.number().int().nonnegative().max(1_000_000),
+  sessions: z.array(WaveSessionSummarySchema).max(200),
+}).strict();
 
 export const WaveListSessionsRequestSchema = z
   .object({
@@ -116,9 +115,7 @@ export const WaveTurnImagePartSchema = z
     dataUrl: z
       .string()
       .max(WAVE_MAX_IMAGE_DATA_URL_CHARS)
-      .regex(
-        /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/,
-      )
+      .regex(/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/)
       .refine((value) => {
         const encoded = value.slice(value.indexOf(',') + 1);
         if (encoded.length % 4 !== 0) return false;
@@ -127,19 +124,12 @@ export const WaveTurnImagePartSchema = z
           : encoded.endsWith('=')
             ? 1
             : 0;
-        const decodedBytes =
-          Math.floor((encoded.length * 3) / 4) - padding;
+        const decodedBytes = Math.floor((encoded.length * 3) / 4) - padding;
         return (
-          decodedBytes > 0 &&
-          decodedBytes <= WAVE_MAX_IMAGE_ATTACHMENT_BYTES
+          decodedBytes > 0 && decodedBytes <= WAVE_MAX_IMAGE_ATTACHMENT_BYTES
         );
       }, 'The image attachment is invalid or too large.'),
-    mimeType: z.enum([
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      'image/gif',
-    ]),
+    mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']),
     name: WaveAttachmentNameSchema,
     type: z.literal('image'),
   })
@@ -195,11 +185,10 @@ export const WaveStartTurnRequestSchema = z
   })
   .strict();
 
-export const WaveCancelTurnResponseSchema =
-  WaveResponseMetadataSchema.extend({
-    status: z.literal('cancellation_requested'),
-    turnId: WaveIdentifierSchema,
-  }).strict();
+export const WaveCancelTurnResponseSchema = WaveResponseMetadataSchema.extend({
+  status: z.literal('cancellation_requested'),
+  turnId: WaveIdentifierSchema,
+}).strict();
 
 export type WaveCompatibilityResponse = z.infer<
   typeof WaveCompatibilityResponseSchema
@@ -227,9 +216,7 @@ export type WaveSessionListResponse = z.infer<
 >;
 export type WaveSessionResponse = z.infer<typeof WaveSessionResponseSchema>;
 export type WaveSessionSummary = z.infer<typeof WaveSessionSummarySchema>;
-export type WaveStartTurnRequest = z.infer<
-  typeof WaveStartTurnRequestSchema
->;
+export type WaveStartTurnRequest = z.infer<typeof WaveStartTurnRequestSchema>;
 export type WaveTurnInput = z.infer<typeof WaveTurnInputSchema>;
 export type WaveTurnInputPart = z.infer<typeof WaveTurnInputPartSchema>;
 export type WaveUpdateSessionRequest = z.infer<

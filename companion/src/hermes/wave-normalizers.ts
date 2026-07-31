@@ -52,10 +52,7 @@ export function normalizeHermesMessage(
 export function normalizeHermesMessages(
   messages: HermesConversationMessage[],
 ): WaveConversationMessage[] {
-  const toolCalls = new Map<
-    string,
-    { arguments?: string; name?: string }
-  >();
+  const toolCalls = new Map<string, { arguments?: string; name?: string }>();
   for (const message of messages) {
     for (const toolCall of message.toolCalls ?? []) {
       toolCalls.set(toolCall.id, toolCall);
@@ -108,16 +105,10 @@ export function normalizeHermesScheduledJob(job: HermesScheduledJob) {
     ...(job.createdAt ? { createdAt: normalizeIsoDate(job.createdAt) } : {}),
     enabled: job.enabled,
     id: normalizeIdentifier(job.id, 'job'),
-    ...(job.lastRunAt
-      ? { lastRunAt: normalizeIsoDate(job.lastRunAt) }
-      : {}),
-    ...(job.lastStatus
-      ? { lastStatus: job.lastStatus.slice(0, 100) }
-      : {}),
+    ...(job.lastRunAt ? { lastRunAt: normalizeIsoDate(job.lastRunAt) } : {}),
+    ...(job.lastStatus ? { lastStatus: job.lastStatus.slice(0, 100) } : {}),
     name: job.name.slice(0, 200),
-    ...(job.nextRunAt
-      ? { nextRunAt: normalizeIsoDate(job.nextRunAt) }
-      : {}),
+    ...(job.nextRunAt ? { nextRunAt: normalizeIsoDate(job.nextRunAt) } : {}),
     schedule: job.schedule.slice(0, 300),
     state: job.state.slice(0, 100),
   });
@@ -187,10 +178,7 @@ export class WaveTurnEventFactory {
         return this.create({
           ...(event.messageId
             ? {
-                messageId: normalizeIdentifier(
-                  event.messageId,
-                  'message',
-                ),
+                messageId: normalizeIdentifier(event.messageId, 'message'),
               }
             : {}),
           status: event.status,
@@ -222,7 +210,11 @@ export class WaveTurnEventFactory {
   }
 
   createError(
-    code: 'cancelled' | 'timeout' | 'upstream_incompatible' | 'upstream_unavailable',
+    code:
+      | 'cancelled'
+      | 'timeout'
+      | 'upstream_incompatible'
+      | 'upstream_unavailable',
     message: string,
     retryable: boolean,
   ): WaveTurnEvent {
@@ -335,7 +327,8 @@ function normalizeToolDetail(
 }
 
 function timestampToIso(value: number) {
-  const milliseconds = Math.abs(value) < 1_000_000_000_000 ? value * 1_000 : value;
+  const milliseconds =
+    Math.abs(value) < 1_000_000_000_000 ? value * 1_000 : value;
   const date = new Date(milliseconds);
   if (!Number.isFinite(date.getTime())) {
     throw new Error('Hermes returned an invalid timestamp.');

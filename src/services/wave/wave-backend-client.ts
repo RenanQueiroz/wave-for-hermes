@@ -38,10 +38,7 @@ import {
   type WaveUpdateSessionRequest,
 } from '@wave/contracts';
 
-import {
-  parseWaveSseStream,
-  WaveSseProtocolError,
-} from './wave-sse.ts';
+import { parseWaveSseStream, WaveSseProtocolError } from './wave-sse.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_REALTIME_SETUP_TIMEOUT_MS = 35_000;
@@ -55,9 +52,7 @@ export type WaveFetch = (
 ) => Promise<Response>;
 
 interface RuntimeSchema<T> {
-  safeParse(value: unknown):
-    | { data: T; success: true }
-    | { success: false };
+  safeParse(value: unknown): { data: T; success: true } | { success: false };
 }
 
 export interface WaveBackendClientOptions {
@@ -72,10 +67,7 @@ export interface WaveBackendClientOptions {
 }
 
 export type WaveBackendFailureKind =
-  | WaveErrorCode
-  | 'invalid_base_url'
-  | 'invalid_response'
-  | 'network';
+  WaveErrorCode | 'invalid_base_url' | 'invalid_response' | 'network';
 
 interface WaveBackendErrorOptions {
   correlationId?: string;
@@ -118,8 +110,7 @@ export class WaveBackendClient {
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.realtimeSetupTimeoutMs =
-      options.realtimeSetupTimeoutMs ??
-      DEFAULT_REALTIME_SETUP_TIMEOUT_MS;
+      options.realtimeSetupTimeoutMs ?? DEFAULT_REALTIME_SETUP_TIMEOUT_MS;
     this.streamIdleTimeoutMs =
       options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
     this.streamTotalTimeoutMs =
@@ -190,14 +181,10 @@ export class WaveBackendClient {
   }
 
   getCompatibility(signal?: AbortSignal): Promise<WaveCompatibilityResponse> {
-    return this.request(
-      WaveCompatibilityResponseSchema,
-      '/v1/compatibility',
-      {
-        authenticated: true,
-        signal,
-      },
-    );
+    return this.request(WaveCompatibilityResponseSchema, '/v1/compatibility', {
+      authenticated: true,
+      signal,
+    });
   }
 
   getSessionHistory(
@@ -352,9 +339,7 @@ export class WaveBackendClient {
     const controller = new AbortController();
     let timeout: 'connect' | 'idle' | 'total' | undefined;
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
-    const abortForTimeout = (
-      kind: 'connect' | 'idle' | 'total',
-    ) => {
+    const abortForTimeout = (kind: 'connect' | 'idle' | 'total') => {
       timeout = kind;
       controller.abort();
     };
@@ -442,8 +427,7 @@ export class WaveBackendClient {
         turnId ??= event.turnId;
         expectedSequence += 1;
         terminal =
-          event.type === 'turn.completed' ||
-          event.type === 'turn.error';
+          event.type === 'turn.completed' || event.type === 'turn.error';
         yield event;
       }
       if (!terminal) {
@@ -561,9 +545,7 @@ export class WaveBackendClient {
 
       const response = await this.fetch(this.buildUrl(path), {
         body:
-          options.body === undefined
-            ? undefined
-            : JSON.stringify(options.body),
+          options.body === undefined ? undefined : JSON.stringify(options.body),
         headers,
         method: options.method ?? 'GET',
         redirect: 'error',
@@ -659,10 +641,7 @@ export function normalizeWaveBaseUrl(
 
 async function readResponseJson(response: Response) {
   const contentLength = Number(response.headers.get('content-length'));
-  if (
-    Number.isFinite(contentLength) &&
-    contentLength > MAX_RESPONSE_BYTES
-  ) {
+  if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
     throw new WaveBackendError('Wave Companion returned too much data.', {
       kind: 'invalid_response',
     });
@@ -726,11 +705,14 @@ function parseWaveResponseError(statusCode: number, payload: unknown) {
       statusCode,
     });
   }
-  return new WaveBackendError('Wave Companion could not complete the request.', {
-    kind: statusCode === 401 ? 'unauthorized' : 'invalid_response',
-    retryable: statusCode >= 500,
-    statusCode,
-  });
+  return new WaveBackendError(
+    'Wave Companion could not complete the request.',
+    {
+      kind: statusCode === 401 ? 'unauthorized' : 'invalid_response',
+      retryable: statusCode >= 500,
+      statusCode,
+    },
+  );
 }
 
 function parseClientInput<T>(

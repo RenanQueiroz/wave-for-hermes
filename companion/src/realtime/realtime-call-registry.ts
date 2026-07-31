@@ -95,9 +95,7 @@ export class RealtimeCallRegistry {
 
   async abortAll() {
     const calls = [...this.calls.values()];
-    await Promise.allSettled(
-      calls.map((call) => this.release(call, true)),
-    );
+    await Promise.allSettled(calls.map((call) => this.release(call, true)));
   }
 
   async end(deviceId: string, waveCallId: string) {
@@ -124,10 +122,7 @@ export class RealtimeCallRegistry {
   }
 
   reserveSessionDeletion(sessionId: string) {
-    if (
-      this.deletingSessionIds.has(sessionId) ||
-      this.hasSession(sessionId)
-    ) {
+    if (this.deletingSessionIds.has(sessionId) || this.hasSession(sessionId)) {
       return false;
     }
     this.deletingSessionIds.add(sessionId);
@@ -141,23 +136,17 @@ export class RealtimeCallRegistry {
     signal?: AbortSignal;
   }): Promise<StartedRealtimeCall> {
     if (this.deletingSessionIds.has(input.sessionId)) {
-      throw new WaveHttpError(
-        'This Hermes session is being deleted.',
-        {
-          code: 'conflict',
-          statusCode: 409,
-        },
-      );
+      throw new WaveHttpError('This Hermes session is being deleted.', {
+        code: 'conflict',
+        statusCode: 409,
+      });
     }
     await this.requireAuthorizedSession(input.deviceId, input.sessionId);
     if (this.deletingSessionIds.has(input.sessionId)) {
-      throw new WaveHttpError(
-        'This Hermes session is being deleted.',
-        {
-          code: 'conflict',
-          statusCode: 409,
-        },
-      );
+      throw new WaveHttpError('This Hermes session is being deleted.', {
+        code: 'conflict',
+        statusCode: 409,
+      });
     }
     this.reserve(input.deviceId, input.sessionId);
 
@@ -246,8 +235,7 @@ export class RealtimeCallRegistry {
         },
       )) {
         if (event.type === 'assistant.delta') {
-          const available =
-            WAVE_MAX_ASK_HERMES_ANSWER_LENGTH - answer.length;
+          const available = WAVE_MAX_ASK_HERMES_ANSWER_LENGTH - answer.length;
           if (event.delta.length > available) {
             truncated = true;
           }
@@ -259,8 +247,7 @@ export class RealtimeCallRegistry {
             0,
             WAVE_MAX_ASK_HERMES_ANSWER_LENGTH,
           );
-          truncated =
-            event.content.length > WAVE_MAX_ASK_HERMES_ANSWER_LENGTH;
+          truncated = event.content.length > WAVE_MAX_ASK_HERMES_ANSWER_LENGTH;
         } else if (event.type === 'error') {
           throw new Error('Hermes stream failed.');
         }
@@ -314,9 +301,7 @@ export class RealtimeCallRegistry {
     ) {
       return;
     }
-    if (
-      call.handledToolCallIds.size >= MAX_TOOL_CALLS_PER_REALTIME_CALL
-    ) {
+    if (call.handledToolCallIds.size >= MAX_TOOL_CALLS_PER_REALTIME_CALL) {
       this.completeToolCall(
         call,
         toolCall.callId,
@@ -376,25 +361,19 @@ export class RealtimeCallRegistry {
       return;
     }
 
-    const existingExecution =
-      call.toolExecutionsByInstruction.get(
-        parsed.data.instruction,
-      );
+    const existingExecution = call.toolExecutionsByInstruction.get(
+      parsed.data.instruction,
+    );
     if (existingExecution) {
       existingExecution.callIds.add(toolCall.callId);
       if (existingExecution.result) {
-        this.completeToolCall(
-          call,
-          toolCall.callId,
-          existingExecution.result,
-        );
+        this.completeToolCall(call, toolCall.callId, existingExecution.result);
       }
       return;
     }
 
     if (
-      call.outstandingToolCalls >=
-      MAX_OUTSTANDING_TOOL_CALLS_PER_REALTIME_CALL
+      call.outstandingToolCalls >= MAX_OUTSTANDING_TOOL_CALLS_PER_REALTIME_CALL
     ) {
       this.completeToolCall(
         call,
@@ -413,10 +392,7 @@ export class RealtimeCallRegistry {
       instruction: parsed.data.instruction,
       primaryCallId: toolCall.callId,
     };
-    call.toolExecutionsByInstruction.set(
-      execution.instruction,
-      execution,
-    );
+    call.toolExecutionsByInstruction.set(execution.instruction, execution);
     call.outstandingToolCalls += 1;
     call.toolQueue = call.toolQueue
       .then(() => this.executeQueuedTool(call, execution))
@@ -521,10 +497,7 @@ export class RealtimeCallRegistry {
     this.reservedSessionIds.delete(sessionId);
   }
 
-  private async requireAuthorizedSession(
-    deviceId: string,
-    sessionId: string,
-  ) {
+  private async requireAuthorizedSession(deviceId: string, sessionId: string) {
     if (!this.services.deviceStore.isDeviceActive(deviceId)) {
       throw new WaveHttpError('The Hermes session was not found.', {
         code: 'not_found',
@@ -535,9 +508,7 @@ export class RealtimeCallRegistry {
   }
 
   private reserve(deviceId: string, sessionId: string) {
-    if (
-      this.reservedDeviceIds.size >= this.config.maxActiveCalls
-    ) {
+    if (this.reservedDeviceIds.size >= this.config.maxActiveCalls) {
       throw new WaveHttpError(
         'Wave Companion is already handling its maximum number of live calls.',
         {
@@ -571,9 +542,7 @@ export class RealtimeCallRegistry {
 }
 
 function createSafetyIdentifier(deviceId: string) {
-  return createHash('sha256')
-    .update(deviceId, 'utf8')
-    .digest('hex');
+  return createHash('sha256').update(deviceId, 'utf8').digest('hex');
 }
 
 function normalizeProviderError(error: unknown) {

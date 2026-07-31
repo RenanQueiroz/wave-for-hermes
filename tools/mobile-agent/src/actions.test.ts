@@ -42,7 +42,9 @@ test('native actions return the shared envelope and preserve snapshot identity',
     captureTrace: false,
     beforeSnapshot,
     captureHierarchy: async () => {
-      throw new Error('captureHierarchy must not run when trace capture is disabled');
+      throw new Error(
+        'captureHierarchy must not run when trace capture is disabled',
+      );
     },
     invalidateHierarchy: () => {
       invalidated = true;
@@ -87,7 +89,11 @@ test('action errors retain stable codes, identity, target, and recovery guidance
   const result = actionErrorEnvelope(
     'tap',
     'TAP_FAILED',
-    new MobileAgentError('STALE_SNAPSHOT', 'The snapshot is stale.', 'Capture a new tree.'),
+    new MobileAgentError(
+      'STALE_SNAPSHOT',
+      'The snapshot is stale.',
+      'Capture a new tree.',
+    ),
     Date.now(),
     {
       identity,
@@ -99,7 +105,10 @@ test('action errors retain stable codes, identity, target, and recovery guidance
   assert.equal(result.action, 'tap');
   assert.equal(result.platform, 'ios');
   assert.equal(result.deviceId, identity.deviceId);
-  assert.deepEqual(result.target, { snapshotId: 'snapshot-1', nodeId: 'node-1' });
+  assert.deepEqual(result.target, {
+    snapshotId: 'snapshot-1',
+    nodeId: 'node-1',
+  });
   assert.deepEqual(result.error, {
     code: 'STALE_SNAPSHOT',
     message: 'The snapshot is stale.',

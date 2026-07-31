@@ -1,4 +1,8 @@
-import { beginActionTrace, completeActionTrace, type ActionTraceResult } from './action-trace.js';
+import {
+  beginActionTrace,
+  completeActionTrace,
+  type ActionTraceResult,
+} from './action-trace.js';
 import type { MobileAgentConfig } from './config.js';
 import type { ResolvedDriver } from './driver.js';
 import type { HierarchySnapshot } from './hierarchy.js';
@@ -121,11 +125,15 @@ export async function performUnifiedAction(options: {
   let afterSnapshot: HierarchySnapshot | undefined;
   let trace: ActionTraceResult | undefined;
   if (traceContext) {
-    await new Promise((resolve) => setTimeout(resolve, options.settleMs ?? 250));
+    await new Promise((resolve) =>
+      setTimeout(resolve, options.settleMs ?? 250),
+    );
     try {
       afterSnapshot = await options.captureHierarchy();
     } catch (error: unknown) {
-      traceContext.warnings.push(`After hierarchy failed: ${errorMessage(error)}`);
+      traceContext.warnings.push(
+        `After hierarchy failed: ${errorMessage(error)}`,
+      );
     }
     try {
       trace = await completeActionTrace(
@@ -136,7 +144,9 @@ export async function performUnifiedAction(options: {
       );
       warnings.push(...trace.warnings);
     } catch (error: unknown) {
-      warnings.push(`Action succeeded, but trace completion failed: ${errorMessage(error)}`);
+      warnings.push(
+        `Action succeeded, but trace completion failed: ${errorMessage(error)}`,
+      );
     }
   }
 
@@ -176,7 +186,9 @@ export async function performDetachedAction(options: {
     platform: options.identity.platform,
     deviceId: options.identity.deviceId,
     applicationId: options.identity.applicationId,
-    ...(options.identity.sessionId ? { sessionId: options.identity.sessionId } : {}),
+    ...(options.identity.sessionId
+      ? { sessionId: options.identity.sessionId }
+      : {}),
     startedAt,
     completedAt: new Date(completedAtMs).toISOString(),
     durationMs: completedAtMs - startedAtMs,
@@ -200,12 +212,18 @@ export function actionErrorEnvelope(
   return {
     ok: false,
     action,
-    ...(context.identity?.platform ? { platform: context.identity.platform } : {}),
-    ...(context.identity?.deviceId ? { deviceId: context.identity.deviceId } : {}),
+    ...(context.identity?.platform
+      ? { platform: context.identity.platform }
+      : {}),
+    ...(context.identity?.deviceId
+      ? { deviceId: context.identity.deviceId }
+      : {}),
     ...(context.identity?.applicationId
       ? { applicationId: context.identity.applicationId }
       : {}),
-    ...(context.identity?.sessionId ? { sessionId: context.identity.sessionId } : {}),
+    ...(context.identity?.sessionId
+      ? { sessionId: context.identity.sessionId }
+      : {}),
     durationMs: Date.now() - startedAtMs,
     ...(context.target ? { target: context.target } : {}),
     error: {
@@ -216,7 +234,9 @@ export function actionErrorEnvelope(
   };
 }
 
-export function identityFromDriver(resolved: ResolvedDriver): MobileActionIdentity {
+export function identityFromDriver(
+  resolved: ResolvedDriver,
+): MobileActionIdentity {
   return {
     platform: resolved.platform,
     deviceId: resolved.deviceId,

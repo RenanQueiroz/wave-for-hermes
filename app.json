@@ -1,61 +1,70 @@
 {
-    "expo": {
-        "name": "wave",
-        "slug": "wave",
-        "version": "1.0.0",
-        "platforms": ["ios", "android"],
-        "orientation": "portrait",
-        "icon": "./assets/images/icon.png",
-        "scheme": "wave",
-        "userInterfaceStyle": "automatic",
-        "ios": {
-            "icon": "./assets/expo.icon",
-            "bundleIdentifier": "com.renanqueiroz.wave",
-            "infoPlist": {
-                "NSMicrophoneUsageDescription": "Allow Wave to use your microphone for live voice conversations."
-            }
-        },
-        "android": {
-            "package": "com.renanqueiroz.wave",
-            "permissions": [
-                "android.permission.ACCESS_NETWORK_STATE",
-                "android.permission.CHANGE_NETWORK_STATE",
-                "android.permission.CAMERA",
-                "android.permission.INTERNET",
-                "android.permission.MODIFY_AUDIO_SETTINGS",
-                "android.permission.RECORD_AUDIO"
-            ],
-            "adaptiveIcon": {
-                "backgroundColor": "#E6F4FE",
-                "foregroundImage": "./assets/images/android-icon-foreground.png",
-                "backgroundImage": "./assets/images/android-icon-background.png",
-                "monochromeImage": "./assets/images/android-icon-monochrome.png"
-            },
-            "predictiveBackGestureEnabled": false
-        },
-        "plugins": [
-            "expo-router",
-            [
-                "expo-splash-screen",
-                {
-                    "backgroundColor": "#208AEF",
-                    "image": "./assets/images/splash-icon.png",
-                    "imageWidth": 76
-                }
-            ],
-            "expo-secure-store",
-            [
-                "expo-image-picker",
-                {
-                    "cameraPermission": "Allow Wave to use your camera when you choose to share a photo with Hermes.",
-                    "microphonePermission": "Allow Wave to use your microphone for live voice conversations.",
-                    "photosPermission": "Allow Wave to access photos you choose to share with Hermes."
-                }
-            ]
-        ],
-        "experiments": {
-            "typedRoutes": true,
-            "reactCompiler": true
+  "expo": {
+    "name": "wave",
+    "slug": "wave",
+    "version": "1.0.0",
+    "platforms": ["ios", "android"],
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "wave",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.renanqueiroz.wave",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow Wave to use your microphone for live voice conversations."
+      }
+    },
+    "android": {
+      "package": "com.renanqueiroz.wave",
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CHANGE_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
         }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Wave to use your camera when you choose to share a photo with Hermes.",
+          "microphonePermission": "Allow Wave to use your microphone for live voice conversations.",
+          "photosPermission": "Allow Wave to access photos you choose to share with Hermes."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
     }
+  }
 }

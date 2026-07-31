@@ -72,7 +72,9 @@ function assertTraceTarget(traceRoot: string, target: string): void {
   if (
     !relativeTarget ||
     relativeTarget === '..' ||
-    relativeTarget.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
+    relativeTarget.startsWith(
+      `..${process.platform === 'win32' ? '\\' : '/'}`,
+    ) ||
     isAbsolute(relativeTarget)
   ) {
     throw new Error(`Refusing to prune unsafe trace target ${target}.`);

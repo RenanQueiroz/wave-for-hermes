@@ -65,7 +65,8 @@ export interface HermesScheduledJob {
   state: string;
 }
 
-export type HermesMessageRole = 'assistant' | 'system' | 'tool' | 'unknown' | 'user';
+export type HermesMessageRole =
+  'assistant' | 'system' | 'tool' | 'unknown' | 'user';
 
 export interface HermesToolCall {
   arguments?: string;
@@ -196,7 +197,9 @@ export interface HermesRequestOptions {
 }
 
 export interface HermesClient {
-  createSession(input?: HermesCreateSessionInput): Promise<HermesSessionSummary>;
+  createSession(
+    input?: HermesCreateSessionInput,
+  ): Promise<HermesSessionSummary>;
   deleteSession(
     sessionId: string,
     options?: HermesRequestOptions,
@@ -213,9 +216,14 @@ export interface HermesClient {
     options?: HermesRequestOptions,
   ): Promise<HermesScheduledJob[]>;
   listSessions(options?: HermesListSessionsOptions): Promise<HermesSessionPage>;
-  probeCapabilities(options?: HermesRequestOptions): Promise<HermesCapabilityReport>;
+  probeCapabilities(
+    options?: HermesRequestOptions,
+  ): Promise<HermesCapabilityReport>;
   stopRun(runId: string, options?: HermesRequestOptions): Promise<void>;
-  streamChat(sessionId: string, input: HermesStreamChatInput): AsyncGenerator<HermesStreamEvent>;
+  streamChat(
+    sessionId: string,
+    input: HermesStreamChatInput,
+  ): AsyncGenerator<HermesStreamEvent>;
   updateSession(
     sessionId: string,
     input: HermesUpdateSessionInput,

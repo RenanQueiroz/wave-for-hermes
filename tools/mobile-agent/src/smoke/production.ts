@@ -23,7 +23,9 @@ export async function runProductionBridgeSmoke(
   const outputDirectory = resolve(config.artifactsDir, 'production-export');
   const expectedPrefix = `${resolve(config.artifactsDir)}${sep}`;
   if (!outputDirectory.startsWith(expectedPrefix)) {
-    throw new Error('Production smoke output must remain inside the mobile-agent artifact directory.');
+    throw new Error(
+      'Production smoke output must remain inside the mobile-agent artifact directory.',
+    );
   }
   await rm(outputDirectory, { recursive: true, force: true });
 
@@ -70,7 +72,9 @@ export async function runProductionBridgeSmoke(
     }
   }
   if (inspectedFiles.length === 0) {
-    throw new Error('The Expo production export did not contain an inspectable bundle.');
+    throw new Error(
+      'The Expo production export did not contain an inspectable bundle.',
+    );
   }
   return {
     ok: found.size === 0,

@@ -1,7 +1,4 @@
-export function waveSessionQueryKey(
-  connectionId: string,
-  baseUrl: string,
-) {
+export function waveSessionQueryKey(connectionId: string, baseUrl: string) {
   return ['wave', connectionId, baseUrl, 'sessions'] as const;
 }
 

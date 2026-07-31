@@ -24,8 +24,7 @@ import {
 
 const OPENAI_API_BASE_URL = 'https://api.openai.com/v1';
 const OPENAI_REALTIME_CALL_PATH = '/realtime/calls';
-const OPENAI_REALTIME_WEBSOCKET_URL =
-  'wss://api.openai.com/v1/realtime';
+const OPENAI_REALTIME_WEBSOCKET_URL = 'wss://api.openai.com/v1/realtime';
 const OPENAI_CALL_ID_PATTERN = /^rtc_[A-Za-z0-9_-]{1,256}$/;
 const MAX_SIDEBAND_EVENT_BYTES = 2 * 1024 * 1024;
 
@@ -113,7 +112,9 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       throw normalizeOpenAIError(error);
     }
 
-    const providerCallId = parseProviderCallId(response.headers.get('location'));
+    const providerCallId = parseProviderCallId(
+      response.headers.get('location'),
+    );
     let sdpAnswer: string;
     try {
       const responseContentType = response.headers
@@ -200,10 +201,12 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 class OpenAIRealtimeSideband implements RealtimeSideband {
   private closed = false;
   private readonly closeListeners = new Set<() => void>();
-  private readonly errorListeners =
-    new Set<(error: RealtimeProviderError) => void>();
-  private readonly functionCallListeners =
-    new Set<(call: RealtimeFunctionCall) => void>();
+  private readonly errorListeners = new Set<
+    (error: RealtimeProviderError) => void
+  >();
+  private readonly functionCallListeners = new Set<
+    (call: RealtimeFunctionCall) => void
+  >();
   private readonly pendingFunctionResults: {
     callId: string;
     output: string;
@@ -255,19 +258,11 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     this.functionCallListeners.add(listener);
   }
 
-  sendFunctionResult(
-    callId: string,
-    result: WaveAskHermesToolResult,
-  ) {
-    if (
-      this.closed ||
-      this.socket.readyState !== WebSocket.OPEN
-    ) {
+  sendFunctionResult(callId: string, result: WaveAskHermesToolResult) {
+    if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return false;
     }
-    const output = JSON.stringify(
-      WaveAskHermesToolResultSchema.parse(result),
-    );
+    const output = JSON.stringify(WaveAskHermesToolResultSchema.parse(result));
     this.pendingFunctionResults.push({ callId, output });
     return this.flushFunctionResults();
   }
@@ -350,9 +345,7 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
   private handleMessage(data: unknown, isBinary: boolean) {
     const text = readSidebandMessage(data, isBinary);
     if (text === undefined) {
-      this.emitProtocolError(
-        'OpenAI Realtime sent an invalid sideband event.',
-      );
+      this.emitProtocolError('OpenAI Realtime sent an invalid sideband event.');
       return;
     }
 
@@ -360,15 +353,11 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     try {
       event = JSON.parse(text);
     } catch {
-      this.emitProtocolError(
-        'OpenAI Realtime sent malformed sideband JSON.',
-      );
+      this.emitProtocolError('OpenAI Realtime sent malformed sideband JSON.');
       return;
     }
     if (!isRecord(event) || typeof event.type !== 'string') {
-      this.emitProtocolError(
-        'OpenAI Realtime sent an invalid sideband event.',
-      );
+      this.emitProtocolError('OpenAI Realtime sent an invalid sideband event.');
       return;
     }
     if (event.type === 'error') {
@@ -429,11 +418,7 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
   }
 
   private flushFunctionResults() {
-    if (
-      this.closed ||
-      this.responseInProgress ||
-      this.userSpeaking
-    ) {
+    if (this.closed || this.responseInProgress || this.userSpeaking) {
       return !this.closed;
     }
     if (this.pendingFunctionResults.length === 0) {
@@ -441,19 +426,23 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     }
     try {
       for (const result of this.pendingFunctionResults) {
-        this.socket.send(JSON.stringify({
-          item: {
-            call_id: result.callId,
-            output: result.output,
-            type: 'function_call_output',
-          },
-          type: 'conversation.item.create',
-        }));
+        this.socket.send(
+          JSON.stringify({
+            item: {
+              call_id: result.callId,
+              output: result.output,
+              type: 'function_call_output',
+            },
+            type: 'conversation.item.create',
+          }),
+        );
       }
       this.pendingFunctionResults.length = 0;
-      this.socket.send(JSON.stringify({
-        type: 'response.create',
-      }));
+      this.socket.send(
+        JSON.stringify({
+          type: 'response.create',
+        }),
+      );
       // Treat the request as active immediately so two fast tool completions
       // cannot race before the corresponding response.created event arrives.
       this.responseInProgress = true;
@@ -471,9 +460,7 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
   }
 
   private emitProtocolError(message: string) {
-    this.emitError(
-      new RealtimeProviderError(message, { kind: 'protocol' }),
-    );
+    this.emitError(new RealtimeProviderError(message, { kind: 'protocol' }));
     this.close();
   }
 
@@ -533,11 +520,9 @@ function readSidebandMessage(
   }
   if (ArrayBuffer.isView(data)) {
     return data.byteLength <= MAX_SIDEBAND_EVENT_BYTES
-      ? Buffer.from(
-          data.buffer,
-          data.byteOffset,
-          data.byteLength,
-        ).toString('utf8')
+      ? Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString(
+          'utf8',
+        )
       : undefined;
   }
   if (Array.isArray(data) && data.every(Buffer.isBuffer)) {
@@ -620,14 +605,11 @@ function normalizeOpenAIError(error: unknown) {
     );
   }
   if (error instanceof APIConnectionError) {
-    return new RealtimeProviderError(
-      'Could not reach OpenAI Realtime.',
-      {
-        cause: error,
-        kind: 'unavailable',
-        retryable: true,
-      },
-    );
+    return new RealtimeProviderError('Could not reach OpenAI Realtime.', {
+      cause: error,
+      kind: 'unavailable',
+      retryable: true,
+    });
   }
   if (error instanceof APIError) {
     if (error.status === 401 || error.status === 403) {
@@ -640,14 +622,11 @@ function normalizeOpenAIError(error: unknown) {
       );
     }
     if (error.status === 429) {
-      return new RealtimeProviderError(
-        'OpenAI Realtime is rate limited.',
-        {
-          cause: error,
-          kind: 'rate_limited',
-          retryable: true,
-        },
-      );
+      return new RealtimeProviderError('OpenAI Realtime is rate limited.', {
+        cause: error,
+        kind: 'rate_limited',
+        retryable: true,
+      });
     }
     return new RealtimeProviderError(
       'OpenAI Realtime could not create the call.',

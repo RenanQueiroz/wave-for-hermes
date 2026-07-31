@@ -35,8 +35,9 @@ class FakeRealtimeSideband implements RealtimeSideband {
     result: WaveAskHermesToolResult;
   }[] = [];
   private readonly closeListeners = new Set<() => void>();
-  private readonly functionCallListeners =
-    new Set<(call: RealtimeFunctionCall) => void>();
+  private readonly functionCallListeners = new Set<
+    (call: RealtimeFunctionCall) => void
+  >();
 
   close() {
     if (this.closed) {
@@ -64,10 +65,7 @@ class FakeRealtimeSideband implements RealtimeSideband {
     this.functionCallListeners.add(listener);
   }
 
-  sendFunctionResult(
-    callId: string,
-    result: WaveAskHermesToolResult,
-  ) {
+  sendFunctionResult(callId: string, result: WaveAskHermesToolResult) {
     if (this.closed) {
       return false;
     }
@@ -186,9 +184,7 @@ test('binds a Realtime call to trusted device and session state', async () => {
   );
   assert.equal(context.provider.calls[0]?.safetyIdentifier.length, 64);
   assert.equal(
-    context.provider.calls[0]?.safetyIdentifier.includes(
-      context.deviceId,
-    ),
+    context.provider.calls[0]?.safetyIdentifier.includes(context.deviceId),
     false,
   );
 
@@ -204,17 +200,14 @@ test('binds a Realtime call to trusted device and session state', async () => {
   assert.deepEqual(context.hermes.instructions, [
     'Check the production deployment',
   ]);
-  assert.deepEqual(
-    context.provider.calls[0]?.sideband.results[0],
-    {
-      callId: 'tool-call-1',
-      result: {
-        answer: 'Hermes completed the task.',
-        ok: true,
-        truncated: false,
-      },
+  assert.deepEqual(context.provider.calls[0]?.sideband.results[0], {
+    callId: 'tool-call-1',
+    result: {
+      answer: 'Hermes completed the task.',
+      ok: true,
+      truncated: false,
     },
-  );
+  });
   await context.registry.end(context.deviceId, started.id);
   assert.equal(context.provider.calls[0]?.ended, true);
   closeContext(context);
@@ -458,9 +451,7 @@ test('coalesces identical instructions across distinct tool-call IDs', async () 
     name: 'ask_hermes',
   });
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.deepEqual(context.hermes.instructions, [
-    'Run the idempotent task',
-  ]);
+  assert.deepEqual(context.hermes.instructions, ['Run the idempotent task']);
   assert.equal(sideband?.results.length, 0);
 
   finishExecution?.();
@@ -474,9 +465,7 @@ test('coalesces identical instructions across distinct tool-call IDs', async () 
   });
   await waitFor(() => sideband?.results.length === 3);
 
-  assert.deepEqual(context.hermes.instructions, [
-    'Run the idempotent task',
-  ]);
+  assert.deepEqual(context.hermes.instructions, ['Run the idempotent task']);
   assert.deepEqual(
     sideband?.results.map(({ callId, result }) => ({
       answer: result.ok ? result.answer : undefined,
@@ -626,9 +615,7 @@ function createContext(
   } = {},
 ) {
   const store = new SqliteDeviceStore(':memory:');
-  const pairing = store.issuePairingCode(
-    new Date(Date.now() + 60_000),
-  );
+  const pairing = store.issuePairingCode(new Date(Date.now() + 60_000));
   const redeemed = store.redeemPairingCode(
     pairing.code,
     'Realtime test device',

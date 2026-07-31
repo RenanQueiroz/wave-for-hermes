@@ -1,9 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { WaveSessionSummary } from '@wave/contracts';
-import {
-  usePathname,
-  useRouter,
-} from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import type { DrawerContentComponentProps } from 'expo-router/drawer';
 import type { ReactNode } from 'react';
 import {
@@ -90,21 +87,14 @@ function ConnectedWaveDrawerContent({
     [sessionsQuery.data],
   );
   const [localError, setLocalError] = useState<string>();
-  const [renameSession, setRenameSession] =
-    useState<WaveSessionSummary>();
+  const [renameSession, setRenameSession] = useState<WaveSessionSummary>();
   const [renameTitle, setRenameTitle] = useState('');
-  const [deleteSession, setDeleteSession] =
-    useState<WaveSessionSummary>();
+  const [deleteSession, setDeleteSession] = useState<WaveSessionSummary>();
   const sessionsKey = waveSessionQueryKey(connectionId, baseUrl);
 
   const renameMutation = useMutation({
-    mutationFn: ({
-      sessionId,
-      title,
-    }: {
-      sessionId: string;
-      title: string;
-    }) => client.updateSession(sessionId, { title }),
+    mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
+      client.updateSession(sessionId, { title }),
     onSuccess: async () => {
       setRenameSession(undefined);
       await queryClient.invalidateQueries({ queryKey: sessionsKey });
@@ -126,7 +116,9 @@ function ConnectedWaveDrawerContent({
     },
   });
 
-  const navigate = (pathname: '/new' | '/search' | '/operations/jobs' | '/settings') => {
+  const navigate = (
+    pathname: '/new' | '/search' | '/operations/jobs' | '/settings',
+  ) => {
     navigation.closeDrawer();
     router.push(pathname);
   };
@@ -209,17 +201,12 @@ function ConnectedWaveDrawerContent({
           )
         }
         ListHeaderComponent={
-          <Typography.Paragraph
-            muted
-            className="px-3 pb-2 text-xs uppercase">
+          <Typography.Paragraph muted className="px-3 pb-2 text-xs uppercase">
             Conversations
           </Typography.Paragraph>
         }
         onEndReached={() => {
-          if (
-            sessionsQuery.hasNextPage &&
-            !sessionsQuery.isFetchingNextPage
-          ) {
+          if (sessionsQuery.hasNextPage && !sessionsQuery.isFetchingNextPage) {
             void sessionsQuery.fetchNextPage();
           }
         }}
@@ -232,9 +219,7 @@ function ConnectedWaveDrawerContent({
             testID={`drawer-session-${item.id}`}
             onPress={() => void openSession(item.id)}>
             <Item.Content>
-              <Item.Title numberOfLines={1}>
-                {sessionTitle(item)}
-              </Item.Title>
+              <Item.Title numberOfLines={1}>{sessionTitle(item)}</Item.Title>
               <Item.Description numberOfLines={1}>
                 {sessionDescription(item)}
               </Item.Description>
@@ -399,9 +384,7 @@ function DrawerAction({
       <Item.Content>
         <Item.Title>{label}</Item.Title>
         {description ? (
-          <Item.Description numberOfLines={1}>
-            {description}
-          </Item.Description>
+          <Item.Description numberOfLines={1}>{description}</Item.Description>
         ) : null}
       </Item.Content>
     </Item>

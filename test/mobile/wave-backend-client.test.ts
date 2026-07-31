@@ -23,8 +23,7 @@ test('normalizes private base paths and rejects unsafe URLs', () => {
   assert.throws(
     () => normalizeWaveBaseUrl('http://wave.test'),
     (error: unknown) =>
-      error instanceof WaveBackendError &&
-      error.kind === 'invalid_base_url',
+      error instanceof WaveBackendError && error.kind === 'invalid_base_url',
   );
   assert.throws(
     () => normalizeWaveBaseUrl('https://user:secret@wave.test'),
@@ -161,8 +160,7 @@ test('starts and ends a Realtime call through strict Wave-owned contracts', asyn
       body: {
         sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
       },
-      path:
-        '/root/v1/sessions/hermes-session-1/realtime/calls',
+      path: '/root/v1/sessions/hermes-session-1/realtime/calls',
     },
     {
       body: undefined,
@@ -178,10 +176,7 @@ test('uses paginated account sessions, lifecycle mutations, and read-only jobs',
     path: string;
     search: string;
   }[] = [];
-  const fetch = async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ) => {
+  const fetch = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
     requests.push({
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
@@ -365,8 +360,7 @@ test('returns safe typed server and protocol errors', async () => {
       deviceName: 'Test phone',
     }),
     (error: unknown) =>
-      error instanceof WaveBackendError &&
-      error.kind === 'invalid_response',
+      error instanceof WaveBackendError && error.kind === 'invalid_response',
   );
 });
 

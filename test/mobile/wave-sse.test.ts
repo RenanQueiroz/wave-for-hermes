@@ -28,11 +28,7 @@ test('parses fragmented strict SSE frames and preserves ordered events', async (
   const events: WaveTurnEvent[] = [];
 
   for await (const value of parseWaveSseStream(
-    byteStream([
-      frames.slice(0, 7),
-      frames.slice(7, 31),
-      frames.slice(31),
-    ]),
+    byteStream([frames.slice(0, 7), frames.slice(7, 31), frames.slice(31)]),
   )) {
     events.push(value);
   }
@@ -59,20 +55,12 @@ test('rejects mismatched names, unknown fields, and truncated frames', async () 
     WaveSseProtocolError,
   );
   await assert.rejects(
-    collect(
-      parseWaveSseStream(
-        byteStream([
-          `retry: 10\n${frame(started)}`,
-        ]),
-      ),
-    ),
+    collect(parseWaveSseStream(byteStream([`retry: 10\n${frame(started)}`]))),
     WaveSseProtocolError,
   );
   await assert.rejects(
     collect(
-      parseWaveSseStream(
-        byteStream([frame(started).replace(/\n\n$/, '')]),
-      ),
+      parseWaveSseStream(byteStream([frame(started).replace(/\n\n$/, '')])),
     ),
     WaveSseProtocolError,
   );
@@ -86,10 +74,7 @@ test('streams authenticated ordered turns and cancels an abandoned reader', asyn
     sequence: 1,
     type: 'turn.completed',
   });
-  const fetch = async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ) => {
+  const fetch = async (input: string | URL | Request, init?: RequestInit) => {
     assert.equal(
       String(input),
       'https://wave.test/root/v1/sessions/session-1/turns',
@@ -160,21 +145,18 @@ test('rejects out-of-order and incomplete Wave turn streams', async () => {
   await assert.rejects(
     collect(outOfOrder.streamTurn('session-1', 'Hello')),
     (error: unknown) =>
-      error instanceof WaveBackendError &&
-      error.kind === 'invalid_response',
+      error instanceof WaveBackendError && error.kind === 'invalid_response',
   );
 
   const incomplete = new WaveBackendClient({
     baseUrl: 'https://wave.test',
     credential,
-    fetch: async () =>
-      sseResponse([event({ type: 'turn.started' })]),
+    fetch: async () => sseResponse([event({ type: 'turn.started' })]),
   });
   await assert.rejects(
     collect(incomplete.streamTurn('session-1', 'Hello')),
     (error: unknown) =>
-      error instanceof WaveBackendError &&
-      error.kind === 'invalid_response',
+      error instanceof WaveBackendError && error.kind === 'invalid_response',
   );
 });
 
@@ -219,12 +201,9 @@ function byteStream(chunks: string[]) {
 }
 
 function sseResponse(events: WaveTurnEvent[]) {
-  return new Response(
-    byteStream(events.map(frame)),
-    {
-      headers: { 'content-type': 'text/event-stream' },
-    },
-  );
+  return new Response(byteStream(events.map(frame)), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
 }
 
 async function collect<T>(stream: AsyncIterable<T>) {

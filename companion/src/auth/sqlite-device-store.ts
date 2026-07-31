@@ -228,8 +228,7 @@ export class SqliteDeviceStore implements DeviceStore {
 
   private initializeSchema() {
     const row = this.database.prepare('PRAGMA user_version').get() as
-      | { user_version: number }
-      | undefined;
+      { user_version: number } | undefined;
     const version = row?.user_version ?? 0;
     if (version === DATABASE_SCHEMA_VERSION) {
       return;

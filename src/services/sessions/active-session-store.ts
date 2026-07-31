@@ -51,8 +51,7 @@ export class ActiveSessionStore {
         ACTIVE_SESSION_KEY,
         JSON.stringify(record),
         {
-          keychainAccessible:
-            SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
         },
       );
     } catch {
@@ -74,9 +73,7 @@ function parseRecord(value: unknown): ActiveSessionRecord {
     !sessionId.success ||
     Object.keys(record).some(
       (key) =>
-        key !== 'connectionId' &&
-        key !== 'sessionId' &&
-        key !== 'version',
+        key !== 'connectionId' && key !== 'sessionId' && key !== 'version',
     )
   ) {
     throw new ActiveSessionStoreError();

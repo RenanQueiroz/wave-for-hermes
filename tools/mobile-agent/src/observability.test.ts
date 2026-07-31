@@ -19,9 +19,17 @@ test('redacts sensitive headers without hiding ordinary metadata', () => {
 });
 
 test('redacts sensitive URL parameters and inline secrets', () => {
-  const url = redactUrl('https://example.test/items?page=2&access_token=secret');
+  const url = redactUrl(
+    'https://example.test/items?page=2&access_token=secret',
+  );
   assert.match(url, /page=2/);
   assert.doesNotMatch(url, /secret/);
-  assert.equal(redactText('Authorization: Bearer abc.def'), 'Authorization=[REDACTED]');
-  assert.equal(redactText('access_token=abc cookie=session'), 'access_token=[REDACTED] cookie=[REDACTED]');
+  assert.equal(
+    redactText('Authorization: Bearer abc.def'),
+    'Authorization=[REDACTED]',
+  );
+  assert.equal(
+    redactText('access_token=abc cookie=session'),
+    'access_token=[REDACTED] cookie=[REDACTED]',
+  );
 });

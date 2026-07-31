@@ -16,7 +16,9 @@ interface SimctlDeviceList {
   devices?: Record<string, SimctlDevice[]>;
 }
 
-export async function discoverIos(config: MobileAgentConfig): Promise<IosDiscovery> {
+export async function discoverIos(
+  config: MobileAgentConfig,
+): Promise<IosDiscovery> {
   const diagnostics: Diagnostic[] = [];
   const deviceSetExists = existsSync(config.iosDeviceSetPath);
 
@@ -61,8 +63,12 @@ export async function discoverIos(config: MobileAgentConfig): Promise<IosDiscove
     diagnostics.push({
       code: 'SIMCTL_LIST_FAILED',
       status: 'error',
-      message: listed.stderr.trim() || listed.error || 'Unable to list Radon simulators.',
-      recovery: 'Confirm Xcode command-line tools are selected and Radon can launch its iOS simulator.',
+      message:
+        listed.stderr.trim() ||
+        listed.error ||
+        'Unable to list Radon simulators.',
+      recovery:
+        'Confirm Xcode command-line tools are selected and Radon can launch its iOS simulator.',
     });
     return {
       supported: true,
@@ -109,9 +115,13 @@ export function selectIosSimulator(
   simulators: IosSimulator[],
   configuredUdid?: string,
 ): { selected?: IosSimulator; diagnostics: Diagnostic[] } {
-  const booted = simulators.filter((device) => device.state === 'Booted' && device.available);
+  const booted = simulators.filter(
+    (device) => device.state === 'Booted' && device.available,
+  );
   if (configuredUdid) {
-    const configured = simulators.find((device) => device.udid === configuredUdid);
+    const configured = simulators.find(
+      (device) => device.udid === configuredUdid,
+    );
     if (!configured) {
       return {
         diagnostics: [
@@ -150,7 +160,8 @@ export function selectIosSimulator(
           code: 'NO_BOOTED_IOS_DEVICE',
           status: 'error',
           message: 'No booted simulator was found in Radon’s iOS device set.',
-          recovery: 'Start the Wave iOS development build from Radon and rerun the doctor.',
+          recovery:
+            'Start the Wave iOS development build from Radon and rerun the doctor.',
         },
       ],
     };
@@ -162,7 +173,8 @@ export function selectIosSimulator(
           code: 'MULTIPLE_BOOTED_IOS_DEVICES',
           status: 'error',
           message: `Found ${booted.length} booted Radon iOS simulators; automatic selection is disabled.`,
-          recovery: 'Set MOBILE_AGENT_IOS_UDID to one UDID reported by mobile_list_devices.',
+          recovery:
+            'Set MOBILE_AGENT_IOS_UDID to one UDID reported by mobile_list_devices.',
         },
       ],
     };
@@ -174,7 +186,10 @@ export function selectIosSimulator(
   };
 }
 
-function iosReadyDiagnostic(device: IosSimulator, explicit: boolean): Diagnostic {
+function iosReadyDiagnostic(
+  device: IosSimulator,
+  explicit: boolean,
+): Diagnostic {
   const selected = explicit ? 'Selected ' : '';
   return {
     code: explicit ? 'IOS_DEVICE_SELECTED' : 'IOS_DEVICE_READY',
@@ -183,39 +198,56 @@ function iosReadyDiagnostic(device: IosSimulator, explicit: boolean): Diagnostic
       ? `${selected}${device.name} (${device.udid}) is booted with ${IOS_BUNDLE_ID} installed.`
       : `${selected}${device.name} (${device.udid}) is booted, but ${IOS_BUNDLE_ID} is not installed.`,
     ...(!device.appInstalled
-      ? { recovery: 'Build and launch Wave from Radon before creating an Appium session.' }
+      ? {
+          recovery:
+            'Build and launch Wave from Radon before creating an Appium session.',
+        }
       : {}),
   };
 }
 
-async function flattenSimulators(list: SimctlDeviceList, deviceSetPath: string): Promise<IosSimulator[]> {
-  const entries = Object.entries(list.devices ?? {}).flatMap(([runtimeIdentifier, devices]) =>
-    devices.map((device) => ({ runtimeIdentifier, device })),
+async function flattenSimulators(
+  list: SimctlDeviceList,
+  deviceSetPath: string,
+): Promise<IosSimulator[]> {
+  const entries = Object.entries(list.devices ?? {}).flatMap(
+    ([runtimeIdentifier, devices]) =>
+      devices.map((device) => ({ runtimeIdentifier, device })),
   );
 
   return Promise.all(
-    entries.map(async ({ runtimeIdentifier, device }): Promise<IosSimulator> => {
-      const udid = device.udid ?? '';
-      const app = udid
-        ? await runCommand(
-            'xcrun',
-            ['simctl', '--set', deviceSetPath, 'get_app_container', udid, IOS_BUNDLE_ID, 'app'],
-            { timeoutMs: 5_000 },
-          )
-        : { ok: false, stdout: '', stderr: '', exitCode: null };
-      const appContainerPath = app.ok ? app.stdout.trim() : undefined;
+    entries.map(
+      async ({ runtimeIdentifier, device }): Promise<IosSimulator> => {
+        const udid = device.udid ?? '';
+        const app = udid
+          ? await runCommand(
+              'xcrun',
+              [
+                'simctl',
+                '--set',
+                deviceSetPath,
+                'get_app_container',
+                udid,
+                IOS_BUNDLE_ID,
+                'app',
+              ],
+              { timeoutMs: 5_000 },
+            )
+          : { ok: false, stdout: '', stderr: '', exitCode: null };
+        const appContainerPath = app.ok ? app.stdout.trim() : undefined;
 
-      return {
-        name: device.name ?? 'Unknown iOS Simulator',
-        udid,
-        state: device.state ?? 'Unknown',
-        runtime: runtimeDisplayName(runtimeIdentifier),
-        runtimeIdentifier,
-        available: device.isAvailable !== false && !device.availabilityError,
-        appInstalled: Boolean(appContainerPath),
-        ...(appContainerPath ? { appContainerPath } : {}),
-      };
-    }),
+        return {
+          name: device.name ?? 'Unknown iOS Simulator',
+          udid,
+          state: device.state ?? 'Unknown',
+          runtime: runtimeDisplayName(runtimeIdentifier),
+          runtimeIdentifier,
+          available: device.isAvailable !== false && !device.availabilityError,
+          appInstalled: Boolean(appContainerPath),
+          ...(appContainerPath ? { appContainerPath } : {}),
+        };
+      },
+    ),
   );
 }
 

@@ -1,10 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { WaveTurnInput } from '@wave/contracts';
-import {
-  Redirect,
-  useNavigation,
-  useRouter,
-} from 'expo-router';
+import { Redirect, useNavigation, useRouter } from 'expo-router';
 import {
   Alert,
   Attachment,
@@ -26,13 +22,7 @@ import {
   Typography,
   XIcon,
 } from 'panelui-native';
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -59,6 +49,21 @@ import {
 
 interface ChatScreenProps {
   sessionId: string;
+}
+
+const EMPTY_STATE_TITLES = [
+  'Ask me anything',
+  'How can I help?',
+  "What's on your mind?",
+  'What can Hermes help with?',
+] as const;
+
+function emptyStateTitleForSession(sessionId: string) {
+  const hash = Array.from(sessionId).reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    0,
+  );
+  return EMPTY_STATE_TITLES[hash % EMPTY_STATE_TITLES.length];
 }
 
 export function ChatScreen({ sessionId }: ChatScreenProps) {
@@ -93,45 +98,30 @@ function ConnectedChatScreen({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
-  const [attachmentSheetOpen, setAttachmentSheetOpen] =
-    useState(false);
+  const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
   const attachmentState = useChatAttachments();
-  const activeSessionStore = useMemo(
-    () => new ActiveSessionStore(),
-    [],
-  );
+  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const historyKey = useMemo(
     () => waveHistoryQueryKey(connectionId, baseUrl, sessionId),
     [baseUrl, connectionId, sessionId],
   );
   const history = useQuery({
-    queryFn: ({ signal }) =>
-      client.getSessionHistory(sessionId, signal),
+    queryFn: ({ signal }) => client.getSessionHistory(sessionId, signal),
     queryKey: historyKey,
   });
-  const reconcileHistory = useCallback(
-    async () => {
-      const result = await refreshWaveSessionHistory({
-        baseUrl,
-        connectionId,
-        load: (signal) =>
-          client.getSessionHistory(sessionId, signal),
-        queryClient,
-        sessionId,
-      });
-      await queryClient.invalidateQueries({
-        queryKey: waveSessionQueryKey(connectionId, baseUrl),
-      });
-      return result;
-    },
-    [
+  const reconcileHistory = useCallback(async () => {
+    const result = await refreshWaveSessionHistory({
       baseUrl,
-      client,
       connectionId,
+      load: (signal) => client.getSessionHistory(sessionId, signal),
       queryClient,
       sessionId,
-    ],
-  );
+    });
+    await queryClient.invalidateQueries({
+      queryKey: waveSessionQueryKey(connectionId, baseUrl),
+    });
+    return result;
+  }, [baseUrl, client, connectionId, queryClient, sessionId]);
   const chat = useWaveChat({
     client,
     reconcileHistory,
@@ -180,25 +170,24 @@ function ConnectedChatScreen({
   ]);
 
   const historyMessages = useMemo(
-    () =>
-      historyToWaveChatMessages(
-        history.data?.messages ?? [],
-      ),
+    () => historyToWaveChatMessages(history.data?.messages ?? []),
     [history.data?.messages],
   );
   const messages = useMemo(
-    () =>
-      [...historyMessages, ...chat.state.messages].reverse(),
+    () => [...historyMessages, ...chat.state.messages].reverse(),
     [chat.state.messages, historyMessages],
+  );
+  const emptyStateTitle = useMemo(
+    () => emptyStateTitleForSession(sessionId),
+    [sessionId],
   );
   const busy =
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
     chat.state.status === 'cancelling';
-  const activeAssistantId =
-    chat.state.messages.findLast(
-      (message) => message.role === 'assistant',
-    )?.id;
+  const activeAssistantId = chat.state.messages.findLast(
+    (message) => message.role === 'assistant',
+  )?.id;
 
   const send = useCallback(() => {
     const value = input.trim();
@@ -213,9 +202,7 @@ function ConnectedChatScreen({
           ];
     const optimisticText = [
       value,
-      ...attachments.map(
-        (attachment) => `[Attached: ${attachment.part.name}]`,
-      ),
+      ...attachments.map((attachment) => `[Attached: ${attachment.part.name}]`),
     ].join('\n');
     setInput('');
     attachmentState.clear();
@@ -226,21 +213,16 @@ function ConnectedChatScreen({
     navigation.getParent()?.dispatch({ type: 'OPEN_DRAWER' });
   }, [navigation]);
 
-  const selectAttachmentSource = useCallback(
-    (action: () => Promise<void>) => {
-      setAttachmentSheetOpen(false);
-      void action();
-    },
-    [],
-  );
+  const selectAttachmentSource = useCallback((action: () => Promise<void>) => {
+    setAttachmentSheetOpen(false);
+    void action();
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: WaveChatMessage }) => (
       <ChatTurn
         isStreaming={
-          busy &&
-          item.role === 'assistant' &&
-          item.id === activeAssistantId
+          busy && item.role === 'assistant' && item.id === activeAssistantId
         }
         message={item}
       />
@@ -286,45 +268,43 @@ function ConnectedChatScreen({
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Title>Turn interrupted</Alert.Title>
-            <Alert.Description>
-              {chat.state.error.message}
-            </Alert.Description>
+            <Alert.Description>{chat.state.error.message}</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
 
-      <FlatList
-        className="flex-1"
-        contentContainerClassName="gap-3 px-4 py-3"
-        data={messages}
-        inverted
-        initialNumToRender={12}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        keyExtractor={(message) => message.id}
-        ListEmptyComponent={
-          !history.isPending ? (
-            <View className="items-center gap-2 px-6 py-16">
-              <Typography.Heading type="h2">
-                Start the conversation
-              </Typography.Heading>
-              <Typography.Paragraph muted className="text-center">
-                Messages are sent through your Wave Companion to Hermes.
-              </Typography.Paragraph>
-            </View>
-          ) : null
-        }
-        ListFooterComponent={
-          history.isPending ? (
-            <Thinking label="Loading history…" />
-          ) : chat.state.status === 'submitting' ? (
-            <Thinking label="Hermes is thinking…" />
-          ) : null
-        }
-        maxToRenderPerBatch={8}
-        renderItem={renderItem}
-        windowSize={9}
-      />
+      <View className="flex-1">
+        <FlatList
+          className="flex-1"
+          contentContainerClassName="gap-3 px-4 py-3"
+          data={messages}
+          inverted
+          initialNumToRender={12}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={(message) => message.id}
+          ListFooterComponent={
+            history.isPending ? (
+              <Thinking label="Loading history…" />
+            ) : chat.state.status === 'submitting' ? (
+              <Thinking label="Hermes is thinking…" />
+            ) : null
+          }
+          maxToRenderPerBatch={8}
+          renderItem={renderItem}
+          windowSize={9}
+        />
+        {!history.isPending && messages.length === 0 ? (
+          <View
+            pointerEvents="none"
+            className="absolute inset-0 items-center justify-center gap-2 px-6">
+            <Typography.Heading type="h2">{emptyStateTitle}</Typography.Heading>
+            <Typography.Paragraph muted className="text-center">
+              Messages are sent through your Wave Companion to Hermes.
+            </Typography.Paragraph>
+          </View>
+        ) : null}
+      </View>
 
       <KeyboardAvoider
         bottomInset={insets.bottom}
@@ -361,9 +341,7 @@ function ConnectedChatScreen({
                   <Attachment.Action
                     accessibilityLabel={`Remove ${attachment.part.name}`}
                     testID={`remove-attachment-${attachment.id}`}
-                    onPress={() =>
-                      attachmentState.remove(attachment.id)
-                    }>
+                    onPress={() => attachmentState.remove(attachment.id)}>
                     <XIcon size={14} />
                   </Attachment.Action>
                 </Attachment.Actions>
@@ -376,22 +354,19 @@ function ConnectedChatScreen({
           <Alert variant="destructive" testID="attachment-error">
             <Alert.Indicator />
             <Alert.Content>
-              <Alert.Description>
-                {attachmentState.error}
-              </Alert.Description>
+              <Alert.Description>{attachmentState.error}</Alert.Description>
             </Alert.Content>
           </Alert>
-        ) : attachmentState.attachments.length > 0 &&
-          !input.trim() ? (
+        ) : attachmentState.attachments.length > 0 && !input.trim() ? (
           <Typography.Paragraph muted className="px-2 text-xs">
             Add a message to send the selected attachments.
           </Typography.Paragraph>
         ) : null}
 
         <InputGroup
-          className="rounded-[28px] bg-muted"
+          className="min-h-14 overflow-hidden rounded-[28px] bg-muted"
           isDisabled={busy}>
-          <InputGroup.Prefix className="ps-2 pe-1">
+          <InputGroup.Prefix className="px-2">
             <Button
               size="icon"
               variant="ghost"
@@ -408,13 +383,14 @@ function ConnectedChatScreen({
             accessibilityLabel="Message Hermes"
             className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
             placeholder="Message Hermes"
+            style={{ paddingLeft: 56, paddingRight: 56 }}
             submitBehavior="submit"
             testID="chat-composer-input"
             value={input}
             onChangeText={setInput}
             onSubmitEditing={send}
           />
-          <InputGroup.Suffix className="ps-1 pe-2">
+          <InputGroup.Suffix className="px-2">
             {busy ? (
               <Button
                 size="icon"
@@ -443,12 +419,13 @@ function ConnectedChatScreen({
                 testID="chat-live-button"
                 onPress={() =>
                   router.push({
-                    pathname:
-                      '/conversation/[sessionId]/voice',
+                    pathname: '/conversation/[sessionId]/voice',
                     params: { sessionId },
                   })
                 }>
                 <Soundwave
+                  barGap={3}
+                  barWidth={4}
                   bars={4}
                   height={18}
                   state="idle"
@@ -474,9 +451,7 @@ function ConnectedChatScreen({
             <Item
               accessibilityLabel="Take a photo"
               testID="attachment-source-camera"
-              onPress={() =>
-                selectAttachmentSource(attachmentState.takePhoto)
-              }>
+              onPress={() => selectAttachmentSource(attachmentState.takePhoto)}>
               <Item.Media variant="icon">
                 <ImageIcon size={20} />
               </Item.Media>
@@ -488,9 +463,7 @@ function ConnectedChatScreen({
             <Item
               accessibilityLabel="Choose a photo"
               testID="attachment-source-photos"
-              onPress={() =>
-                selectAttachmentSource(attachmentState.pickImage)
-              }>
+              onPress={() => selectAttachmentSource(attachmentState.pickImage)}>
               <Item.Media variant="icon">
                 <ImageIcon size={20} />
               </Item.Media>
@@ -504,9 +477,7 @@ function ConnectedChatScreen({
             <Item
               accessibilityLabel="Choose a text file"
               testID="attachment-source-files"
-              onPress={() =>
-                selectAttachmentSource(attachmentState.pickFile)
-              }>
+              onPress={() => selectAttachmentSource(attachmentState.pickFile)}>
               <Item.Media variant="icon">
                 <FileIcon size={20} />
               </Item.Media>
@@ -539,11 +510,7 @@ const ChatTurn = memo(
         testID={`chat-message-${message.id}`}>
         {!isUser ? (
           <Message.Avatar>
-            <Avatar
-              accessibilityLabel="Hermes"
-              fallback="H"
-              size="sm"
-            />
+            <Avatar accessibilityLabel="Hermes" fallback="H" size="sm" />
           </Message.Avatar>
         ) : null}
         <Message.Content>
@@ -560,9 +527,7 @@ const ChatTurn = memo(
                         ? 'rounded-ee-2xl'
                         : 'rounded-es-2xl'
                   }>
-                  <Message.BubbleContent>
-                    {part.text}
-                  </Message.BubbleContent>
+                  <Message.BubbleContent>{part.text}</Message.BubbleContent>
                 </Message.Bubble>
               );
             }
@@ -581,9 +546,7 @@ const ChatTurn = memo(
           })}
           {isStreaming && message.parts.length === 0 ? (
             <Message.Bubble>
-              <Shimmer textClassName="text-base">
-                Hermes is thinking…
-              </Shimmer>
+              <Shimmer textClassName="text-base">Hermes is thinking…</Shimmer>
             </Message.Bubble>
           ) : null}
         </Message.Content>
@@ -608,10 +571,7 @@ function ChatToolStep({
   input: Extract<WaveChatPart, { type: 'task' }>['input'];
   isLast: boolean;
   output: Extract<WaveChatPart, { type: 'task' }>['output'];
-  outputIsPreview: Extract<
-    WaveChatPart,
-    { type: 'task' }
-  >['outputIsPreview'];
+  outputIsPreview: Extract<WaveChatPart, { type: 'task' }>['outputIsPreview'];
   status: 'complete' | 'error' | 'pending' | 'running';
   testID: string;
   title: string;
@@ -632,9 +592,7 @@ function ChatToolStep({
         'rounded-xl bg-muted px-3 py-2',
         open ? 'gap-2' : 'gap-0',
         isLast ? 'rounded-es-md' : '',
-        status === 'error'
-          ? 'border border-destructive/30'
-          : '',
+        status === 'error' ? 'border border-destructive/30' : '',
       ].join(' ')}
       defaultOpen={false}
       open={open}

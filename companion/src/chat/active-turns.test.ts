@@ -30,18 +30,9 @@ test('cancels only the authenticated device and session turn', () => {
   const registry = new ActiveTurnRegistry(2);
   const turn = registry.start('device-1', 'session-1');
 
-  assert.equal(
-    registry.cancel('device-2', 'session-1', turn.turnId),
-    false,
-  );
-  assert.equal(
-    registry.cancel('device-1', 'session-2', turn.turnId),
-    false,
-  );
-  assert.equal(
-    registry.cancel('device-1', 'session-1', turn.turnId),
-    true,
-  );
+  assert.equal(registry.cancel('device-2', 'session-1', turn.turnId), false);
+  assert.equal(registry.cancel('device-1', 'session-2', turn.turnId), false);
+  assert.equal(registry.cancel('device-1', 'session-1', turn.turnId), true);
   assert.equal(turn.controller.signal.aborted, true);
   assert.equal(turn.abortReason(), 'cancelled');
 });
@@ -64,10 +55,7 @@ test('makes session deletion mutually exclusive with new turns', () => {
 
   assert.equal(registry.reserveSessionDeletion('session-1'), true);
   assert.equal(registry.reserveSessionDeletion('session-1'), false);
-  assert.throws(
-    () => registry.start('device-1', 'session-1'),
-    /being deleted/,
-  );
+  assert.throws(() => registry.start('device-1', 'session-1'), /being deleted/);
 
   registry.releaseSessionDeletion('session-1');
   const turn = registry.start('device-1', 'session-1');

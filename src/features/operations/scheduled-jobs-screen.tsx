@@ -1,12 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Redirect } from 'expo-router';
-import {
-  Alert,
-  Badge,
-  Card,
-  Spinner,
-  Typography,
-} from 'panelui-native';
+import { Alert, Badge, Card, Spinner, Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/navigation/screen-header';
@@ -14,10 +8,7 @@ import { useWaveConnection } from '@/features/connection/connection-provider';
 
 export function ScheduledJobsScreen() {
   const connection = useWaveConnection();
-  if (
-    connection.state.phase !== 'connected' ||
-    !connection.client
-  ) {
+  if (connection.state.phase !== 'connected' || !connection.client) {
     return <Redirect href="/" />;
   }
   return (

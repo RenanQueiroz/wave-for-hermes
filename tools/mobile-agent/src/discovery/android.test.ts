@@ -14,10 +14,7 @@ test('androidSdkRootFromAdbPath derives only an absolute SDK platform-tools root
     '/opt/android-sdk',
   );
   assert.equal(androidSdkRootFromAdbPath('adb'), undefined);
-  assert.equal(
-    androidSdkRootFromAdbPath('/usr/local/bin/adb'),
-    undefined,
-  );
+  assert.equal(androidSdkRootFromAdbPath('/usr/local/bin/adb'), undefined);
 });
 
 test('parseAdbDevices parses devices and preserves descriptive fields', () => {

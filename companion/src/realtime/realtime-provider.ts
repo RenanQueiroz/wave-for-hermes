@@ -7,11 +7,7 @@ export interface RealtimeFunctionCall {
 }
 
 export type RealtimeSidebandErrorKind =
-  | 'authentication'
-  | 'protocol'
-  | 'rate_limited'
-  | 'timeout'
-  | 'unavailable';
+  'authentication' | 'protocol' | 'rate_limited' | 'timeout' | 'unavailable';
 
 export class RealtimeProviderError extends Error {
   readonly kind: RealtimeSidebandErrorKind;
@@ -25,9 +21,14 @@ export class RealtimeProviderError extends Error {
       retryable?: boolean;
     },
   ) {
-    super(message, options.cause === undefined ? undefined : {
-      cause: options.cause,
-    });
+    super(
+      message,
+      options.cause === undefined
+        ? undefined
+        : {
+            cause: options.cause,
+          },
+    );
     this.name = 'RealtimeProviderError';
     this.kind = options.kind;
     this.retryable = options.retryable ?? false;
@@ -39,10 +40,7 @@ export interface RealtimeSideband {
   onClose(listener: () => void): void;
   onError(listener: (error: RealtimeProviderError) => void): void;
   onFunctionCall(listener: (call: RealtimeFunctionCall) => void): void;
-  sendFunctionResult(
-    callId: string,
-    result: WaveAskHermesToolResult,
-  ): boolean;
+  sendFunctionResult(callId: string, result: WaveAskHermesToolResult): boolean;
 }
 
 export interface RealtimeProviderCall {

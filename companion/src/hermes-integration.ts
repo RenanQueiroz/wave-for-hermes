@@ -29,8 +29,7 @@ try {
     process.exit(1);
   }
 
-  const configuredSessionId =
-    process.env.HERMES_INTEGRATION_SESSION_ID?.trim();
+  const configuredSessionId = process.env.HERMES_INTEGRATION_SESSION_ID?.trim();
   const sessionId =
     configuredSessionId ??
     (
@@ -72,8 +71,7 @@ try {
   if (
     !history.some((message) => message.role === 'user') ||
     !history.some(
-      (message) =>
-        message.role === 'assistant' && message.content.trim(),
+      (message) => message.role === 'assistant' && message.content.trim(),
     )
   ) {
     throw new HermesClientError(
@@ -90,8 +88,7 @@ try {
   let cancellationConfirmed = false;
   try {
     for await (const event of client.streamChat(sessionId, {
-      input:
-        'Write a detailed explanation of how mobile voice agents work.',
+      input: 'Write a detailed explanation of how mobile voice agents work.',
       signal: cancellation.signal,
     })) {
       if (event.type === 'run.started') {
@@ -101,8 +98,7 @@ try {
     }
   } catch (error) {
     cancellationConfirmed =
-      error instanceof HermesClientError &&
-      error.kind === 'cancelled';
+      error instanceof HermesClientError && error.kind === 'cancelled';
     if (!cancellationConfirmed) throw error;
   }
   if (!sawCancellationStart || !cancellationConfirmed) {
@@ -124,9 +120,7 @@ try {
       `Hermes integration failed (${error.kind}/${error.code ?? 'unknown'}): ${error.message}`,
     );
   } else {
-    console.error(
-      'Hermes integration failed with an unexpected local error.',
-    );
+    console.error('Hermes integration failed with an unexpected local error.');
   }
   process.exit(1);
 }

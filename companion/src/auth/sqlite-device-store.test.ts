@@ -9,9 +9,7 @@ test('redeems a short-lived pairing code exactly once', () => {
   const store = new SqliteDeviceStore(':memory:', {
     now: () => NOW,
   });
-  const pairing = store.issuePairingCode(
-    new Date('2026-07-30T01:10:00.000Z'),
-  );
+  const pairing = store.issuePairingCode(new Date('2026-07-30T01:10:00.000Z'));
 
   assert.match(pairing.code, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}$/);
   const redeemed = store.redeemPairingCode(
@@ -32,9 +30,7 @@ test('authenticates and revokes account-scoped device access', () => {
   const store = new SqliteDeviceStore(':memory:', {
     now: () => NOW,
   });
-  const pairing = store.issuePairingCode(
-    new Date('2026-07-30T01:10:00.000Z'),
-  );
+  const pairing = store.issuePairingCode(new Date('2026-07-30T01:10:00.000Z'));
   const redeemed = store.redeemPairingCode(pairing.code, 'Android emulator');
   assert.ok(redeemed);
 
@@ -63,9 +59,7 @@ test('rejects expired pairing codes', () => {
   const store = new SqliteDeviceStore(':memory:', {
     now: () => now,
   });
-  const pairing = store.issuePairingCode(
-    new Date('2026-07-30T01:01:00.000Z'),
-  );
+  const pairing = store.issuePairingCode(new Date('2026-07-30T01:01:00.000Z'));
   now = new Date('2026-07-30T01:01:00.000Z');
 
   assert.equal(

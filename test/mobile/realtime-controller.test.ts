@@ -62,9 +62,7 @@ class FakeRealtimeBackend implements RealtimeBackend {
   failNextEnd = false;
   startResponse = Promise.resolve(realtimeStartResponse());
 
-  async endRealtimeCall(
-    callId: string,
-  ): Promise<WaveEndRealtimeCallResponse> {
+  async endRealtimeCall(callId: string): Promise<WaveEndRealtimeCallResponse> {
     this.endAttempts += 1;
     if (this.failNextEnd) {
       this.failNextEnd = false;
@@ -97,10 +95,7 @@ test('connects, reduces safe activity, controls the microphone, and cleans up ex
 
   await controller.start('session-1');
   assert.equal(controller.getState().phase, 'listening');
-  assert.equal(
-    transport.prepared.connectedAnswer,
-    'v=0\r\nwave-answer',
-  );
+  assert.equal(transport.prepared.connectedAnswer, 'v=0\r\nwave-answer');
 
   transport.emit({
     activity: 'user_speaking',
@@ -118,8 +113,7 @@ test('connects, reduces safe activity, controls the microphone, and cleans up ex
   });
   assert.deepEqual(
     {
-      assistantTranscript:
-        controller.getState().assistantTranscript,
+      assistantTranscript: controller.getState().assistantTranscript,
       phase: controller.getState().phase,
       remoteAudioTracks: controller.getState().remoteAudioTracks,
     },
@@ -194,13 +188,10 @@ test('a transport failure closes native resources and the companion call', async
 
   await controller.start('session-1');
   transport.emit({
-    error: new RealtimeTransportError(
-      'The native data channel failed.',
-      {
-        kind: 'connection',
-        retryable: true,
-      },
-    ),
+    error: new RealtimeTransportError('The native data channel failed.', {
+      kind: 'connection',
+      retryable: true,
+    }),
     type: 'error',
   });
   await waitFor(() => controller.getState().phase === 'error');
@@ -238,11 +229,7 @@ test('surfaces transient disconnects and returns to listening when the peer reco
   await controller.stop();
 });
 
-function backendError(
-  message: string,
-  kind: string,
-  retryable: boolean,
-) {
+function backendError(message: string, kind: string, retryable: boolean) {
   return Object.assign(new Error(message), {
     kind,
     retryable,
@@ -268,10 +255,7 @@ function realtimeStartResponse(): WaveStartRealtimeCallResponse {
   };
 }
 
-async function waitFor(
-  condition: () => boolean,
-  timeoutMs = 1_000,
-) {
+async function waitFor(condition: () => boolean, timeoutMs = 1_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (condition()) return;

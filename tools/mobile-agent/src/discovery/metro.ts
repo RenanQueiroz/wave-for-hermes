@@ -1,5 +1,10 @@
 import { runCommand } from '../process.js';
-import type { Diagnostic, InspectorTarget, MetroDiscovery, MetroServer } from '../types.js';
+import type {
+  Diagnostic,
+  InspectorTarget,
+  MetroDiscovery,
+  MetroServer,
+} from '../types.js';
 import type { MobileAgentConfig } from '../config.js';
 
 interface RawInspectorTarget {
@@ -16,7 +21,9 @@ interface RawInspectorTarget {
   };
 }
 
-export async function discoverMetro(config: MobileAgentConfig): Promise<MetroDiscovery> {
+export async function discoverMetro(
+  config: MobileAgentConfig,
+): Promise<MetroDiscovery> {
   const diagnostics: Diagnostic[] = [];
   const urls = await candidateMetroUrls(config);
   const servers = (
@@ -52,7 +59,9 @@ export async function discoverMetro(config: MobileAgentConfig): Promise<MetroDis
         'Keep the Wave development build connected in Radon, or set MOBILE_AGENT_METRO_URL explicitly.',
     });
   } else {
-    const target = selected.targets.find((candidate) => candidate.appId === 'com.renanqueiroz.wave');
+    const target = selected.targets.find(
+      (candidate) => candidate.appId === 'com.renanqueiroz.wave',
+    );
     diagnostics.push({
       code: target ? 'METRO_AND_CDP_READY' : 'METRO_READY',
       status: target ? 'ok' : 'warning',
@@ -69,7 +78,9 @@ export async function discoverMetro(config: MobileAgentConfig): Promise<MetroDis
   };
 }
 
-export async function candidateMetroUrls(config: MobileAgentConfig): Promise<string[]> {
+export async function candidateMetroUrls(
+  config: MobileAgentConfig,
+): Promise<string[]> {
   if (config.metroUrl) {
     return [normalizeBaseUrl(config.metroUrl)];
   }
@@ -86,7 +97,9 @@ export async function candidateMetroUrls(config: MobileAgentConfig): Promise<str
 
 async function listeningNodePorts(): Promise<number[]> {
   if (process.platform === 'win32') {
-    const result = await runCommand('netstat', ['-ano', '-p', 'tcp'], { timeoutMs: 5_000 });
+    const result = await runCommand('netstat', ['-ano', '-p', 'tcp'], {
+      timeoutMs: 5_000,
+    });
     if (!result.ok) {
       return [];
     }
@@ -114,15 +127,20 @@ async function listeningNodePorts(): Promise<number[]> {
 }
 
 function uniquePorts(values: number[]): number[] {
-  return [...new Set(values.filter((value) => Number.isInteger(value) && value > 0 && value <= 65_535))].slice(
-    0,
-    100,
-  );
+  return [
+    ...new Set(
+      values.filter(
+        (value) => Number.isInteger(value) && value > 0 && value <= 65_535,
+      ),
+    ),
+  ].slice(0, 100);
 }
 
 async function probeMetro(url: string): Promise<MetroServer | undefined> {
   try {
-    const statusResponse = await fetch(`${url}/status`, { signal: AbortSignal.timeout(750) });
+    const statusResponse = await fetch(`${url}/status`, {
+      signal: AbortSignal.timeout(750),
+    });
     if (!statusResponse.ok) {
       return undefined;
     }
@@ -133,10 +151,14 @@ async function probeMetro(url: string): Promise<MetroServer | undefined> {
 
     let targets: InspectorTarget[] = [];
     try {
-      const response = await fetch(`${url}/json/list`, { signal: AbortSignal.timeout(1_500) });
+      const response = await fetch(`${url}/json/list`, {
+        signal: AbortSignal.timeout(1_500),
+      });
       if (response.ok) {
         const raw = (await response.json()) as RawInspectorTarget[];
-        targets = raw.map(normalizeInspectorTarget).filter((target): target is InspectorTarget => target !== undefined);
+        targets = raw
+          .map(normalizeInspectorTarget)
+          .filter((target): target is InspectorTarget => target !== undefined);
       }
     } catch {
       // Metro can be ready before an inspector target is connected.
@@ -154,21 +176,31 @@ async function probeMetro(url: string): Promise<MetroServer | undefined> {
   }
 }
 
-function normalizeInspectorTarget(raw: RawInspectorTarget): InspectorTarget | undefined {
+function normalizeInspectorTarget(
+  raw: RawInspectorTarget,
+): InspectorTarget | undefined {
   if (typeof raw.id !== 'string') {
     return undefined;
   }
   return {
     id: raw.id,
     ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
-    ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
+    ...(typeof raw.description === 'string'
+      ? { description: raw.description }
+      : {}),
     ...(typeof raw.appId === 'string' ? { appId: raw.appId } : {}),
-    ...(typeof raw.deviceName === 'string' ? { deviceName: raw.deviceName } : {}),
+    ...(typeof raw.deviceName === 'string'
+      ? { deviceName: raw.deviceName }
+      : {}),
     ...(typeof raw.webSocketDebuggerUrl === 'string'
       ? { webSocketDebuggerUrl: raw.webSocketDebuggerUrl }
       : {}),
-    ...(typeof raw.reactNative?.capabilities?.supportsMultipleDebuggers === 'boolean'
-      ? { supportsMultipleDebuggers: raw.reactNative.capabilities.supportsMultipleDebuggers }
+    ...(typeof raw.reactNative?.capabilities?.supportsMultipleDebuggers ===
+    'boolean'
+      ? {
+          supportsMultipleDebuggers:
+            raw.reactNative.capabilities.supportsMultipleDebuggers,
+        }
       : {}),
   };
 }

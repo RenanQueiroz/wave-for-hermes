@@ -17,18 +17,25 @@ export async function discoverAndroid(
       code: 'ADB_NOT_FOUND',
       status: 'warning',
       message: 'ADB was not found. Android discovery is unavailable.',
-      recovery: 'Install Android platform-tools and set ANDROID_HOME or add adb to PATH.',
+      recovery:
+        'Install Android platform-tools and set ANDROID_HOME or add adb to PATH.',
     });
     return { devices: [], diagnostics };
   }
 
-  const listed = await runCommand(adbPath, ['devices', '-l'], { timeoutMs: 10_000 });
+  const listed = await runCommand(adbPath, ['devices', '-l'], {
+    timeoutMs: 10_000,
+  });
   if (!listed.ok) {
     diagnostics.push({
       code: 'ADB_LIST_FAILED',
       status: 'warning',
-      message: listed.stderr.trim() || listed.error || 'Unable to list Android devices.',
-      recovery: 'Start an Android emulator from Radon and confirm adb devices succeeds.',
+      message:
+        listed.stderr.trim() ||
+        listed.error ||
+        'Unable to list Android devices.',
+      recovery:
+        'Start an Android emulator from Radon and confirm adb devices succeeds.',
     });
     return { adbPath, devices: [], diagnostics };
   }
@@ -44,7 +51,8 @@ export async function discoverAndroid(
         ['-s', device.serial, 'shell', 'pm', 'path', ANDROID_PACKAGE],
         { timeoutMs: 5_000 },
       );
-      const appInstalled = installed.ok && installed.stdout.trim().startsWith('package:');
+      const appInstalled =
+        installed.ok && installed.stdout.trim().startsWith('package:');
       const [running, activity] = appInstalled
         ? await Promise.all([
             runCommand(
@@ -97,7 +105,9 @@ export function selectAndroidDevice(
 ): { selected?: AndroidDevice; diagnostics: Diagnostic[] } {
   const online = devices.filter((device) => device.state === 'device');
   if (configuredSerial) {
-    const configured = devices.find((device) => device.serial === configuredSerial);
+    const configured = devices.find(
+      (device) => device.serial === configuredSerial,
+    );
     if (!configured) {
       return {
         diagnostics: [
@@ -118,7 +128,8 @@ export function selectAndroidDevice(
             code: 'ANDROID_DEVICE_NOT_ONLINE',
             status: 'warning',
             message: `Configured Android device ${configuredSerial} is ${configured.state}, not online.`,
-            recovery: 'Wait for the device to become online and rerun mobile_doctor.',
+            recovery:
+              'Wait for the device to become online and rerun mobile_doctor.',
           },
         ],
       };
@@ -135,8 +146,10 @@ export function selectAndroidDevice(
         {
           code: 'NO_ANDROID_DEVICE',
           status: 'warning',
-          message: 'No online Android emulator or device is currently visible to ADB.',
-          recovery: 'Start one Android emulator from Radon before beginning the Android phase.',
+          message:
+            'No online Android emulator or device is currently visible to ADB.',
+          recovery:
+            'Start one Android emulator from Radon before beginning the Android phase.',
         },
       ],
     };
@@ -161,16 +174,20 @@ export function selectAndroidDevice(
   };
 }
 
-function androidReadyDiagnostic(device: AndroidDevice, explicit: boolean): Diagnostic {
+function androidReadyDiagnostic(
+  device: AndroidDevice,
+  explicit: boolean,
+): Diagnostic {
   const prefix = explicit ? `Selected ${device.serial}` : device.serial;
   return {
     code: explicit ? 'ANDROID_DEVICE_SELECTED' : 'ANDROID_DEVICE_READY',
     status: device.appInstalled ? 'ok' : 'warning',
-    message: device.appInstalled && device.appRunning
-      ? `${prefix} is online with ${ANDROID_PACKAGE} installed and running.`
-      : device.appInstalled
-        ? `${prefix} is online with ${ANDROID_PACKAGE} installed but not running.`
-        : `${prefix} is online, but ${ANDROID_PACKAGE} is not installed.`,
+    message:
+      device.appInstalled && device.appRunning
+        ? `${prefix} is online with ${ANDROID_PACKAGE} installed and running.`
+        : device.appInstalled
+          ? `${prefix} is online with ${ANDROID_PACKAGE} installed but not running.`
+          : `${prefix} is online, but ${ANDROID_PACKAGE} is not installed.`,
   };
 }
 
@@ -201,7 +218,9 @@ export function androidSdkRootFromAdbPath(
   return dirname(platformTools);
 }
 
-async function resolveAdbPath(env: NodeJS.ProcessEnv): Promise<string | undefined> {
+async function resolveAdbPath(
+  env: NodeJS.ProcessEnv,
+): Promise<string | undefined> {
   const executable = process.platform === 'win32' ? 'adb.exe' : 'adb';
   const sdkRoots = [env.ANDROID_HOME, env.ANDROID_SDK_ROOT].filter(
     (value): value is string => Boolean(value),
@@ -220,6 +239,8 @@ async function resolveAdbPath(env: NodeJS.ProcessEnv): Promise<string | undefine
     }
   }
 
-  const direct = await runCommand(executable, ['version'], { timeoutMs: 5_000 });
+  const direct = await runCommand(executable, ['version'], {
+    timeoutMs: 5_000,
+  });
   return direct.ok ? executable : undefined;
 }

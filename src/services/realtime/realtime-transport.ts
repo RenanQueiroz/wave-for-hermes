@@ -2,15 +2,10 @@ export const WAVE_MAX_REALTIME_EVENT_BYTES = 64 * 1024;
 export const WAVE_MAX_REALTIME_TRANSCRIPT_LENGTH = 24_000;
 
 export type RealtimeConnectionState =
-  | 'connected'
-  | 'connecting'
-  | 'disconnected'
-  | 'failed';
+  'connected' | 'connecting' | 'disconnected' | 'failed';
 
 export type RealtimeActivity =
-  | 'assistant_speaking'
-  | 'listening'
-  | 'user_speaking';
+  'assistant_speaking' | 'listening' | 'user_speaking';
 
 export type RealtimeTransportEvent =
   | {

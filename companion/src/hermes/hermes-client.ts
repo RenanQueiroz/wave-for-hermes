@@ -1,4 +1,7 @@
-import { parseHermesCapabilities, reportHermesCapabilities } from './hermes-capabilities.ts';
+import {
+  parseHermesCapabilities,
+  reportHermesCapabilities,
+} from './hermes-capabilities.ts';
 import { HermesClientError, redactHermesErrorText } from './hermes-errors.ts';
 import { HermesSseParser, type HermesSseFrame } from './hermes-sse.ts';
 import type {
@@ -61,7 +64,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function optionalNumber(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function optionalString(value: unknown) {
@@ -155,8 +160,7 @@ function parseToolCalls(value: unknown): HermesToolCall[] | undefined {
     if (!isRecord(toolCall)) {
       return [];
     }
-    const id =
-      optionalString(toolCall.id) ?? optionalString(toolCall.call_id);
+    const id = optionalString(toolCall.id) ?? optionalString(toolCall.call_id);
     if (!id) {
       return [];
     }
@@ -165,9 +169,7 @@ function parseToolCalls(value: unknown): HermesToolCall[] | undefined {
     const name = optionalString(fn.name);
     return [
       {
-        ...(argumentsText === undefined
-          ? {}
-          : { arguments: argumentsText }),
+        ...(argumentsText === undefined ? {} : { arguments: argumentsText }),
         id,
         ...(name ? { name } : {}),
       },
@@ -246,12 +248,18 @@ function parseScheduledJob(value: unknown): HermesScheduledJob {
   };
 }
 
-function parseMessage(value: unknown, fallbackSessionId: string): HermesConversationMessage {
+function parseMessage(
+  value: unknown,
+  fallbackSessionId: string,
+): HermesConversationMessage {
   if (!isRecord(value)) {
-    throw new HermesClientError('Hermes returned an invalid conversation message.', {
-      code: 'invalid_message',
-      kind: 'protocol',
-    });
+    throw new HermesClientError(
+      'Hermes returned an invalid conversation message.',
+      {
+        code: 'invalid_message',
+        kind: 'protocol',
+      },
+    );
   }
 
   return {
@@ -261,8 +269,7 @@ function parseMessage(value: unknown, fallbackSessionId: string): HermesConversa
     sessionId: optionalString(value.session_id) ?? fallbackSessionId,
     timestamp: optionalNumber(value.timestamp),
     toolCallId:
-      optionalString(value.tool_call_id) ??
-      optionalString(value.call_id),
+      optionalString(value.tool_call_id) ?? optionalString(value.call_id),
     toolCalls: parseToolCalls(value.tool_calls),
     toolName: optionalString(value.tool_name),
   };
@@ -295,11 +302,17 @@ export function normalizeHermesBaseUrl(
     });
   }
 
-  if (url.protocol !== 'https:' && !(options.allowInsecureHttp && url.protocol === 'http:')) {
-    throw new HermesClientError('Hermes must use HTTPS outside explicit local development.', {
-      code: 'insecure_base_url',
-      kind: 'configuration',
-    });
+  if (
+    url.protocol !== 'https:' &&
+    !(options.allowInsecureHttp && url.protocol === 'http:')
+  ) {
+    throw new HermesClientError(
+      'Hermes must use HTTPS outside explicit local development.',
+      {
+        code: 'insecure_base_url',
+        kind: 'configuration',
+      },
+    );
   }
   if (url.username || url.password || url.search || url.hash) {
     throw new HermesClientError(
@@ -315,7 +328,10 @@ export function normalizeHermesBaseUrl(
   return url.toString().replace(/\/$/, '');
 }
 
-function createRequestContext(externalSignal: AbortSignal | undefined, timeoutMs: number) {
+function createRequestContext(
+  externalSignal: AbortSignal | undefined,
+  timeoutMs: number,
+) {
   const controller = new AbortController();
   let didTimeOut = false;
 
@@ -404,12 +420,15 @@ function normalizeRequestFailure(error: unknown, context: RequestContext) {
     });
   }
   if (context.timedOut()) {
-    return new HermesClientError('Hermes did not respond before the request timed out.', {
-      cause: error,
-      code: 'request_timeout',
-      kind: 'timeout',
-      retryable: true,
-    });
+    return new HermesClientError(
+      'Hermes did not respond before the request timed out.',
+      {
+        cause: error,
+        code: 'request_timeout',
+        kind: 'timeout',
+        retryable: true,
+      },
+    );
   }
   return new HermesClientError('Could not reach the Hermes API Server.', {
     cause: error,
@@ -419,12 +438,18 @@ function normalizeRequestFailure(error: unknown, context: RequestContext) {
   });
 }
 
-function parseStreamFrame(frame: HermesSseFrame, bearerToken: string): HermesStreamEvent {
+function parseStreamFrame(
+  frame: HermesSseFrame,
+  bearerToken: string,
+): HermesStreamEvent {
   if (!STREAM_EVENT_NAMES.has(frame.event)) {
-    throw new HermesClientError(`Hermes sent an unsupported stream event: ${frame.event}.`, {
-      code: 'unknown_stream_event',
-      kind: 'protocol',
-    });
+    throw new HermesClientError(
+      `Hermes sent an unsupported stream event: ${frame.event}.`,
+      {
+        code: 'unknown_stream_event',
+        kind: 'protocol',
+      },
+    );
   }
 
   let payload: unknown;
@@ -478,13 +503,8 @@ function parseStreamFrame(frame: HermesSseFrame, bearerToken: string): HermesStr
         ...base,
         messageId: optionalString(payload.message_id),
         status: frame.event.slice('tool.'.length) as
-          | 'completed'
-          | 'failed'
-          | 'progress'
-          | 'started',
-        ...(toolInput === undefined
-          ? {}
-          : { toolInput }),
+          'completed' | 'failed' | 'progress' | 'started',
+        ...(toolInput === undefined ? {} : { toolInput }),
         toolName: optionalString(payload.tool_name),
         ...(toolOutput === undefined
           ? {}
@@ -533,7 +553,10 @@ export class HttpHermesClient implements HermesClient {
   private readonly fetch: HermesFetch;
   private readonly requestTimeoutMs: number;
 
-  constructor(config: HermesConnectionConfig, options: HttpHermesClientOptions = {}) {
+  constructor(
+    config: HermesConnectionConfig,
+    options: HttpHermesClientOptions = {},
+  ) {
     const bearerToken = config.bearerToken.trim();
     if (!bearerToken) {
       throw new HermesClientError('Enter a Hermes API Server bearer key.', {
@@ -546,7 +569,8 @@ export class HttpHermesClient implements HermesClient {
     this.bearerToken = bearerToken;
     // Node.js 24 provides the standard fetch implementation used by the companion.
     this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.requestTimeoutMs =
+      options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   async createSession(input: HermesCreateSessionInput = {}) {
@@ -564,18 +588,18 @@ export class HttpHermesClient implements HermesClient {
       signal: input.signal,
     });
     if (!isRecord(payload) || !isRecord(payload.session)) {
-      throw new HermesClientError('Hermes returned an invalid created session.', {
-        code: 'invalid_session',
-        kind: 'protocol',
-      });
+      throw new HermesClientError(
+        'Hermes returned an invalid created session.',
+        {
+          code: 'invalid_session',
+          kind: 'protocol',
+        },
+      );
     }
     return parseSession(payload.session);
   }
 
-  async deleteSession(
-    sessionId: string,
-    options: HermesRequestOptions = {},
-  ) {
+  async deleteSession(sessionId: string, options: HermesRequestOptions = {}) {
     validateIdentifier(sessionId, 'Session ID');
     const payload = await this.requestJson(
       `/api/sessions/${encodeURIComponent(sessionId)}`,
@@ -600,10 +624,7 @@ export class HttpHermesClient implements HermesClient {
     return payload.deleted;
   }
 
-  async getSession(
-    sessionId: string,
-    options: HermesRequestOptions = {},
-  ) {
+  async getSession(sessionId: string, options: HermesRequestOptions = {}) {
     validateIdentifier(sessionId, 'Session ID');
     const payload = await this.requestJson(
       `/api/sessions/${encodeURIComponent(sessionId)}`,
@@ -618,7 +639,10 @@ export class HttpHermesClient implements HermesClient {
     return parseSession(payload.session);
   }
 
-  async getSessionMessages(sessionId: string, options: HermesRequestOptions = {}) {
+  async getSessionMessages(
+    sessionId: string,
+    options: HermesRequestOptions = {},
+  ) {
     validateIdentifier(sessionId, 'Session ID');
     const payload = await this.requestJson(
       `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
@@ -631,14 +655,15 @@ export class HttpHermesClient implements HermesClient {
       });
     }
     const resolvedSessionId = optionalString(payload.session_id) ?? sessionId;
-    return payload.data.map((message) => parseMessage(message, resolvedSessionId));
+    return payload.data.map((message) =>
+      parseMessage(message, resolvedSessionId),
+    );
   }
 
   async listScheduledJobs(options: HermesRequestOptions = {}) {
-    const payload = await this.requestJson(
-      '/api/jobs?include_disabled=true',
-      { signal: options.signal },
-    );
+    const payload = await this.requestJson('/api/jobs?include_disabled=true', {
+      signal: options.signal,
+    });
     if (
       !isRecord(payload) ||
       !Array.isArray(payload.jobs) ||
@@ -667,9 +692,12 @@ export class HttpHermesClient implements HermesClient {
       query.set('source', options.source);
     }
 
-    const payload = await this.requestJson(`/api/sessions?${query.toString()}`, {
-      signal: options.signal,
-    });
+    const payload = await this.requestJson(
+      `/api/sessions?${query.toString()}`,
+      {
+        signal: options.signal,
+      },
+    );
     if (!isRecord(payload) || !Array.isArray(payload.data)) {
       throw new HermesClientError('Hermes returned an invalid session list.', {
         code: 'invalid_session_list',
@@ -710,7 +738,9 @@ export class HttpHermesClient implements HermesClient {
     };
   }
 
-  async probeCapabilities(options: HermesRequestOptions = {}): Promise<HermesCapabilityReport> {
+  async probeCapabilities(
+    options: HermesRequestOptions = {},
+  ): Promise<HermesCapabilityReport> {
     const payload = await this.requestJson('/v1/capabilities', {
       signal: options.signal,
     });
@@ -726,10 +756,7 @@ export class HttpHermesClient implements HermesClient {
     });
   }
 
-  async updateSession(
-    sessionId: string,
-    input: HermesUpdateSessionInput,
-  ) {
+  async updateSession(sessionId: string, input: HermesUpdateSessionInput) {
     validateIdentifier(sessionId, 'Session ID');
     const title = input.title.trim();
     if (!title) {
@@ -777,7 +804,9 @@ export class HttpHermesClient implements HermesClient {
     let response: Response;
     try {
       response = await this.fetch(
-        this.buildUrl(`/api/sessions/${encodeURIComponent(sessionId)}/chat/stream`),
+        this.buildUrl(
+          `/api/sessions/${encodeURIComponent(sessionId)}/chat/stream`,
+        ),
         {
           body: JSON.stringify({
             input: input.input,
@@ -803,19 +832,26 @@ export class HttpHermesClient implements HermesClient {
     }
     if (!response.body) {
       context.cleanup();
-      throw new HermesClientError('Hermes returned a stream without a response body.', {
-        code: 'missing_stream_body',
-        kind: 'protocol',
-      });
+      throw new HermesClientError(
+        'Hermes returned a stream without a response body.',
+        {
+          code: 'missing_stream_body',
+          kind: 'protocol',
+        },
+      );
     }
 
-    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    const contentType =
+      response.headers.get('content-type')?.toLowerCase() ?? '';
     if (!contentType.startsWith('text/event-stream')) {
       context.cleanup();
-      throw new HermesClientError('Hermes returned an unexpected stream content type.', {
-        code: 'invalid_stream_content_type',
-        kind: 'protocol',
-      });
+      throw new HermesClientError(
+        'Hermes returned an unexpected stream content type.',
+        {
+          code: 'invalid_stream_content_type',
+          kind: 'protocol',
+        },
+      );
     }
 
     const reader = response.body.getReader();
@@ -830,10 +866,13 @@ export class HttpHermesClient implements HermesClient {
         }
         for (const frame of parser.push(value)) {
           if (sawDone) {
-            throw new HermesClientError('Hermes sent data after the stream completed.', {
-              code: 'data_after_done',
-              kind: 'protocol',
-            });
+            throw new HermesClientError(
+              'Hermes sent data after the stream completed.',
+              {
+                code: 'data_after_done',
+                kind: 'protocol',
+              },
+            );
           }
           const event = parseStreamFrame(frame, this.bearerToken);
           sawDone = event.type === 'done';
@@ -843,10 +882,13 @@ export class HttpHermesClient implements HermesClient {
 
       for (const frame of parser.finish()) {
         if (sawDone) {
-          throw new HermesClientError('Hermes sent data after the stream completed.', {
-            code: 'data_after_done',
-            kind: 'protocol',
-          });
+          throw new HermesClientError(
+            'Hermes sent data after the stream completed.',
+            {
+              code: 'data_after_done',
+              kind: 'protocol',
+            },
+          );
         }
         const event = parseStreamFrame(frame, this.bearerToken);
         sawDone = event.type === 'done';
@@ -854,10 +896,13 @@ export class HttpHermesClient implements HermesClient {
       }
 
       if (!sawDone) {
-        throw new HermesClientError('Hermes closed the event stream before completion.', {
-          code: 'truncated_sse_stream',
-          kind: 'protocol',
-        });
+        throw new HermesClientError(
+          'Hermes closed the event stream before completion.',
+          {
+            code: 'truncated_sse_stream',
+            kind: 'protocol',
+          },
+        );
       }
     } catch (error) {
       throw normalizeRequestFailure(error, context);
@@ -896,7 +941,8 @@ export class HttpHermesClient implements HermesClient {
 
     try {
       response = await this.fetch(this.buildUrl(path), {
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body:
+          options.body === undefined ? undefined : JSON.stringify(options.body),
         headers: this.headers(
           options.body === undefined
             ? { Accept: 'application/json' }

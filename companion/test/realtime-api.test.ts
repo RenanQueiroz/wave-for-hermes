@@ -283,9 +283,7 @@ async function* emptyHermesStream(): AsyncGenerator<HermesStreamEvent> {
 }
 
 function pairDevice(store: SqliteDeviceStore, name: string) {
-  const pairing = store.issuePairingCode(
-    new Date('2026-07-30T04:10:00.000Z'),
-  );
+  const pairing = store.issuePairingCode(new Date('2026-07-30T04:10:00.000Z'));
   const paired = store.redeemPairingCode(pairing.code, name);
   assert.ok(paired);
   return paired;

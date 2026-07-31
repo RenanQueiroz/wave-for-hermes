@@ -25,7 +25,10 @@ export interface NativeDriver {
   setValue?(text: string, elementId: string): Promise<unknown>;
   back?(): Promise<unknown>;
   activateApp?(applicationId: string): Promise<unknown>;
-  execute?(command: string, parameters?: Record<string, unknown>): Promise<unknown>;
+  execute?(
+    command: string,
+    parameters?: Record<string, unknown>,
+  ): Promise<unknown>;
   executeScript?(command: string, parameters: unknown[]): Promise<unknown>;
   elementSendKeys?(elementId: string, value: string): Promise<unknown>;
   mobilePressKey?(
@@ -51,7 +54,10 @@ export interface ResolvedDriver {
   applicationId: string;
 }
 
-export function resolveNativeDriver(core: AppiumMcpCore, requestedSessionId?: string): ResolvedDriver {
+export function resolveNativeDriver(
+  core: AppiumMcpCore,
+  requestedSessionId?: string,
+): ResolvedDriver {
   const sessionId = requestedSessionId ?? core.getSessionId() ?? undefined;
   if (!sessionId) {
     throw new Error('No Appium session is active. Create a session first.');
@@ -61,22 +67,29 @@ export function resolveNativeDriver(core: AppiumMcpCore, requestedSessionId?: st
   if (!session || !driver) {
     throw new Error(`Appium session ${sessionId} is not available.`);
   }
-  const platformName = session.metadata.capabilities.platformName ?? session.metadata.platform;
+  const platformName =
+    session.metadata.capabilities.platformName ?? session.metadata.platform;
   const platform =
-    typeof platformName === 'string' && platformName.toLocaleLowerCase() === 'android'
+    typeof platformName === 'string' &&
+    platformName.toLocaleLowerCase() === 'android'
       ? 'android'
-      : typeof platformName === 'string' && platformName.toLocaleLowerCase() === 'ios'
+      : typeof platformName === 'string' &&
+          platformName.toLocaleLowerCase() === 'ios'
         ? 'ios'
         : undefined;
   if (!platform) {
-    throw new Error(`Session ${sessionId} is not an iOS or Android native session.`);
+    throw new Error(
+      `Session ${sessionId} is not an iOS or Android native session.`,
+    );
   }
   if (
     typeof driver.getPageSource !== 'function' ||
     typeof driver.findElement !== 'function' ||
     typeof driver.performActions !== 'function'
   ) {
-    throw new Error(`Session ${sessionId} does not expose the required native driver commands.`);
+    throw new Error(
+      `Session ${sessionId} does not expose the required native driver commands.`,
+    );
   }
   const capabilities = session.metadata.capabilities as Record<string, unknown>;
   const deviceId = firstString(
@@ -86,7 +99,9 @@ export function resolveNativeDriver(core: AppiumMcpCore, requestedSessionId?: st
     capabilities.deviceName,
   );
   if (!deviceId) {
-    throw new Error(`Session ${sessionId} does not identify its target device.`);
+    throw new Error(
+      `Session ${sessionId} does not identify its target device.`,
+    );
   }
   return {
     driver,
@@ -104,7 +119,9 @@ export async function findNativeElementId(
 ): Promise<string> {
   const result = await driver.findElement(strategy, selector);
   if (!result || typeof result !== 'object') {
-    throw new Error(`The native driver returned no element for ${strategy}=${selector}.`);
+    throw new Error(
+      `The native driver returned no element for ${strategy}=${selector}.`,
+    );
   }
   const element = result as Record<string, unknown>;
   const elementId =
@@ -112,13 +129,21 @@ export async function findNativeElementId(
     element.ELEMENT ??
     element.elementId;
   if (typeof elementId !== 'string' || elementId.length === 0) {
-    throw new Error(`The native driver returned an element without an ID for ${strategy}=${selector}.`);
+    throw new Error(
+      `The native driver returned an element without an ID for ${strategy}=${selector}.`,
+    );
   }
   return elementId;
 }
 
-export async function clickNativeElement(driver: NativeDriver, elementId: string): Promise<void> {
-  if (driver.constructor?.name === 'Client' && typeof driver.elementClick === 'function') {
+export async function clickNativeElement(
+  driver: NativeDriver,
+  elementId: string,
+): Promise<void> {
+  if (
+    driver.constructor?.name === 'Client' &&
+    typeof driver.elementClick === 'function'
+  ) {
     await driver.elementClick(elementId);
     return;
   }
@@ -133,13 +158,20 @@ export async function clickNativeElement(driver: NativeDriver, elementId: string
   throw new Error('The active native driver does not support element clicks.');
 }
 
-export async function tapCoordinates(driver: NativeDriver, bounds: ElementBounds): Promise<void> {
+export async function tapCoordinates(
+  driver: NativeDriver,
+  bounds: ElementBounds,
+): Promise<void> {
   const x = Math.round(bounds.x + bounds.width / 2);
   const y = Math.round(bounds.y + bounds.height / 2);
   await tapPoint(driver, x, y);
 }
 
-export async function tapPoint(driver: NativeDriver, x: number, y: number): Promise<void> {
+export async function tapPoint(
+  driver: NativeDriver,
+  x: number,
+  y: number,
+): Promise<void> {
   await driver.performActions([
     {
       type: 'pointer',
@@ -245,9 +277,13 @@ export async function swipePoints(
   ]);
 }
 
-export async function getNativeWindowRect(driver: NativeDriver): Promise<WindowRect> {
+export async function getNativeWindowRect(
+  driver: NativeDriver,
+): Promise<WindowRect> {
   if (typeof driver.getWindowRect !== 'function') {
-    throw new Error('The active native driver does not support window rectangle queries.');
+    throw new Error(
+      'The active native driver does not support window rectangle queries.',
+    );
   }
   const rect = await driver.getWindowRect();
   if (
@@ -258,7 +294,9 @@ export async function getNativeWindowRect(driver: NativeDriver): Promise<WindowR
     rect.width <= 0 ||
     rect.height <= 0
   ) {
-    throw new Error('The active native driver returned an invalid window rectangle.');
+    throw new Error(
+      'The active native driver returned an invalid window rectangle.',
+    );
   }
   return rect;
 }
@@ -268,7 +306,9 @@ export async function getNativeElementRect(
   elementId: string,
 ): Promise<WindowRect> {
   if (typeof driver.getElementRect !== 'function') {
-    throw new Error('The active native driver does not support element rectangle queries.');
+    throw new Error(
+      'The active native driver does not support element rectangle queries.',
+    );
   }
   const rect = await driver.getElementRect(elementId);
   if (
@@ -279,7 +319,9 @@ export async function getNativeElementRect(
     rect.width <= 0 ||
     rect.height <= 0
   ) {
-    throw new Error(`The native driver returned invalid bounds for element ${elementId}.`);
+    throw new Error(
+      `The native driver returned invalid bounds for element ${elementId}.`,
+    );
   }
   return rect;
 }
@@ -298,7 +340,9 @@ export async function setNativeElementValue(
       await driver.elementSendKeys(elementId, value);
       return;
     }
-    throw new Error('The active native driver does not support setting element values.');
+    throw new Error(
+      'The active native driver does not support setting element values.',
+    );
   }
   await driver.setValue(value, elementId);
 }
@@ -309,7 +353,9 @@ export async function pressNativeKey(
 ): Promise<void> {
   if (key === 'back') {
     if (typeof resolved.driver.back !== 'function') {
-      throw new Error('The active native driver does not support back navigation.');
+      throw new Error(
+        'The active native driver does not support back navigation.',
+      );
     }
     await resolved.driver.back();
     return;
@@ -319,24 +365,34 @@ export async function pressNativeKey(
       await resolved.driver.mobilePressKey(3);
       return;
     }
-    await executeMobileCommand(resolved.driver, 'mobile: pressKey', { keycode: 3 });
+    await executeMobileCommand(resolved.driver, 'mobile: pressKey', {
+      keycode: 3,
+    });
     return;
   }
   if (typeof resolved.driver.mobilePressButton === 'function') {
     await resolved.driver.mobilePressButton('home');
     return;
   }
-  await executeMobileCommand(resolved.driver, 'mobile: pressButton', { name: 'home' });
+  await executeMobileCommand(resolved.driver, 'mobile: pressButton', {
+    name: 'home',
+  });
 }
 
-export async function activateNativeApplication(resolved: ResolvedDriver): Promise<void> {
+export async function activateNativeApplication(
+  resolved: ResolvedDriver,
+): Promise<void> {
   if (typeof resolved.driver.activateApp !== 'function') {
-    throw new Error('The active native driver does not support application activation.');
+    throw new Error(
+      'The active native driver does not support application activation.',
+    );
   }
   await resolved.driver.activateApp(resolved.applicationId);
 }
 
-export async function terminateNativeApplication(resolved: ResolvedDriver): Promise<void> {
+export async function terminateNativeApplication(
+  resolved: ResolvedDriver,
+): Promise<void> {
   await executeMobileCommand(
     resolved.driver,
     'mobile: terminateApp',
@@ -350,7 +406,9 @@ export async function backgroundNativeApplication(
   resolved: ResolvedDriver,
   seconds: number,
 ): Promise<void> {
-  await executeMobileCommand(resolved.driver, 'mobile: backgroundApp', { seconds });
+  await executeMobileCommand(resolved.driver, 'mobile: backgroundApp', {
+    seconds,
+  });
 }
 
 export async function openNativeDeepLink(
@@ -359,7 +417,11 @@ export async function openNativeDeepLink(
   waitForLaunch: boolean,
 ): Promise<void> {
   if (typeof resolved.driver.mobileDeepLink === 'function') {
-    await resolved.driver.mobileDeepLink(url, resolved.applicationId, waitForLaunch);
+    await resolved.driver.mobileDeepLink(
+      url,
+      resolved.applicationId,
+      waitForLaunch,
+    );
     return;
   }
   await executeMobileCommand(
@@ -371,7 +433,9 @@ export async function openNativeDeepLink(
   );
 }
 
-export async function captureNativeScreenshot(driver: NativeDriver): Promise<string> {
+export async function captureNativeScreenshot(
+  driver: NativeDriver,
+): Promise<string> {
   const screenshot =
     typeof driver.getScreenshot === 'function'
       ? await driver.getScreenshot()
@@ -379,7 +443,9 @@ export async function captureNativeScreenshot(driver: NativeDriver): Promise<str
         ? await driver.takeScreenshot()
         : undefined;
   if (typeof screenshot !== 'string' || screenshot.length === 0) {
-    throw new Error('The active native driver does not support screenshot capture.');
+    throw new Error(
+      'The active native driver does not support screenshot capture.',
+    );
   }
   return screenshot;
 }
@@ -400,5 +466,7 @@ async function executeMobileCommand(
 }
 
 function firstString(...values: unknown[]): string | undefined {
-  return values.find((value): value is string => typeof value === 'string' && value.length > 0);
+  return values.find(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
 }

@@ -11,7 +11,8 @@ const COMMAND_TIMEOUT_MS = 5_000;
 const RECONNECT_DELAY_MS = 2_000;
 const STATE_BRIDGE_KEY = '__WAVE_MOBILE_AGENT_STATE__';
 
-export type ObservabilityState = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type ObservabilityState =
+  'disconnected' | 'connecting' | 'connected' | 'error';
 
 export interface MobileLogEntry {
   sequence: number;
@@ -112,7 +113,9 @@ export class ObservabilityCollector {
     const matching = this.logs.filter(
       (entry) =>
         entry.sequence > since &&
-        (!levels || levels.length === 0 || levels.includes(entry.level.toLocaleLowerCase())),
+        (!levels ||
+          levels.length === 0 ||
+          levels.includes(entry.level.toLocaleLowerCase())),
     );
     const limit = options.limit ?? 200;
     return {
@@ -127,17 +130,26 @@ export class ObservabilityCollector {
     urlContains?: string | undefined;
     method?: string | undefined;
     limit?: number;
-  }): { requests: MobileNetworkRequest[]; lastSequence: number; truncated: boolean } {
+  }): {
+    requests: MobileNetworkRequest[];
+    lastSequence: number;
+    truncated: boolean;
+  } {
     const since = options.sinceSequence ?? 0;
     const matching = [...this.requests.values()].filter((request) => {
       if (request.sequence <= since) return false;
       if (
         options.urlContains &&
-        !request.url.toLocaleLowerCase().includes(options.urlContains.toLocaleLowerCase())
+        !request.url
+          .toLocaleLowerCase()
+          .includes(options.urlContains.toLocaleLowerCase())
       ) {
         return false;
       }
-      if (options.method && request.method.toUpperCase() !== options.method.toUpperCase()) {
+      if (
+        options.method &&
+        request.method.toUpperCase() !== options.method.toUpperCase()
+      ) {
         return false;
       }
       return true;
@@ -159,7 +171,9 @@ export class ObservabilityCollector {
   > {
     const request = this.requests.get(requestId);
     if (!request) {
-      throw new Error(`Network request ${requestId} is not in the retained buffer.`);
+      throw new Error(
+        `Network request ${requestId} is not in the retained buffer.`,
+      );
     }
     if (!includeBody) return { request };
     if (!request.mimeType || !isAllowedBodyMimeType(request.mimeType)) {
@@ -217,9 +231,13 @@ export class ObservabilityCollector {
       );
     }
     if (result?.kind !== 'providers' || !Array.isArray(result.value)) {
-      throw new Error('The mobile-agent state bridge returned an invalid provider list.');
+      throw new Error(
+        'The mobile-agent state bridge returned an invalid provider list.',
+      );
     }
-    return result.value.filter((name): name is string => typeof name === 'string');
+    return result.value.filter(
+      (name): name is string => typeof name === 'string',
+    );
   }
 
   async readStateProvider(name: string): Promise<unknown> {
@@ -238,7 +256,9 @@ export class ObservabilityCollector {
       );
     }
     if (result?.kind !== 'value' || !('value' in result)) {
-      throw new Error(`The mobile-agent state provider "${name}" returned an invalid result.`);
+      throw new Error(
+        `The mobile-agent state provider "${name}" returned an invalid result.`,
+      );
     }
     return result.value;
   }
@@ -249,7 +269,8 @@ export class ObservabilityCollector {
     }
     await this.ensureConnected();
     const debuggerUrl = this.target?.webSocketDebuggerUrl;
-    if (!debuggerUrl) throw new Error('The Hermes inspector target URL is unavailable.');
+    if (!debuggerUrl)
+      throw new Error('The Hermes inspector target URL is unavailable.');
     const parsedUrl = new URL(debuggerUrl);
     const probeUrl = `${parsedUrl.protocol === 'wss:' ? 'https:' : 'http:'}//${parsedUrl.host}/status?mobile_agent_probe=${encodeURIComponent(marker)}`;
     const expression = `(async () => {
@@ -282,7 +303,8 @@ export class ObservabilityCollector {
   }> {
     await this.ensureConnected();
     const targetId = this.target?.id;
-    if (!targetId) throw new Error('The Hermes inspector target ID is unavailable.');
+    if (!targetId)
+      throw new Error('The Hermes inspector target ID is unavailable.');
     const startedAt = Date.now();
     await this.send('Page.reload');
     return {
@@ -328,10 +350,13 @@ export class ObservabilityCollector {
     const candidates =
       metro.selected?.targets.filter(
         (candidate) =>
-          candidate.appId === 'com.renanqueiroz.wave' && candidate.webSocketDebuggerUrl,
+          candidate.appId === 'com.renanqueiroz.wave' &&
+          candidate.webSocketDebuggerUrl,
       ) ?? [];
     const target = this.config.observabilityTargetId
-      ? candidates.find((candidate) => candidate.id === this.config.observabilityTargetId)
+      ? candidates.find(
+          (candidate) => candidate.id === this.config.observabilityTargetId,
+        )
       : candidates.length === 1
         ? candidates[0]
         : undefined;
@@ -341,8 +366,9 @@ export class ObservabilityCollector {
           ? `Wave Hermes target ${this.config.observabilityTargetId} is not available.`
           : candidates.length > 1
             ? `Found ${candidates.length} Wave Hermes targets. Set MOBILE_AGENT_OBSERVABILITY_TARGET_ID to one target ID from mobile_doctor.`
-            : (metro.diagnostics.find((diagnostic) => diagnostic.status === 'error')?.message ??
-              'No Wave Hermes inspector target is available.');
+            : (metro.diagnostics.find(
+                (diagnostic) => diagnostic.status === 'error',
+              )?.message ?? 'No Wave Hermes inspector target is available.');
       this.failConnection(message);
       throw new Error(message);
     }
@@ -357,7 +383,9 @@ export class ObservabilityCollector {
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         socket.terminate();
-        reject(new Error('Timed out connecting to the Metro Hermes inspector.'));
+        reject(
+          new Error('Timed out connecting to the Metro Hermes inspector.'),
+        );
       }, COMMAND_TIMEOUT_MS);
       socket.once('open', () => {
         clearTimeout(timeout);
@@ -377,7 +405,9 @@ export class ObservabilityCollector {
         reject(error);
       });
     }).catch((error: unknown) => {
-      this.failConnection(error instanceof Error ? error.message : String(error));
+      this.failConnection(
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     });
 
@@ -403,17 +433,24 @@ export class ObservabilityCollector {
     }
   }
 
-  private send(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  private send(
+    method: string,
+    params: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error('The Hermes inspector is not connected.'));
+      return Promise.reject(
+        new Error('The Hermes inspector is not connected.'),
+      );
     }
     const id = this.nextCommandId;
     this.nextCommandId += 1;
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
-        const error = new Error(`Hermes inspector command ${method} timed out.`);
+        const error = new Error(
+          `Hermes inspector command ${method} timed out.`,
+        );
         reject(error);
         if (this.socket === socket) {
           this.socket = undefined;
@@ -451,7 +488,9 @@ export class ObservabilityCollector {
     }
     const remoteObject = asRecord(result.result);
     if (!remoteObject || !('value' in remoteObject)) {
-      throw new Error('Hermes did not return the state bridge result by value.');
+      throw new Error(
+        'Hermes did not return the state bridge result by value.',
+      );
     }
     return remoteObject.value;
   }
@@ -544,7 +583,9 @@ export class ObservabilityCollector {
       ...entry,
       sequence: this.nextSequence(),
       text: redactText(entry.text).slice(0, 4_000),
-      ...(entry.stack ? { stack: redactText(entry.stack).slice(0, 8_000) } : {}),
+      ...(entry.stack
+        ? { stack: redactText(entry.stack).slice(0, 8_000) }
+        : {}),
     });
     while (this.logs.length > MAX_LOGS) this.logs.shift();
   }
@@ -590,7 +631,8 @@ export class ObservabilityCollector {
     request.sequence = this.nextSequence();
     request.finishedAt = new Date().toISOString();
     const encodedDataLength = numberValue(params.encodedDataLength);
-    if (encodedDataLength !== undefined) request.encodedDataLength = encodedDataLength;
+    if (encodedDataLength !== undefined)
+      request.encodedDataLength = encodedDataLength;
   }
 
   private handleRequestFailed(params: Record<string, unknown>): void {
@@ -643,7 +685,9 @@ export class ObservabilityCollector {
   }
 }
 
-export function redactHeaders(headers: Record<string, unknown> | undefined): Record<string, string> {
+export function redactHeaders(
+  headers: Record<string, unknown> | undefined,
+): Record<string, string> {
   if (!headers) return {};
   return Object.fromEntries(
     Object.entries(headers).map(([name, value]) => [
@@ -678,7 +722,10 @@ export function redactText(value: string): string {
     );
 }
 
-function redactBody(value: string, mimeType: string): { value: string; redacted: boolean } {
+function redactBody(
+  value: string,
+  mimeType: string,
+): { value: string; redacted: boolean } {
   if (/json/i.test(mimeType)) {
     try {
       const parsed = JSON.parse(value) as unknown;
@@ -696,7 +743,8 @@ function redactBody(value: string, mimeType: string): { value: string; redacted:
 }
 
 function redactJson(value: unknown, onRedacted: () => void): unknown {
-  if (Array.isArray(value)) return value.map((item) => redactJson(item, onRedacted));
+  if (Array.isArray(value))
+    return value.map((item) => redactJson(item, onRedacted));
   if (!value || typeof value !== 'object') {
     if (typeof value !== 'string') return value;
     const redacted = redactText(value);
@@ -761,7 +809,9 @@ function cdpTimestamp(value: unknown): string {
   if (numeric === undefined) return new Date().toISOString();
   const millis = numeric > 10_000_000_000 ? numeric : numeric * 1_000;
   const date = new Date(millis);
-  return Number.isNaN(date.valueOf()) ? new Date().toISOString() : date.toISOString();
+  return Number.isNaN(date.valueOf())
+    ? new Date().toISOString()
+    : date.toISOString();
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -775,5 +825,7 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
 }

@@ -19,9 +19,7 @@ const CONNECTION_TIMEOUT_MS = 30_000;
 const RECONNECT_TIMEOUT_MS = 15_000;
 const CONDITION_POLL_MS = 50;
 
-type DataChannel = ReturnType<
-  RTCPeerConnection['createDataChannel']
->;
+type DataChannel = ReturnType<RTCPeerConnection['createDataChannel']>;
 
 export class ReactNativeRealtimeTransport implements RealtimeTransport {
   async prepare({
@@ -63,8 +61,7 @@ export class ReactNativeRealtimeTransport implements RealtimeTransport {
       const sdpOffer = peer.localDescription?.sdp;
       if (
         typeof sdpOffer !== 'string' ||
-        (!sdpOffer.startsWith('v=0\r\n') &&
-          !sdpOffer.startsWith('v=0\n'))
+        (!sdpOffer.startsWith('v=0\r\n') && !sdpOffer.startsWith('v=0\n'))
       ) {
         throw new RealtimeTransportError(
           'Wave could not create a valid WebRTC offer.',
@@ -92,9 +89,7 @@ interface ReactNativePreparedRealtimeTransportOptions {
   peer: RTCPeerConnection;
 }
 
-class ReactNativePreparedRealtimeTransport
-  implements PreparedRealtimeTransport
-{
+class ReactNativePreparedRealtimeTransport implements PreparedRealtimeTransport {
   private closed = false;
   private readonly dataChannel: DataChannel;
   private readonly localStream: MediaStream;
@@ -150,11 +145,7 @@ class ReactNativePreparedRealtimeTransport
         sdp: sdpAnswer,
         type: 'answer',
       });
-      await waitForConnected(
-        this.peer,
-        this.dataChannel,
-        signal,
-      );
+      await waitForConnected(this.peer, this.dataChannel, signal);
       this.emitConnection('connected');
     } catch (error) {
       throw normalizeTransportError(error);
@@ -202,14 +193,10 @@ class ReactNativePreparedRealtimeTransport
       this.emitConnection(state);
     };
     this.peer.ontrack = (event: unknown) => {
-      const track = getEventProperty<{ kind: string } | null>(
-        event,
-        'track',
-      );
+      const track = getEventProperty<{ kind: string } | null>(event, 'track');
       if (this.closed || track?.kind !== 'audio') return;
       const streams =
-        getEventProperty<MediaStream[] | undefined>(event, 'streams') ??
-        [];
+        getEventProperty<MediaStream[] | undefined>(event, 'streams') ?? [];
       for (const stream of streams) {
         this.remoteStreams.add(stream);
       }
@@ -310,13 +297,10 @@ async function acquireMicrophone(signal: AbortSignal) {
         },
       );
     }
-    throw new RealtimeTransportError(
-      'Wave could not access the microphone.',
-      {
-        kind: 'media_unavailable',
-        retryable: true,
-      },
-    );
+    throw new RealtimeTransportError('Wave could not access the microphone.', {
+      kind: 'media_unavailable',
+      retryable: true,
+    });
   }
 }
 
@@ -374,10 +358,7 @@ function waitForConnected(
   });
 }
 
-function waitForIceGathering(
-  peer: RTCPeerConnection,
-  signal: AbortSignal,
-) {
+function waitForIceGathering(peer: RTCPeerConnection, signal: AbortSignal) {
   return waitForCondition({
     check: () => peer.iceGatheringState === 'complete',
     signal,
@@ -440,12 +421,9 @@ function waitForCondition({
 }
 
 function abortError() {
-  return new RealtimeTransportError(
-    'The Realtime connection was cancelled.',
-    {
-      kind: 'cancelled',
-    },
-  );
+  return new RealtimeTransportError('The Realtime connection was cancelled.', {
+    kind: 'cancelled',
+  });
 }
 
 function throwIfAborted(signal: AbortSignal) {

@@ -1,17 +1,17 @@
 {
-    "configurations": [
-        {
-            "name": "Radon IDE panel",
-            "type": "radon-ide",
-            "request": "launch",
-            "appRoot": "./",
-            "envCommand": "node ./tools/mobile-agent/scripts/radon-env.mjs",
-            "env": {
-                "EXPO_UNSTABLE_MCP_SERVER": "1"
-            },
-            "ios": {},
-            "android": {},
-            "usePrebuild": false
-        }
-    ]
+  "configurations": [
+    {
+      "name": "Radon IDE panel",
+      "type": "radon-ide",
+      "request": "launch",
+      "appRoot": "./",
+      "envCommand": "node ./tools/mobile-agent/scripts/radon-env.mjs",
+      "env": {
+        "EXPO_UNSTABLE_MCP_SERVER": "1"
+      },
+      "ios": {},
+      "android": {},
+      "usePrebuild": false
+    }
+  ]
 }

@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  CompanionConfigError,
-  loadCompanionConfig,
-} from '../src/config.ts';
+import { CompanionConfigError, loadCompanionConfig } from '../src/config.ts';
 
 test('loads server-only Hermes and listener configuration', () => {
   const config = loadCompanionConfig({

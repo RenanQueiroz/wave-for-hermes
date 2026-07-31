@@ -35,9 +35,13 @@ export interface PreparedWda {
   metadata: WdaBuildMetadata;
 }
 
-export async function ensureSimulatorWda(config: MobileAgentConfig): Promise<PreparedWda> {
+export async function ensureSimulatorWda(
+  config: MobileAgentConfig,
+): Promise<PreparedWda> {
   if (process.platform !== 'darwin') {
-    throw new Error('Preparing WebDriverAgent for an iOS Simulator requires macOS.');
+    throw new Error(
+      'Preparing WebDriverAgent for an iOS Simulator requires macOS.',
+    );
   }
 
   const packageInfo = resolveWdaPackageInfo();
@@ -52,13 +56,19 @@ export async function ensureSimulatorWda(config: MobileAgentConfig): Promise<Pre
     sourceUrl,
   };
   const appPath = expectedWdaAppPath(config);
-  const metadataPath = join(config.artifactsDir, 'wda-prebuilt', 'wave-mobile-agent.json');
+  const metadataPath = join(
+    config.artifactsDir,
+    'wda-prebuilt',
+    'wave-mobile-agent.json',
+  );
 
   if (existsSync(appPath) && (await metadataMatches(metadataPath, metadata))) {
     return { appPath, downloaded: false, metadata };
   }
 
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'wave-mobile-agent-wda-'));
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), 'wave-mobile-agent-wda-'),
+  );
   try {
     const archivePath = join(temporaryDirectory, asset.filename);
     const extractedPath = join(temporaryDirectory, 'extracted');
@@ -69,11 +79,15 @@ export async function ensureSimulatorWda(config: MobileAgentConfig): Promise<Pre
     );
     if (!downloaded.ok) {
       throw new Error(
-        downloaded.stderr.trim() || downloaded.error || `Failed to download ${sourceUrl}.`,
+        downloaded.stderr.trim() ||
+          downloaded.error ||
+          `Failed to download ${sourceUrl}.`,
       );
     }
 
-    const actualSha256 = createHash('sha256').update(await readFile(archivePath)).digest('hex');
+    const actualSha256 = createHash('sha256')
+      .update(await readFile(archivePath))
+      .digest('hex');
     if (actualSha256 !== asset.sha256) {
       throw new Error(
         `WebDriverAgent checksum mismatch. Expected ${asset.sha256}, received ${actualSha256}.`,
@@ -81,18 +95,26 @@ export async function ensureSimulatorWda(config: MobileAgentConfig): Promise<Pre
     }
 
     await mkdir(extractedPath, { recursive: true });
-    const extracted = await runCommand('ditto', ['-x', '-k', archivePath, extractedPath], {
-      timeoutMs: 60_000,
-    });
+    const extracted = await runCommand(
+      'ditto',
+      ['-x', '-k', archivePath, extractedPath],
+      {
+        timeoutMs: 60_000,
+      },
+    );
     if (!extracted.ok) {
       throw new Error(
-        extracted.stderr.trim() || extracted.error || 'Failed to extract WebDriverAgent.',
+        extracted.stderr.trim() ||
+          extracted.error ||
+          'Failed to extract WebDriverAgent.',
       );
     }
 
     const extractedApp = join(extractedPath, 'WebDriverAgentRunner-Runner.app');
     if (!existsSync(extractedApp)) {
-      throw new Error('The verified WebDriverAgent archive did not contain the expected runner app.');
+      throw new Error(
+        'The verified WebDriverAgent archive did not contain the expected runner app.',
+      );
     }
 
     const destinationDirectory = join(config.artifactsDir, 'wda-prebuilt');
@@ -101,7 +123,11 @@ export async function ensureSimulatorWda(config: MobileAgentConfig): Promise<Pre
       await rm(appPath, { recursive: true });
     }
     await cp(extractedApp, appPath, { recursive: true });
-    await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+    await writeFile(
+      metadataPath,
+      `${JSON.stringify(metadata, null, 2)}\n`,
+      'utf8',
+    );
     return { appPath, downloaded: true, metadata };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
@@ -109,18 +135,26 @@ export async function ensureSimulatorWda(config: MobileAgentConfig): Promise<Pre
 }
 
 export function expectedWdaAppPath(config: MobileAgentConfig): string {
-  return join(config.artifactsDir, 'wda-prebuilt', 'WebDriverAgentRunner-Runner.app');
+  return join(
+    config.artifactsDir,
+    'wda-prebuilt',
+    'WebDriverAgentRunner-Runner.app',
+  );
 }
 
 export function hasPreparedWda(config: MobileAgentConfig): boolean {
   return existsSync(expectedWdaAppPath(config));
 }
 
-async function metadataMatches(path: string, expected: WdaBuildMetadata): Promise<boolean> {
+async function metadataMatches(
+  path: string,
+  expected: WdaBuildMetadata,
+): Promise<boolean> {
   try {
     const actual = JSON.parse(await readFile(path, 'utf8')) as WdaBuildMetadata;
     return (
-      actual.appiumXcuitestDriverVersion === expected.appiumXcuitestDriverVersion &&
+      actual.appiumXcuitestDriverVersion ===
+        expected.appiumXcuitestDriverVersion &&
       actual.webDriverAgentVersion === expected.webDriverAgentVersion &&
       actual.architecture === expected.architecture &&
       actual.sha256 === expected.sha256 &&
@@ -136,10 +170,13 @@ function resolveWdaPackageInfo(): {
   wdaVersion: string;
 } {
   const require = createRequire(import.meta.url);
-  const driverPackagePath = require.resolve('appium-xcuitest-driver/package.json');
+  const driverPackagePath =
+    require.resolve('appium-xcuitest-driver/package.json');
   const driverPackage = require(driverPackagePath) as { version: string };
   const driverRequire = createRequire(driverPackagePath);
-  const wdaPackagePath = driverRequire.resolve('appium-webdriveragent/package.json');
+  const wdaPackagePath = driverRequire.resolve(
+    'appium-webdriveragent/package.json',
+  );
   const wdaPackage = driverRequire(wdaPackagePath) as { version: string };
   return {
     driverVersion: driverPackage.version,
@@ -152,5 +189,7 @@ function supportedArchitecture(): SupportedArchitecture {
   if (current === 'arm64' || current === 'x64') {
     return current;
   }
-  throw new Error(`No pinned WebDriverAgent simulator asset is available for architecture ${current}.`);
+  throw new Error(
+    `No pinned WebDriverAgent simulator asset is available for architecture ${current}.`,
+  );
 }

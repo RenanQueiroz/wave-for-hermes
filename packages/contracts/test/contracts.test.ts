@@ -102,9 +102,8 @@ test('accepts only strict pairing and device credential values', () => {
     'Renan iPhone',
   );
   assert.equal(
-    WaveDeviceCredentialSchema.safeParse(
-      `wave_device_${'a'.repeat(43)}`,
-    ).success,
+    WaveDeviceCredentialSchema.safeParse(`wave_device_${'a'.repeat(43)}`)
+      .success,
     true,
   );
   assert.equal(
@@ -354,11 +353,14 @@ test('validates bounded Realtime SDP call setup without exposing provider identi
 });
 
 test('generates a strict ask_hermes JSON Schema from the dispatch schema', () => {
-  assert.deepEqual(WaveAskHermesArgumentsSchema.parse({
-    instruction: '  Check the deployment  ',
-  }), {
-    instruction: 'Check the deployment',
-  });
+  assert.deepEqual(
+    WaveAskHermesArgumentsSchema.parse({
+      instruction: '  Check the deployment  ',
+    }),
+    {
+      instruction: 'Check the deployment',
+    },
+  );
   assert.equal(
     WaveAskHermesArgumentsSchema.safeParse({
       instruction: 'Do the work',

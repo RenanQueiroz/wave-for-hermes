@@ -22,20 +22,33 @@ export interface MobileAgentConfig {
   observabilityTargetId?: string;
 }
 
-export function loadConfig(cwd = process.cwd(), env = process.env): MobileAgentConfig {
+export function loadConfig(
+  cwd = process.cwd(),
+  env = process.env,
+): MobileAgentConfig {
   const projectRoot = env.MOBILE_AGENT_PROJECT_ROOT
     ? resolve(env.MOBILE_AGENT_PROJECT_ROOT)
     : findProjectRoot(cwd);
-  const configuredArtifacts = env.MOBILE_AGENT_ARTIFACTS_DIR || join(projectRoot, '.mobile-agent');
+  const configuredArtifacts =
+    env.MOBILE_AGENT_ARTIFACTS_DIR || join(projectRoot, '.mobile-agent');
   const configuredDeviceSet =
     env.MOBILE_AGENT_IOS_DEVICE_SET ||
-    join(homedir(), 'Library', 'Caches', 'com.swmansion.radon-ide', 'Devices', 'iOS');
+    join(
+      homedir(),
+      'Library',
+      'Caches',
+      'com.swmansion.radon-ide',
+      'Devices',
+      'iOS',
+    );
 
   return {
     projectRoot,
     artifactsDir: resolveFrom(projectRoot, configuredArtifacts),
     iosDeviceSetPath: resolveFrom(projectRoot, configuredDeviceSet),
-    ...(env.MOBILE_AGENT_IOS_UDID ? { iosUdid: env.MOBILE_AGENT_IOS_UDID } : {}),
+    ...(env.MOBILE_AGENT_IOS_UDID
+      ? { iosUdid: env.MOBILE_AGENT_IOS_UDID }
+      : {}),
     ...(env.MOBILE_AGENT_ANDROID_SERIAL
       ? { androidSerial: env.MOBILE_AGENT_ANDROID_SERIAL }
       : {}),
@@ -49,7 +62,9 @@ export function loadConfig(cwd = process.cwd(), env = process.env): MobileAgentC
       DEFAULT_TRACE_MAX_AGE_DAYS,
       'MOBILE_AGENT_TRACE_MAX_AGE_DAYS',
     ),
-    ...(env.MOBILE_AGENT_METRO_URL ? { metroUrl: env.MOBILE_AGENT_METRO_URL } : {}),
+    ...(env.MOBILE_AGENT_METRO_URL
+      ? { metroUrl: env.MOBILE_AGENT_METRO_URL }
+      : {}),
     ...(env.MOBILE_AGENT_OBSERVABILITY_TARGET_ID
       ? { observabilityTargetId: env.MOBILE_AGENT_OBSERVABILITY_TARGET_ID }
       : {}),
@@ -69,7 +84,10 @@ function findProjectRoot(start: string): string {
   const filesystemRoot = parse(candidate).root;
 
   while (candidate !== filesystemRoot) {
-    if (existsSync(join(candidate, 'app.json')) && existsSync(join(candidate, '.codex', 'config.toml'))) {
+    if (
+      existsSync(join(candidate, 'app.json')) &&
+      existsSync(join(candidate, '.codex', 'config.toml'))
+    ) {
       return candidate;
     }
     candidate = dirname(candidate);
@@ -78,7 +96,11 @@ function findProjectRoot(start: string): string {
   return resolve(start);
 }
 
-function readPositiveInteger(value: string | undefined, fallback: number, name: string): number {
+function readPositiveInteger(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+): number {
   if (value === undefined || value === '') return fallback;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {

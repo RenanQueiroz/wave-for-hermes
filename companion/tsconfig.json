@@ -7,14 +7,8 @@
     "noUncheckedIndexedAccess": true,
     "strict": true,
     "target": "ES2023",
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "include": [
-    "scripts/**/*.ts",
-    "src/**/*.ts",
-    "test/**/*.ts"
-  ]
+  "include": ["scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts"]
 }

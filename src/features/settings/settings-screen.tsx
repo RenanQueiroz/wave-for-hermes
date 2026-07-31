@@ -1,10 +1,5 @@
 import { Redirect, useRouter } from 'expo-router';
-import {
-  Button,
-  Card,
-  Item,
-  Typography,
-} from 'panelui-native';
+import { Button, Card, Item, Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/navigation/screen-header';

@@ -36,7 +36,10 @@ export const WaveStatusResponseSchema = WaveResponseMetadataSchema.extend({
     .strict(),
   serverTime: WaveIsoDateTimeSchema,
   service: z.literal(WAVE_COMPANION_SERVICE),
-  serviceVersion: z.string().trim().regex(/^\d+\.\d+\.\d+$/),
+  serviceVersion: z
+    .string()
+    .trim()
+    .regex(/^\d+\.\d+\.\d+$/),
   status: z.literal('ok'),
 }).strict();
 

@@ -16,7 +16,9 @@ export class HermesSseParser {
 
   push(chunk: Uint8Array | string) {
     this.textBuffer +=
-      typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true });
+      typeof chunk === 'string'
+        ? chunk
+        : this.decoder.decode(chunk, { stream: true });
 
     return this.readCompleteLines();
   }

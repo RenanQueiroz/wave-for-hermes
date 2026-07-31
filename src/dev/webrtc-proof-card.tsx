@@ -26,12 +26,16 @@ export function WebRtcProofCard() {
       name: 'webrtc-proof',
       read: proof.getState,
     });
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      const requestingPermission = proof.getState().phase === 'requesting-permission';
-      if (nextState === 'background' && !requestingPermission) {
-        proof.stop();
-      }
-    });
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      (nextState) => {
+        const requestingPermission =
+          proof.getState().phase === 'requesting-permission';
+        if (nextState === 'background' && !requestingPermission) {
+          proof.stop();
+        }
+      },
+    );
 
     return () => {
       appStateSubscription.remove();
@@ -48,12 +52,17 @@ export function WebRtcProofCard() {
       <Card.Header>
         <Card.Title>WebRTC audio proof</Card.Title>
         <Card.Description>
-          Creates two local peers, sends a microphone track, and verifies a data-channel echo.
+          Creates two local peers, sends a microphone track, and verifies a
+          data-channel echo.
         </Card.Description>
       </Card.Header>
 
       <Card.Content className="gap-1">
-        <ProofRow label="Phase" testID="webrtc-proof-phase" value={state.phase} />
+        <ProofRow
+          label="Phase"
+          testID="webrtc-proof-phase"
+          value={state.phase}
+        />
         <ProofRow
           label="Microphone tracks"
           testID="webrtc-proof-local-tracks"
@@ -76,7 +85,10 @@ export function WebRtcProofCard() {
         />
 
         {state.error ? (
-          <Alert className="mt-3" variant="destructive" testID="webrtc-proof-error">
+          <Alert
+            className="mt-3"
+            variant="destructive"
+            testID="webrtc-proof-error">
             <Alert.Indicator />
             <Alert.Content>
               <Alert.Title>Proof failed</Alert.Title>
@@ -94,7 +106,11 @@ export function WebRtcProofCard() {
           loading={running}
           testID="webrtc-proof-start"
           onPress={() => void proof.start()}>
-          {running ? 'Running…' : state.phase === 'failed' ? 'Retry' : 'Start proof'}
+          {running
+            ? 'Running…'
+            : state.phase === 'failed'
+              ? 'Retry'
+              : 'Start proof'}
         </Button>
         <Button
           accessibilityLabel="Stop WebRTC audio proof"

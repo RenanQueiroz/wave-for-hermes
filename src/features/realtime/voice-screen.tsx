@@ -1,12 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import {
-  Alert,
-  Button,
-  MicIcon,
-  Soundwave,
-  Typography,
-} from 'panelui-native';
+import { Alert, Button, MicIcon, Soundwave, Typography } from 'panelui-native';
 import {
   useCallback,
   useEffect,
@@ -59,9 +53,7 @@ function ConnectedVoiceScreen({
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const stopAndRefreshRef = useRef<Promise<void> | undefined>(
-    undefined,
-  );
+  const stopAndRefreshRef = useRef<Promise<void> | undefined>(undefined);
   const controller = useMemo(
     () =>
       new WaveRealtimeController({
@@ -70,10 +62,7 @@ function ConnectedVoiceScreen({
       }),
     [client],
   );
-  const state = useSyncExternalStore(
-    controller.subscribe,
-    controller.getState,
-  );
+  const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const stopAndRefresh = useCallback(() => {
     if (stopAndRefreshRef.current) {
       return stopAndRefreshRef.current;
@@ -84,22 +73,14 @@ function ConnectedVoiceScreen({
       await refreshWaveSessionHistory({
         baseUrl,
         connectionId,
-        load: (signal) =>
-          client.getSessionHistory(sessionId, signal),
+        load: (signal) => client.getSessionHistory(sessionId, signal),
         queryClient,
         sessionId,
       }).catch(() => undefined);
     })();
     stopAndRefreshRef.current = task;
     return task;
-  }, [
-    baseUrl,
-    client,
-    connectionId,
-    controller,
-    queryClient,
-    sessionId,
-  ]);
+  }, [baseUrl, client, connectionId, controller, queryClient, sessionId]);
   const start = useCallback(() => {
     stopAndRefreshRef.current = undefined;
     void controller.start(sessionId);
@@ -115,16 +96,13 @@ function ConnectedVoiceScreen({
   );
 
   useEffect(() => {
-    const subscription = AppState.addEventListener(
-      'change',
-      (nextState) => {
-        const requestingPermission =
-          controller.getState().phase === 'requesting_permission';
-        if (nextState === 'background' && !requestingPermission) {
-          void controller.stop();
-        }
-      },
-    );
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const requestingPermission =
+        controller.getState().phase === 'requesting_permission';
+      if (nextState === 'background' && !requestingPermission) {
+        void controller.stop();
+      }
+    });
     return () => subscription.remove();
   }, [controller]);
 
@@ -151,8 +129,7 @@ function ConnectedVoiceScreen({
     void stopAndRefresh();
   }, [stopAndRefresh]);
 
-  const canStart =
-    state.phase === 'idle' || state.phase === 'error';
+  const canStart = state.phase === 'idle' || state.phase === 'error';
 
   return (
     <ScrollView
@@ -257,9 +234,7 @@ function ConnectedVoiceScreen({
               }
               testID="voice-microphone-button"
               onPress={() =>
-                controller.setMicrophoneEnabled(
-                  !state.microphoneEnabled,
-                )
+                controller.setMicrophoneEnabled(!state.microphoneEnabled)
               }>
               <MicIcon size={18} />
               {state.microphoneEnabled ? 'Mute' : 'Unmute'}

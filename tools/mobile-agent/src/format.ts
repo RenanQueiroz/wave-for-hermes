@@ -26,7 +26,12 @@ export function formatDoctor(report: DoctorReport): string {
 
 function formatDiagnostics(diagnostics: Diagnostic[]): string[] {
   return diagnostics.flatMap((diagnostic) => {
-    const marker = diagnostic.status === 'ok' ? '✓' : diagnostic.status === 'warning' ? '!' : '✗';
+    const marker =
+      diagnostic.status === 'ok'
+        ? '✓'
+        : diagnostic.status === 'warning'
+          ? '!'
+          : '✗';
     return [
       `  ${marker} [${diagnostic.code}] ${diagnostic.message}`,
       ...(diagnostic.recovery ? [`    Recovery: ${diagnostic.recovery}`] : []),

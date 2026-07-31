@@ -20,10 +20,7 @@ import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 
 export function SessionSearchScreen() {
   const connection = useWaveConnection();
-  if (
-    connection.state.phase !== 'connected' ||
-    !connection.client
-  ) {
+  if (connection.state.phase !== 'connected' || !connection.client) {
     return <Redirect href="/" />;
   }
   return (
@@ -78,19 +75,10 @@ function ConnectedSessionSearchScreen({
   );
 
   useEffect(() => {
-    if (
-      normalizedSearch &&
-      hasNextPage &&
-      !isFetchingNextPage
-    ) {
+    if (normalizedSearch && hasNextPage && !isFetchingNextPage) {
       void fetchNextPage();
     }
-  }, [
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    normalizedSearch,
-  ]);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, normalizedSearch]);
 
   return (
     <View className="flex-1 bg-background">
@@ -147,10 +135,7 @@ function ConnectedSessionSearchScreen({
           )
         }
         onEndReached={() => {
-          if (
-            hasNextPage &&
-            !isFetchingNextPage
-          ) {
+          if (hasNextPage && !isFetchingNextPage) {
             void fetchNextPage();
           }
         }}
@@ -159,14 +144,12 @@ function ConnectedSessionSearchScreen({
             accessibilityLabel={`Open conversation ${item.title ?? 'Untitled conversation'}`}
             testID={`search-session-${item.id}`}
             onPress={() => {
-              void activeSessionStore
-                .save(connectionId, item.id)
-                .then(() =>
-                  router.replace({
-                    pathname: '/conversation/[sessionId]',
-                    params: { sessionId: item.id },
-                  }),
-                );
+              void activeSessionStore.save(connectionId, item.id).then(() =>
+                router.replace({
+                  pathname: '/conversation/[sessionId]',
+                  params: { sessionId: item.id },
+                }),
+              );
             }}>
             <Item.Content>
               <Item.Title numberOfLines={1}>

@@ -8,7 +8,8 @@ import {
 } from './native-logs.js';
 
 test('finds a Radon iOS app process when its command includes launch arguments', () => {
-  const deviceSetPath = '/Users/test/Library/Caches/com.swmansion.radon-ide/Devices/iOS';
+  const deviceSetPath =
+    '/Users/test/Library/Caches/com.swmansion.radon-ide/Devices/iOS';
   const udid = 'D0C58420-E685-4A70-9C69-AA634B245C82';
   const processList = [
     `77448 /Library/Developer/CoreSimulator/simctl --set ${deviceSetPath} launch ${udid} com.renanqueiroz.wave`,
@@ -16,7 +17,10 @@ test('finds a Radon iOS app process when its command includes launch arguments',
     `77478 ${deviceSetPath}/${udid}/data/Containers/Bundle/Application/APP/wave.app/wave-helper`,
   ].join('\n');
 
-  assert.deepEqual(findIosProcessIds(processList, deviceSetPath, udid), [77477]);
+  assert.deepEqual(
+    findIosProcessIds(processList, deviceSetPath, udid),
+    [77477],
+  );
 });
 
 test('parses and redacts iOS NDJSON logs', () => {

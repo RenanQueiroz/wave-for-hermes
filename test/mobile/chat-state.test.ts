@@ -200,14 +200,8 @@ test('history groups tool records into one assistant turn and removes empty avat
       role: 'assistant',
     },
   ]);
-  assert.equal(
-    JSON.stringify(messages).includes('file contents'),
-    true,
-  );
-  assert.equal(
-    JSON.stringify(messages).includes('search results'),
-    true,
-  );
+  assert.equal(JSON.stringify(messages).includes('file contents'), true);
+  assert.equal(JSON.stringify(messages).includes('search results'), true);
 });
 
 test('keeps a safe turn error after reconciled history replaces optimistic messages', () => {

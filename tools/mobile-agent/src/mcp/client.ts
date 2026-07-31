@@ -99,7 +99,9 @@ export async function callToolText(
   };
 }
 
-function inheritedEnvironment(config: MobileAgentConfig): Record<string, string> {
+function inheritedEnvironment(
+  config: MobileAgentConfig,
+): Record<string, string> {
   const env: Record<string, string> = {
     ...getDefaultEnvironment(),
     MOBILE_AGENT_PROJECT_ROOT: config.projectRoot,

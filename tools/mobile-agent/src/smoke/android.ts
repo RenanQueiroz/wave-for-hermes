@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { capabilitiesFor } from '../capabilities.js';
 import type { MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
-import { callToolText, connectMobileAgentClient, type ToolTextResult } from '../mcp/client.js';
+import {
+  callToolText,
+  connectMobileAgentClient,
+  type ToolTextResult,
+} from '../mcp/client.js';
 
 const SAFE_CONTROL_ID = 'pair-device-button';
 
@@ -25,7 +29,9 @@ export interface AndroidSmokeReport {
   }>;
 }
 
-export async function runAndroidSmoke(config: MobileAgentConfig): Promise<AndroidSmokeReport> {
+export async function runAndroidSmoke(
+  config: MobileAgentConfig,
+): Promise<AndroidSmokeReport> {
   const report: AndroidSmokeReport = {
     ok: false,
     sessionCreated: false,
@@ -42,7 +48,9 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
   await mkdir(config.artifactsDir, { recursive: true });
   const capabilities = capabilitiesFor(doctor, 'android');
 
-  const connection = await connectMobileAgentClient(config, { forwardStderr: true });
+  const connection = await connectMobileAgentClient(config, {
+    forwardStderr: true,
+  });
   let sessionId: string | undefined;
   try {
     const tools = await connection.client.listTools();
@@ -64,7 +72,9 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
       (name) => !tools.tools.some((tool) => tool.name === name),
     );
     if (missingTools.length > 0) {
-      throw new Error(`MCP server is missing required tools: ${missingTools.join(', ')}`);
+      throw new Error(
+        `MCP server is missing required tools: ${missingTools.join(', ')}`,
+      );
     }
     report.steps.push({
       name: 'mcp-tools',
@@ -92,11 +102,15 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
       detail: created.text,
     });
 
-    const appState = await callToolText(connection.client, 'appium_app_lifecycle', {
-      action: 'query_state',
-      id: 'com.renanqueiroz.wave',
-      ...sessionArgs(sessionId),
-    });
+    const appState = await callToolText(
+      connection.client,
+      'appium_app_lifecycle',
+      {
+        action: 'query_state',
+        id: 'com.renanqueiroz.wave',
+        ...sessionArgs(sessionId),
+      },
+    );
     assertToolSucceeded('query-wave-state', appState);
     report.steps.push({
       name: 'query-wave-state',
@@ -106,14 +120,20 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     if (!/\bstate:\s*4\b/.test(appState.text)) {
       const metroUrl = doctor.metro.selected?.url;
       if (!metroUrl) {
-        throw new Error('Cannot foreground Wave because the Radon Metro URL is unavailable.');
+        throw new Error(
+          'Cannot foreground Wave because the Radon Metro URL is unavailable.',
+        );
       }
       const deepLink = `exp+wave://expo-development-client/?url=${encodeURIComponent(metroUrl)}`;
-      const foregrounded = await callToolText(connection.client, 'mobile_open_deep_link', {
-        url: deepLink,
-        waitForLaunch: true,
-        ...sessionArgs(sessionId),
-      });
+      const foregrounded = await callToolText(
+        connection.client,
+        'mobile_open_deep_link',
+        {
+          url: deepLink,
+          waitForLaunch: true,
+          ...sessionArgs(sessionId),
+        },
+      );
       assertToolSucceeded('foreground-wave', foregrounded);
       assertActionEnvelope(
         parseJsonObject(foregrounded.text, 'deep-link action result'),
@@ -127,10 +147,14 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
       });
     }
 
-    const activated = await callToolText(connection.client, 'mobile_app_lifecycle', {
-      action: 'activate',
-      ...sessionArgs(sessionId),
-    });
+    const activated = await callToolText(
+      connection.client,
+      'mobile_app_lifecycle',
+      {
+        action: 'activate',
+        ...sessionArgs(sessionId),
+      },
+    );
     assertToolSucceeded('activate-wave', activated);
     assertActionEnvelope(
       parseJsonObject(activated.text, 'activate action result'),
@@ -149,7 +173,10 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
       sessionArgs(sessionId),
     );
     assertToolSucceeded('page-source', pageSource);
-    const pageSourcePath = join(config.artifactsDir, 'android-smoke-page-source.txt');
+    const pageSourcePath = join(
+      config.artifactsDir,
+      'android-smoke-page-source.txt',
+    );
     await writeFile(pageSourcePath, pageSource.text, 'utf8');
     report.pageSourcePath = pageSourcePath;
     report.steps.push({
@@ -165,11 +192,15 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     );
 
     const safeElement = await findSafeElement(connection.client, sessionId);
-    const tree = await callToolText(connection.client, 'mobile_get_element_tree', {
-      interactiveOnly: true,
-      maxNodes: 200,
-      ...sessionArgs(sessionId),
-    });
+    const tree = await callToolText(
+      connection.client,
+      'mobile_get_element_tree',
+      {
+        interactiveOnly: true,
+        maxNodes: 200,
+        ...sessionArgs(sessionId),
+      },
+    );
     assertToolSucceeded('normalized-tree', tree);
     const treeResult = parseJsonObject(tree.text, 'normalized tree');
     const snapshotId = readString(treeResult, 'snapshotId');
@@ -179,16 +210,23 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
       detail: `Captured native hierarchy snapshot ${snapshotId}.`,
     });
 
-    const normalizedElement = await callToolText(connection.client, 'mobile_find_elements', {
-      snapshotId,
-      resourceId: safeElement.resourceId,
-      exact: true,
-      interactiveOnly: true,
-      maxResults: 5,
-      ...sessionArgs(sessionId),
-    });
+    const normalizedElement = await callToolText(
+      connection.client,
+      'mobile_find_elements',
+      {
+        snapshotId,
+        resourceId: safeElement.resourceId,
+        exact: true,
+        interactiveOnly: true,
+        maxResults: 5,
+        ...sessionArgs(sessionId),
+      },
+    );
     assertToolSucceeded('normalized-find', normalizedElement);
-    const foundResult = parseJsonObject(normalizedElement.text, 'normalized element result');
+    const foundResult = parseJsonObject(
+      normalizedElement.text,
+      'normalized element result',
+    );
     const nodes = foundResult.nodes;
     if (!Array.isArray(nodes) || nodes.length !== 1) {
       throw new Error(
@@ -197,7 +235,9 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     }
     const normalizedNode = nodes[0];
     if (!normalizedNode || typeof normalizedNode !== 'object') {
-      throw new Error('The normalized element result did not contain an object node.');
+      throw new Error(
+        'The normalized element result did not contain an object node.',
+      );
     }
     const nodeId = readString(normalizedNode as Record<string, unknown>, 'id');
     report.steps.push({
@@ -231,9 +271,14 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     const afterSnapshotId = readString(tapResult, 'afterSnapshotId');
     const trace = tapResult.trace;
     if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
-      throw new Error('The normalized tap did not return its before/after action trace.');
+      throw new Error(
+        'The normalized tap did not return its before/after action trace.',
+      );
     }
-    report.traceDirectory = readString(trace as Record<string, unknown>, 'directory');
+    report.traceDirectory = readString(
+      trace as Record<string, unknown>,
+      'directory',
+    );
     report.tappedElement = safeElement.resourceId;
     report.steps.push({
       name: 'safe-tap',
@@ -261,7 +306,8 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     report.steps.push({
       name: 'unified-scroll',
       ok: true,
-      detail: 'Verified bounded Android W3C scrolling through the unified action envelope.',
+      detail:
+        'Verified bounded Android W3C scrolling through the unified action envelope.',
     });
 
     const staleTap = await callToolText(connection.client, 'mobile_tap', {
@@ -274,7 +320,8 @@ export async function runAndroidSmoke(config: MobileAgentConfig): Promise<Androi
     report.steps.push({
       name: 'stale-snapshot-guard',
       ok: true,
-      detail: 'Verified that an untraced action invalidates the previous hierarchy snapshot.',
+      detail:
+        'Verified that an untraced action invalidates the previous hierarchy snapshot.',
     });
 
     report.ok = true;
@@ -311,7 +358,9 @@ function assertStaleSnapshotRejected(
   snapshotId: string,
 ): void {
   if (!result.isError) {
-    throw new Error('Expected the previous hierarchy snapshot to be rejected as stale.');
+    throw new Error(
+      'Expected the previous hierarchy snapshot to be rejected as stale.',
+    );
   }
   const envelope = parseJsonObject(result.text, 'stale snapshot error');
   const error = envelope.error;
@@ -333,7 +382,9 @@ function assertStaleSnapshotRejected(
     Array.isArray(error) ||
     (error as Record<string, unknown>).code !== 'STALE_SNAPSHOT'
   ) {
-    throw new Error('Expected the stale action error code to be STALE_SNAPSHOT.');
+    throw new Error(
+      'Expected the stale action error code to be STALE_SNAPSHOT.',
+    );
   }
 }
 
@@ -343,10 +394,14 @@ function assertActionEnvelope(
   sessionId: string | undefined,
 ): void {
   if (value.ok !== true || value.action !== action) {
-    throw new Error(`Expected a successful "${action}" unified action envelope.`);
+    throw new Error(
+      `Expected a successful "${action}" unified action envelope.`,
+    );
   }
   if (value.platform !== 'android') {
-    throw new Error(`Expected the "${action}" action to identify platform android.`);
+    throw new Error(
+      `Expected the "${action}" action to identify platform android.`,
+    );
   }
   if (
     typeof value.deviceId !== 'string' ||
@@ -360,10 +415,14 @@ function assertActionEnvelope(
     Array.isArray(value.result) ||
     !Array.isArray(value.warnings)
   ) {
-    throw new Error(`The "${action}" result is missing unified action envelope fields.`);
+    throw new Error(
+      `The "${action}" result is missing unified action envelope fields.`,
+    );
   }
   if (sessionId && value.sessionId !== sessionId) {
-    throw new Error(`The "${action}" action returned an unexpected session ID.`);
+    throw new Error(
+      `The "${action}" action returned an unexpected session ID.`,
+    );
   }
 }
 

@@ -28,7 +28,10 @@ const ANDROID_XML = `<?xml version="1.0"?>
 
 test('normalizes iOS accessibility nodes and locators', () => {
   const snapshot = parseHierarchy(IOS_XML, 'ios-session', 'ios');
-  const result = findHierarchyNodes(snapshot, { text: 'explore', interactiveOnly: true });
+  const result = findHierarchyNodes(snapshot, {
+    text: 'explore',
+    interactiveOnly: true,
+  });
 
   assert.equal(result.length, 1);
   const [node] = result;
@@ -84,7 +87,10 @@ test('stores bounded snapshots and serializes filtered output', () => {
   store.invalidate('session');
   assert.equal(store.isLatest(second.id, 'session'), false);
   assert.equal(store.get(second.id)?.id, second.id);
-  const serialized = serializeHierarchy(second, { interactiveOnly: true, maxNodes: 1 });
+  const serialized = serializeHierarchy(second, {
+    interactiveOnly: true,
+    maxNodes: 1,
+  });
   assert.equal(serialized.returnedNodeCount, 1);
   assert.equal(serialized.nodes.at(0)?.accessibilityId, 'Explore');
 });

@@ -44,10 +44,14 @@ try {
   const pairing = store.issuePairingCode(
     new Date(Date.now() + config.pairingCodeTtlSeconds * 1_000),
   );
-  console.log(`Wave mobile fixture listening on http://${displayHost(host)}:${port}`);
+  console.log(
+    `Wave mobile fixture listening on http://${displayHost(host)}:${port}`,
+  );
   console.log(`Pairing code: ${pairing.code}`);
   console.log(`Expires at: ${pairing.expiresAt}`);
-  console.log('This fixture is development-only and keeps all state in memory.');
+  console.log(
+    'This fixture is development-only and keeps all state in memory.',
+  );
 } catch (error) {
   store.close();
   throw error;
@@ -71,7 +75,9 @@ function parsePort(value: string | undefined) {
   if (!value) return 8787;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
-    throw new Error('WAVE_FIXTURE_PORT must be an integer from 1 through 65535.');
+    throw new Error(
+      'WAVE_FIXTURE_PORT must be an integer from 1 through 65535.',
+    );
   }
   return parsed;
 }
@@ -248,9 +254,7 @@ function createFixtureHermesClient(): HermesClient {
             typeof input.input === 'string'
               ? input.input
               : input.input
-                  .flatMap((part) =>
-                    part.type === 'text' ? [part.text] : [],
-                  )
+                  .flatMap((part) => (part.type === 'text' ? [part.text] : []))
                   .join('\n'),
           id: `fixture-user-${turnCount}`,
           role: 'user',
@@ -289,15 +293,12 @@ function createFixtureHermesClient(): HermesClient {
         },
       );
       messages.set(sessionId, history);
-      const session = sessions.find(
-        (candidate) => candidate.id === sessionId,
-      );
+      const session = sessions.find((candidate) => candidate.id === sessionId);
       if (session) {
         session.lastActive = timestamp;
         session.messageCount = history.length;
         session.preview = response;
-        session.toolCallCount =
-          (session.toolCallCount ?? 0) + 1;
+        session.toolCallCount = (session.toolCallCount ?? 0) + 1;
       }
       yield {
         ...base,
