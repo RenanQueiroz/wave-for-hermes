@@ -561,6 +561,9 @@ function createSessionConfig(
       'Use ask_hermes whenever the user asks Hermes to answer a question or perform work. ' +
       'Hermes requests continue in the background, so remain available for conversational ' +
       'follow-ups while waiting and do not treat an interruption of your speech as cancelling Hermes. ' +
+      'When the user makes another Hermes request while earlier Hermes work is still running, ' +
+      'call ask_hermes for the new request immediately; Wave will queue it safely in arrival order. ' +
+      'Do not wait for the earlier result or claim that another Hermes request cannot be queued. ' +
       'Preserve the user’s intent and any quoted or exact wording verbatim in the instruction. ' +
       'Call ask_hermes once per user request and do not retry an identical instruction. ' +
       'Never invent a session identifier, ' +
@@ -569,7 +572,7 @@ function createSessionConfig(
     max_output_tokens: 1_024,
     model: config.model,
     output_modalities: ['audio'],
-    parallel_tool_calls: false,
+    parallel_tool_calls: true,
     reasoning: {
       effort: 'low',
     },
@@ -579,7 +582,8 @@ function createSessionConfig(
         description:
           'Ask the user’s already-authorized Hermes agent to answer or perform work. ' +
           'Pass only the complete instruction the user intends for Hermes, preserving quoted ' +
-          'or exact wording verbatim. Submit each user request once.',
+          'or exact wording verbatim. Submit each user request once, including new requests made ' +
+          'while earlier Hermes work is still running; Wave queues them safely.',
         name: 'ask_hermes',
         parameters: z.toJSONSchema(WaveAskHermesArgumentsSchema),
         type: 'function',

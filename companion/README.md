@@ -209,11 +209,13 @@ wait in order instead of cancelling the active Hermes run. Exact normalized inst
 executed at most once during a live call: distinct Realtime tool-call IDs share the same in-flight
 or completed Hermes result so a model retry cannot duplicate Hermes work.
 
-Hermes work remains in the background relative to the voice conversation. Realtime barge-in stops
-assistant playback but does not cancel Hermes. If Hermes finishes while the user is speaking or a
-default-conversation response is active, the sideband holds the structured result until it can add
-the function output and safely create one follow-up response. Wave does not add a separate approval
-prompt; Hermes's own tool safety policy remains authoritative.
+Hermes work remains in the background relative to the voice conversation. The Realtime session may
+submit another `ask_hermes` call while an earlier result is unresolved, but the Companion still
+executes those requests through its bounded ordered queue rather than concurrently against Hermes.
+Realtime barge-in stops assistant playback but does not cancel Hermes. If Hermes finishes while the
+user is speaking or a default-conversation response is active, the sideband holds the structured
+result until it can add the function output and safely create one follow-up response. Wave does not
+add a separate approval prompt; Hermes's own tool safety policy remains authoritative.
 
 ## Configuration
 

@@ -268,12 +268,14 @@ accepts a model-controlled session ID, serializes `ask_hermes` calls per live ca
 active-or-waiting Hermes work to
 eight requests, caps each call at 128 total tool requests, and expires all state after 30 minutes
 by default. Barge-in stops the Realtime model's audio response without cancelling the active
-Hermes request. Additional Hermes requests wait in order on the same trusted session. Completed
-tool outputs remain buffered while the user is speaking or another default-conversation response
-is active, preventing competing `response.create` events. Call state is intentionally
-process-local. Distinct tool-call IDs carrying the same normalized instruction share one in-flight
-or completed result, preventing a Realtime retry from duplicating Hermes work. A multi-replica
-deployment requires deliberate shared-state and routing decisions first.
+Hermes request. The Realtime session can submit another tool call before earlier tool output is
+available; the Companion accepts it into the same trusted session's bounded queue and executes
+Hermes requests one at a time in arrival order. Completed tool outputs remain buffered while the
+user is speaking or another default-conversation response is active, preventing competing
+`response.create` events. Call state is intentionally process-local. Distinct tool-call IDs
+carrying the same normalized instruction share one in-flight or completed result, preventing a
+Realtime retry from duplicating Hermes work. A multi-replica deployment requires deliberate
+shared-state and routing decisions first.
 
 See [`companion/README.md`](../companion/README.md) for the endpoint table and operator workflow.
 

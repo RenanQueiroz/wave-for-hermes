@@ -97,7 +97,7 @@ test('uses the official SDK for unified setup and authenticated sideband control
   };
   assert.equal(session.type, 'realtime');
   assert.equal(session.model, 'gpt-realtime-2.1-mini');
-  assert.equal(session.parallel_tool_calls, false);
+  assert.equal(session.parallel_tool_calls, true);
   assert.equal(session.tools.length, 1);
   assert.equal(session.tools[0]?.name, 'ask_hermes');
   assert.equal(session.tools[0]?.parameters.additionalProperties, false);
@@ -106,6 +106,18 @@ test('uses the official SDK for unified setup and authenticated sideband control
   assert.equal(JSON.stringify(session).includes('sessionId'), false);
   assert.equal(
     session.instructions.includes('Hermes requests continue in the background'),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes(
+      'call ask_hermes for the new request immediately',
+    ),
+    true,
+  );
+  assert.equal(
+    session.instructions.includes(
+      'claim that another Hermes request cannot be queued',
+    ),
     true,
   );
   assert.equal(
