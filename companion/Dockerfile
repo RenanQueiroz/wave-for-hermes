@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG NODE_IMAGE=node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
+ARG NODE_RUNTIME_IMAGE=node:24-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3
 
 FROM ${NODE_IMAGE} AS workspace
 WORKDIR /app
@@ -29,7 +30,7 @@ RUN npm ci \
     --workspace @wave/contracts \
     --workspace @wave/companion
 
-FROM ${NODE_IMAGE} AS runtime
+FROM ${NODE_RUNTIME_IMAGE} AS runtime
 
 ARG WAVE_COMPANION_REVISION=unknown
 
@@ -40,6 +41,20 @@ LABEL org.opencontainers.image.title="Wave Companion" \
 
 ENV NODE_ENV=production
 WORKDIR /app
+
+# The production service and operator entrypoints need Node, not package
+# managers. Removing npm/corepack also removes their unused dependency trees
+# from the runtime attack surface.
+RUN rm -rf \
+      /usr/local/lib/node_modules/npm \
+      /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm \
+      /usr/local/bin/npx \
+      /usr/local/bin/corepack \
+      /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg \
+      /usr/local/bin/pnpm \
+      /usr/local/bin/pnpx
 
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=production-dependencies --chown=node:node /app/package.json ./package.json

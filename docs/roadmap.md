@@ -72,6 +72,9 @@ instead of implying that server access was revoked.
   details, Companion version/uptime and feature availability, and normalized Hermes compatibility;
   it excludes credentials, server addresses, device identifiers, and conversation content.
 - Use [`security.md`](./security.md) as the release-security checklist. Deterministic
-  self-revocation, lifecycle-race, schema, resource-bound, production-bundle, and private-deployment
-  validation now pass; physical-device, signed-release, exact-edge, and dependency-review gates
-  remain before the first store release.
+  self-revocation, lifecycle-race, schema, resource-bound, production-bundle, exact-edge, and
+  private-deployment validation now pass. The exact-edge work also aligned Nginx with Wave's
+  6,000,000-byte request ceiling so supported image attachments are no longer truncated by a
+  stricter production-only limit. The dependency/container review also passes with Expo-compatible
+  remediation decisions and a package-manager-free Alpine Companion runtime. Physical-device and
+  signed-release gates remain before the first store release.

@@ -125,7 +125,9 @@ live voice is production-ready. See the tracked
 See [`docs/architecture.md`](./docs/architecture.md) for workspace and trust boundaries and
 [`docs/hermes-connectivity.md`](./docs/hermes-connectivity.md) for the current upstream contract and
 validated private deployment. [`docs/security.md`](./docs/security.md) records the threat model,
-implemented controls, residual risks, and store-release security gates.
+implemented controls, residual risks, and store-release security gates. The current dependency and
+container review is recorded in
+[`docs/dependency-security.md`](./docs/dependency-security.md).
 
 ## Local development
 
@@ -190,10 +192,12 @@ docker build \
   .
 ```
 
-The image contains only the compiled Companion, compiled shared contracts, and their production
-dependencies. Homelab pins the exact Wave source revision, builds the image locally, and owns its
-private network, persistent authorization database, Tailscale-only `/wave/` Nginx route, runtime
-secrets, pairing/revocation commands, and live integration validation.
+The image contains only Node on a digest-pinned Alpine runtime, the compiled Companion, compiled
+shared contracts, and their production dependencies. npm, corepack, mobile/build dependencies, and
+development tooling stay outside the runtime. Homelab pins the exact Wave source revision, builds
+the image locally, and owns its private network, persistent authorization database, Tailscale-only
+`/wave/` Nginx route, runtime secrets, pairing/revocation commands, and live integration
+validation.
 
 Create and run a local development build when native dependencies change. The current client
 requires `react-native-webrtc`, `expo-secure-store`, `react-native-keyboard-controller`,

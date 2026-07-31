@@ -54,6 +54,9 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   Native application.
 - Keep server-only configuration, entrypoints, and Hermes/OpenAI protocol adapters under
   `companion/`. Never use `EXPO_PUBLIC_*` for companion credentials.
+- Keep the Companion build stages on a digest-pinned official Node 24 image and its runtime stage
+  on the reviewed digest-pinned official Node 24 Alpine image. The runtime needs Node only; do not
+  restore npm, npx, corepack, or their dependency trees.
 - Run `npm run verify:boundaries` after changing workspace manifests, shared contracts, backend
   imports, or production bundling.
 - Homelab owns deployment manifests, private networking, pinned production images, Nginx routing,
@@ -192,6 +195,11 @@ npm run verify:boundaries
 npx expo install --check
 npm run mobile:smoke:production
 ```
+
+Dependency review must separate mobile build tooling from shipped app code and the selected
+Companion workspaces. Do not run an incompatible `npm audit fix --force` through Expo's
+SDK-aligned graph. Re-run the scoped production audit and checksum-verified container scan before a
+signed release or after changing the runtime base-image pin.
 
 For runtime work, also exercise the affected flow on every changed native platform. The mobile
 automation tooling is documented in `tools/mobile-agent/README.md`; keep its server, CLI, and MCP

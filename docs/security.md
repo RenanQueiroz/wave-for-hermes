@@ -102,8 +102,11 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 
 ### Resource exhaustion and malformed content
 
-- Fastify applies a 6,000,000-byte request-body ceiling, request timeouts, a global request limit,
-  and stricter pairing/Realtime setup limits.
+- Fastify and the private production Nginx edge apply the same 6,000,000-byte request-body
+  ceiling. The edge also fixes its request-header buffers and bounds incomplete headers to 15
+  seconds and incomplete body reads to 30 seconds.
+- Fastify applies request timeouts, a global request limit, and stricter pairing/Realtime setup
+  limits.
 - Shared schemas bound identifiers, text, attachment count, decoded image bytes, text files, SDP,
   tool input/output, transcripts, handoff instructions, and tool results.
 - Text streams enforce first-event, idle, and total timeouts. Realtime setup, sideband connection,
@@ -132,7 +135,8 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   Tailscale HTTPS and Nginx; Companion and Hermes ports remain unpublished.
 - CORS is disabled because Wave supports native iOS and Android only.
 - The Companion container runs non-root with a read-only root filesystem, dropped capabilities,
-  a digest-pinned Node base image, and one dedicated writable state directory.
+  a digest-pinned Node 24 Alpine runtime, no runtime package manager, and one dedicated writable
+  state directory.
 - The mobile production export is scanned for upstream keys, server-only imports, and forbidden
   protocol strings. Dependency alignment and workspace boundaries are automated.
 
@@ -146,16 +150,25 @@ errors. Production exports for iOS and Android pass the boundary scanner. The pi
 deployment validates private ingress, unauthenticated rejection, device lifecycle, streaming,
 history, cancellation, and Realtime cleanup.
 
+Credential-free raw HTTP probes passed on 2026-07-31 against the exact deployed Nginx 1.30.4 and
+Node 24.18.0 path. The edge rejected combined `Content-Length`/`Transfer-Encoding`, conflicting
+lengths, a 128 KiB header, and a declared 6,000,001-byte body. Incomplete headers closed at 15.0
+seconds and incomplete bodies at 30.0 seconds. These probes remain part of normal Homelab Wave
+validation.
+
+The 2026-07-31 dependency and container review is recorded in
+[`dependency-security.md`](./dependency-security.md). It refreshed compatible
+`brace-expansion` backports, retained Expo's supported build-time `xcode -> uuid` chain with an
+explicit reachability assessment, found zero Companion production-workspace advisories, and moved
+the package-manager-free runtime from Debian slim to Alpine. The rebuilt image was 23.8% smaller
+and a checksum-verified Trivy scan found no vulnerabilities at any severity.
+
 Before the first store release, still complete:
 
 - physical-iOS Realtime behavior;
 - physical-device speaker, receiver, Bluetooth, and wired-route changes;
 - phone/audio interruptions, lock state, and realistic Wi-Fi/cellular/private-network changes;
-- signed release-build smoke tests on both platforms;
-- edge-level ambiguous `Content-Length`/`Transfer-Encoding`, oversized-header, and slow-client
-  probes against the exact production Nginx and Node versions; and
-- dependency and container vulnerability review with Expo-compatible remediation decisions rather
-  than automatic incompatible upgrades.
+- signed release-build smoke tests on both platforms.
 
 Security-sensitive changes are incomplete until their deterministic tests, production boundary
 scan, documentation, and relevant private-deployment validation agree.

@@ -60,11 +60,11 @@ docker build \
   .
 ```
 
-The multi-stage build uses the digest-pinned official Node.js 24 slim image and installs only the
-Companion/contracts workspaces. The runtime stage runs as a non-root user and contains compiled
-server, admin, and Hermes integration entrypoints plus production dependencies. It does not contain
-the Expo app, mobile dependencies, development dependencies, repository history, or local
-credentials.
+The multi-stage build uses a digest-pinned official Node.js 24 Debian image for reproducible build
+stages and a separately digest-pinned official Node.js 24 Alpine runtime. The runtime stage runs as
+a non-root user and contains Node, compiled server, admin, and Hermes integration entrypoints plus
+production dependencies. It does not contain npm, corepack, the Expo app, mobile dependencies,
+development dependencies, repository history, or local credentials.
 
 Deployment must mount a private writable directory for `WAVE_DATABASE_PATH` and may keep the
 container root filesystem read-only. Generate pairing codes and manage devices inside a deployed
