@@ -238,7 +238,7 @@ function ConnectedWaveDrawerContent({
                     <EllipsisIcon size={18} />
                   </Button>
                 </Menu.Trigger>
-                <Menu.Content align="end">
+                <Menu.Content align="end" scrollable={false} width={200}>
                   <Menu.Item
                     icon={<PencilIcon size={16} />}
                     onSelect={() => {
