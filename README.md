@@ -59,13 +59,14 @@ currently includes:
 - repo-level Expo MCP configuration for Codex and Claude Code;
 - a Node.js 24/Fastify Wave Companion workspace with one-time pairing, hashed and revocable
   account-scoped device credentials, paginated Hermes conversation lifecycle routes, bounded
-  streamed chat and attachments, normalized errors, redacted logs, and graceful shutdown;
+  streamed chat and attachments, an idempotent finalized-voice interaction ledger, normalized
+  errors, redacted logs, and graceful shutdown;
 - the official OpenAI JavaScript SDK in the Companion only for unified WebRTC call setup and
   lifecycle requests, plus the documented authenticated `ws` sideband connection, opaque
   Wave-owned call identifiers, bounded call state, background Hermes request serialization,
   exact-instruction coalescing, response-safe result delivery, and cleanup;
-- runtime-neutral Wave pairing, paginated session lifecycle, history, attachment, read-only
-  scheduled-job, cancellation, error, normalized turn-event, Realtime call, and strict
+- runtime-neutral Wave pairing, paginated session lifecycle and unified timeline, attachment,
+  read-only scheduled-job, cancellation, error, normalized turn-event, Realtime call, and strict
   `ask_hermes` schemas in `@wave/contracts`;
 - a contract-validating mobile `WaveBackendClient` with strict URL policy, bounded JSON requests,
   strict ordered SSE streaming through Expo's native `expo/fetch`, cancellation, response-size
@@ -75,8 +76,8 @@ currently includes:
   tracks, WebRTC negotiation, data-channel events, reconnect bounds, cancellation, expiry, and
   explicit companion cleanup outside React components;
 - a PanelUI live-voice route over the active Hermes session with safe listening/speaking/error
-  state, ephemeral transcripts, mute/unmute, explicit hangup, stable automation identifiers, and
-  canonical Hermes-history refresh before returning to text chat, plus
+  state, in-call transcripts, mute/unmute, explicit hangup, stable automation identifiers, and
+  unified-timeline refresh before returning to text chat, plus
   validated real Realtime connection/teardown flows on Radon-managed iOS and Android simulators,
   plus audible microphone/assistant playback, background-work barge-in, and bounded ordered
   `ask_hermes` follow-ups on a physical Android device;
@@ -86,12 +87,13 @@ currently includes:
 - a ChatGPT-style chat-first shell that creates a new conversation on connected launch, opens
   account-wide history from a side drawer, searches titles, renames/deletes sessions, keeps
   Settings and Disconnect fixed at the bottom, and exposes scheduled jobs as read-only status;
-- TanStack Query-backed paginated session/history state plus PanelUI conversation and chat routes with
-  batched assistant deltas, lifecycle-safe prompt cancellation, assistant/tool history records
-  grouped into coherent Hermes turns, bottom-aligned Hermes avatars, collapsed named tool rows
-  whose disclosures render bounded raw input/output as inert code, current-session tracking, and
-  a keyboard-sticky rounded composer with an internal attachment control and exactly one trailing
-  action: Send when text is present, live voice when it is empty, or Stop during an active turn;
+- TanStack Query-backed paginated session/timeline state plus PanelUI conversation and chat routes
+  with batched assistant deltas, lifecycle-safe prompt cancellation, canonical Hermes records and
+  finalized Wave speech merged into coherent turns, bottom-aligned Wave avatars, collapsed named
+  tool and Hermes-handoff rows whose disclosures render bounded raw input/output as inert code,
+  current-session tracking, and a keyboard-sticky rounded composer with an internal attachment
+  control and exactly one trailing action: Send when text is present, live voice when it is empty,
+  or Stop during an active turn;
 - a typed, bearer-authenticated server-only Hermes Sessions API adapter with capability validation,
   streamed SSE parsing, cancellation, normalized errors, redaction, fixtures, and unit tests;
 - a live Homelab deployment with unpublished Hermes/Companion ports, Tailscale-only HTTPS ingress
@@ -233,12 +235,13 @@ The full operator workflow is in [`companion/README.md`](./companion/README.md).
 
 After pairing, Wave creates and opens a new Hermes conversation. The drawer pages through every
 top-level session returned by the Hermes account and supports title search, continue, rename, and
-delete. Hermes remains the durable history source; clearing history on Hermes is reflected after
-the next query refresh, and opening a deleted session returns the app to a new conversation. Tool
-calls are collapsed by default. A user can expand one to inspect its raw input and output as inert,
-copyable text; Wave does not parse it as Markdown or execute it. Each field is limited to 64,000
-characters, tool details share a 512,000-character history-response budget, and a visible label
-identifies truncated values.
+delete. Hermes remains canonical for Hermes-authored messages and tools. The Companion keeps only
+finalized live-voice user/Wave transcripts and handoff metadata, without raw audio; clearing Hermes
+history removes its canonical turns on the next timeline refresh while retained Wave voice turns
+remain inspectable until the parent session is deleted. Opening a deleted session returns the app
+to a new conversation. Tool calls and voice handoffs are collapsed by default. A user can expand
+one to inspect bounded raw input and output as inert, copyable text; Wave does not parse it as
+Markdown or execute it. Truncation is explicit.
 
 The composer accepts up to four attachments with a non-empty message. Camera and Photos are
 converted to bounded inline JPEG data (4 MB per image). Files are restricted to supported

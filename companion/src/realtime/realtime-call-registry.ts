@@ -11,11 +11,14 @@ import {
 import type { DeviceStore } from '../auth/device-store.ts';
 import type { HermesClient } from '../hermes/hermes-types.ts';
 import { WaveHttpError } from '../http/errors.ts';
+import type { InteractionStore } from '../interactions/interaction-store.ts';
 import {
   RealtimeProviderError,
+  type RealtimeAssistantTranscript,
   type RealtimeFunctionCall,
   type RealtimeProvider,
   type RealtimeProviderCall,
+  type RealtimeUserTranscript,
 } from './realtime-provider.ts';
 
 const ASK_HERMES_TOOL_NAME = 'ask_hermes';
@@ -29,22 +32,32 @@ interface ActiveRealtimeTool {
 
 interface RealtimeToolExecution {
   callIds: Set<string>;
+  handoffId: string;
   instruction: string;
   primaryCallId: string;
   result?: WaveAskHermesToolResult;
+  turnId: string;
+}
+
+interface HermesExecutionOutcome {
+  hermesAssistantMessageId?: string;
+  result: WaveAskHermesToolResult;
 }
 
 interface RealtimeCallState {
   activeTool?: ActiveRealtimeTool;
   deviceId: string;
   expiresAt: Date;
+  handoffTurnIds: Map<string, string>;
   handledToolCallIds: Set<string>;
+  latestTurnId?: string;
   outstandingToolCalls: number;
+  providerItemTurnIds: Map<string, string>;
   providerCall: RealtimeProviderCall;
   sessionId: string;
   timer: NodeJS.Timeout;
   toolQueue: Promise<void>;
-  toolExecutionsByInstruction: Map<string, RealtimeToolExecution>;
+  toolExecutionsByKey: Map<string, RealtimeToolExecution>;
   waveCallId: string;
 }
 
@@ -73,6 +86,7 @@ export class RealtimeCallRegistry {
   private readonly services: {
     deviceStore: DeviceStore;
     hermesClient: HermesClient;
+    interactionStore: InteractionStore;
     provider: RealtimeProvider;
   };
 
@@ -81,6 +95,7 @@ export class RealtimeCallRegistry {
     services: {
       deviceStore: DeviceStore;
       hermesClient: HermesClient;
+      interactionStore: InteractionStore;
       provider: RealtimeProvider;
     },
     options: {
@@ -168,15 +183,17 @@ export class RealtimeCallRegistry {
     const call: RealtimeCallState = {
       deviceId: input.deviceId,
       expiresAt,
+      handoffTurnIds: new Map(),
       handledToolCallIds: new Set(),
       outstandingToolCalls: 0,
       providerCall,
+      providerItemTurnIds: new Map(),
       sessionId: input.sessionId,
       timer: setTimeout(() => {
         void this.release(call, true);
       }, this.config.callTtlMs),
       toolQueue: Promise.resolve(),
-      toolExecutionsByInstruction: new Map(),
+      toolExecutionsByKey: new Map(),
       waveCallId,
     };
     this.calls.set(waveCallId, call);
@@ -190,6 +207,27 @@ export class RealtimeCallRegistry {
     providerCall.sideband.onFunctionCall((toolCall) => {
       void this.handleFunctionCall(call, toolCall);
     });
+    providerCall.sideband.onUserItem((itemId) => {
+      try {
+        this.ensureRealtimeTurn(call, itemId);
+      } catch {
+        // Persistence failure must not tear down an otherwise healthy call.
+      }
+    });
+    providerCall.sideband.onUserTranscript((transcript) => {
+      try {
+        this.recordUserTranscript(call, transcript);
+      } catch {
+        // Finalized transcript capture is best effort while the call is active.
+      }
+    });
+    providerCall.sideband.onAssistantTranscript((transcript) => {
+      try {
+        this.recordAssistantTranscript(call, transcript);
+      } catch {
+        // Finalized transcript capture is best effort while the call is active.
+      }
+    });
 
     return {
       expiresAt: expiresAt.toISOString(),
@@ -202,6 +240,7 @@ export class RealtimeCallRegistry {
     call: RealtimeCallState,
     toolCallId: string,
     result: WaveAskHermesToolResult,
+    handoffId?: string,
   ) {
     if (this.calls.get(call.waveCallId) !== call) {
       return;
@@ -209,6 +248,7 @@ export class RealtimeCallRegistry {
     call.providerCall.sideband.sendFunctionResult(
       toolCallId,
       WaveAskHermesToolResultSchema.parse(result),
+      handoffId,
     );
   }
 
@@ -216,7 +256,7 @@ export class RealtimeCallRegistry {
     call: RealtimeCallState,
     instruction: string,
     controller: AbortController,
-  ): Promise<WaveAskHermesToolResult> {
+  ): Promise<HermesExecutionOutcome> {
     let timedOut = false;
     const timeout = setTimeout(() => {
       timedOut = true;
@@ -224,6 +264,7 @@ export class RealtimeCallRegistry {
     }, this.config.toolTimeoutMs);
     let answer = '';
     let completedAnswer: string | undefined;
+    let hermesAssistantMessageId: string | undefined;
     let truncated = false;
 
     try {
@@ -243,6 +284,7 @@ export class RealtimeCallRegistry {
             answer += event.delta.slice(0, available);
           }
         } else if (event.type === 'assistant.completed') {
+          hermesAssistantMessageId = event.messageId;
           completedAnswer = event.content.slice(
             0,
             WAVE_MAX_ASK_HERMES_ANSWER_LENGTH,
@@ -254,40 +296,51 @@ export class RealtimeCallRegistry {
       }
     } catch {
       if (timedOut) {
-        return toolError(
-          'timeout',
-          'Hermes did not complete the request before the timeout.',
-          true,
-        );
+        return {
+          result: toolError(
+            'timeout',
+            'Hermes did not complete the request before the timeout.',
+            true,
+          ),
+        };
       }
       if (controller.signal.aborted) {
-        return toolError(
-          'cancelled',
-          'The Hermes request was cancelled.',
-          false,
-        );
+        return {
+          result: toolError(
+            'cancelled',
+            'The Hermes request was cancelled.',
+            false,
+          ),
+        };
       }
-      return toolError(
-        'upstream_unavailable',
-        'Hermes could not complete the request.',
-        true,
-      );
+      return {
+        result: toolError(
+          'upstream_unavailable',
+          'Hermes could not complete the request.',
+          true,
+        ),
+      };
     } finally {
       clearTimeout(timeout);
     }
 
     const finalAnswer = (completedAnswer ?? answer).trim();
     if (!finalAnswer) {
-      return toolError(
-        'upstream_unavailable',
-        'Hermes completed without returning an answer.',
-        true,
-      );
+      return {
+        result: toolError(
+          'upstream_unavailable',
+          'Hermes completed without returning an answer.',
+          true,
+        ),
+      };
     }
     return {
-      answer: finalAnswer,
-      ok: true,
-      truncated,
+      ...(hermesAssistantMessageId ? { hermesAssistantMessageId } : {}),
+      result: {
+        answer: finalAnswer,
+        ok: true,
+        truncated,
+      },
     };
   }
 
@@ -361,13 +414,20 @@ export class RealtimeCallRegistry {
       return;
     }
 
-    const existingExecution = call.toolExecutionsByInstruction.get(
+    const executionKey = createToolExecutionKey(
       parsed.data.instruction,
+      toolCall.userItemId,
     );
+    const existingExecution = call.toolExecutionsByKey.get(executionKey);
     if (existingExecution) {
       existingExecution.callIds.add(toolCall.callId);
       if (existingExecution.result) {
-        this.completeToolCall(call, toolCall.callId, existingExecution.result);
+        this.completeToolCall(
+          call,
+          toolCall.callId,
+          existingExecution.result,
+          existingExecution.handoffId,
+        );
       }
       return;
     }
@@ -389,10 +449,41 @@ export class RealtimeCallRegistry {
 
     const execution: RealtimeToolExecution = {
       callIds: new Set([toolCall.callId]),
+      handoffId: '',
       instruction: parsed.data.instruction,
       primaryCallId: toolCall.callId,
+      turnId: '',
     };
-    call.toolExecutionsByInstruction.set(execution.instruction, execution);
+    try {
+      execution.turnId = this.ensureRealtimeTurn(
+        call,
+        toolCall.userItemId ?? `tool:${toolCall.callId}`,
+      );
+      execution.handoffId = this.services.interactionStore.beginHandoff({
+        createdAt: this.now().toISOString(),
+        eventKey: createInteractionKey(
+          call.waveCallId,
+          'handoff',
+          toolCall.callId,
+        ),
+        instruction: execution.instruction,
+        sessionId: call.sessionId,
+        turnId: execution.turnId,
+      });
+      call.handoffTurnIds.set(execution.handoffId, execution.turnId);
+    } catch {
+      this.completeToolCall(
+        call,
+        toolCall.callId,
+        toolError(
+          'upstream_unavailable',
+          'Wave could not persist the Hermes request.',
+          true,
+        ),
+      );
+      return;
+    }
+    call.toolExecutionsByKey.set(executionKey, execution);
     call.outstandingToolCalls += 1;
     call.toolQueue = call.toolQueue
       .then(() => this.executeQueuedTool(call, execution))
@@ -437,26 +528,33 @@ export class RealtimeCallRegistry {
       controller: new AbortController(),
     };
     call.activeTool = activeTool;
-    let result: WaveAskHermesToolResult;
+    let outcome: HermesExecutionOutcome;
     try {
-      result = await this.executeHermesTool(
+      outcome = await this.executeHermesTool(
         call,
         execution.instruction,
         activeTool.controller,
       );
     } catch {
-      result = toolError(
-        'upstream_unavailable',
-        'Hermes could not complete the request.',
-        true,
-      );
+      outcome = {
+        result: toolError(
+          'upstream_unavailable',
+          'Hermes could not complete the request.',
+          true,
+        ),
+      };
     }
     if (
       this.calls.get(call.waveCallId) === call &&
       call.activeTool === activeTool
     ) {
       call.activeTool = undefined;
-      this.completeToolExecution(call, execution, result);
+      this.completeToolExecution(
+        call,
+        execution,
+        outcome.result,
+        outcome.hermesAssistantMessageId,
+      );
     }
   }
 
@@ -464,14 +562,117 @@ export class RealtimeCallRegistry {
     call: RealtimeCallState,
     execution: RealtimeToolExecution,
     result: WaveAskHermesToolResult,
+    hermesAssistantMessageId?: string,
   ) {
     if (execution.result) {
       return;
     }
-    execution.result = result;
-    for (const callId of execution.callIds) {
-      this.completeToolCall(call, callId, result);
+    let deliveredResult = result;
+    try {
+      this.services.interactionStore.completeHandoff({
+        completedAt: this.now().toISOString(),
+        handoffId: execution.handoffId,
+        ...(hermesAssistantMessageId ? { hermesAssistantMessageId } : {}),
+        result,
+      });
+    } catch {
+      deliveredResult = toolError(
+        'upstream_unavailable',
+        'Wave could not persist the Hermes result.',
+        true,
+      );
+      try {
+        this.services.interactionStore.completeHandoff({
+          completedAt: this.now().toISOString(),
+          handoffId: execution.handoffId,
+          result: deliveredResult,
+        });
+      } catch {
+        // Keep the call usable even when durable interaction storage is down.
+      }
     }
+    execution.result = deliveredResult;
+    for (const callId of execution.callIds) {
+      this.completeToolCall(call, callId, deliveredResult, execution.handoffId);
+    }
+  }
+
+  private ensureRealtimeTurn(call: RealtimeCallState, providerItemId: string) {
+    const existing = call.providerItemTurnIds.get(providerItemId);
+    if (existing) {
+      call.latestTurnId = existing;
+      return existing;
+    }
+    const turnId = this.services.interactionStore.beginRealtimeTurn({
+      createdAt: this.now().toISOString(),
+      eventKey: createInteractionKey(
+        call.waveCallId,
+        'user_item',
+        providerItemId,
+      ),
+      sessionId: call.sessionId,
+    });
+    call.providerItemTurnIds.set(providerItemId, turnId);
+    call.latestTurnId = turnId;
+    return turnId;
+  }
+
+  private now() {
+    return this.options.now?.() ?? new Date();
+  }
+
+  private recordAssistantTranscript(
+    call: RealtimeCallState,
+    transcript: RealtimeAssistantTranscript,
+  ) {
+    if (this.calls.get(call.waveCallId) !== call) {
+      return;
+    }
+    const content = boundedTranscript(transcript.transcript);
+    if (!content) {
+      return;
+    }
+    const handoffTurnId = transcript.handoffIds
+      .map((handoffId) => call.handoffTurnIds.get(handoffId))
+      .find((turnId) => turnId !== undefined);
+    const turnId =
+      handoffTurnId ??
+      (transcript.userItemId
+        ? this.ensureRealtimeTurn(call, transcript.userItemId)
+        : call.latestTurnId);
+    if (!turnId) {
+      return;
+    }
+    this.services.interactionStore.recordWaveMessage({
+      content,
+      createdAt: this.now().toISOString(),
+      eventKey: createInteractionKey(
+        call.waveCallId,
+        'assistant_response',
+        transcript.responseId,
+      ),
+      sessionId: call.sessionId,
+      turnId,
+    });
+  }
+
+  private recordUserTranscript(
+    call: RealtimeCallState,
+    transcript: RealtimeUserTranscript,
+  ) {
+    if (this.calls.get(call.waveCallId) !== call) {
+      return;
+    }
+    const content = boundedTranscript(transcript.transcript);
+    if (!content) {
+      return;
+    }
+    const turnId = this.ensureRealtimeTurn(call, transcript.itemId);
+    this.services.interactionStore.recordUserTranscript({
+      transcript: content,
+      turnId,
+      updatedAt: this.now().toISOString(),
+    });
   }
 
   private isCallAuthorized(call: RealtimeCallState) {
@@ -485,6 +686,19 @@ export class RealtimeCallRegistry {
     this.calls.delete(call.waveCallId);
     this.releaseReservation(call.deviceId, call.sessionId);
     clearTimeout(call.timer);
+    for (const execution of call.toolExecutionsByKey.values()) {
+      if (!execution.result) {
+        this.completeToolExecution(
+          call,
+          execution,
+          toolError(
+            'cancelled',
+            'The Hermes request was cancelled when the live call ended.',
+            false,
+          ),
+        );
+      }
+    }
     call.activeTool?.controller.abort();
     call.activeTool = undefined;
     if (endProviderCall) {
@@ -543,6 +757,31 @@ export class RealtimeCallRegistry {
 
 function createSafetyIdentifier(deviceId: string) {
   return createHash('sha256').update(deviceId, 'utf8').digest('hex');
+}
+
+function createInteractionKey(
+  waveCallId: string,
+  kind: string,
+  providerIdentifier: string,
+) {
+  return createHash('sha256')
+    .update(waveCallId, 'utf8')
+    .update('\0')
+    .update(kind, 'utf8')
+    .update('\0')
+    .update(providerIdentifier, 'utf8')
+    .digest('hex');
+}
+
+function createToolExecutionKey(
+  instruction: string,
+  userItemId: string | undefined,
+) {
+  return userItemId ? `${userItemId}\0${instruction}` : instruction;
+}
+
+function boundedTranscript(value: string) {
+  return value.trim().slice(0, 128_000);
 }
 
 function normalizeProviderError(error: unknown) {

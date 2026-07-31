@@ -24,6 +24,7 @@ import {
   WaveToolDetailSchema,
   WaveTurnEventSchema,
   WaveStatusResponseSchema,
+  WaveTimelineResponseSchema,
 } from '../src/index.ts';
 
 test('accepts a strict versioned companion status response', () => {
@@ -45,6 +46,45 @@ test('accepts a strict versioned companion status response', () => {
 
   assert.equal(result.apiVersion, 'v1');
   assert.equal(result.hermes.configured, true);
+});
+
+test('accepts only bounded Wave-owned unified timeline entries', () => {
+  const response = WaveTimelineResponseSchema.parse({
+    apiVersion: WAVE_API_VERSION,
+    entries: [
+      {
+        completedAt: '2026-07-30T23:00:02.000Z',
+        createdAt: '2026-07-30T23:00:01.000Z',
+        id: 'wave-handoff-1',
+        instruction: 'Turn off the bedroom lights.',
+        result: {
+          answer: 'The bedroom lights are off.',
+          ok: true,
+          truncated: false,
+        },
+        status: 'completed',
+        turnId: 'wave-turn-1',
+        type: 'handoff',
+      },
+    ],
+    hasMore: false,
+    limit: 100,
+    sessionId: 'session-1',
+  });
+
+  assert.equal(response.entries[0]?.type, 'handoff');
+  assert.equal(
+    WaveTimelineResponseSchema.safeParse({
+      ...response,
+      entries: [
+        {
+          ...response.entries[0],
+          providerCallId: 'must-not-cross-the-boundary',
+        },
+      ],
+    }).success,
+    false,
+  );
 });
 
 test('rejects unknown status fields and malformed errors', () => {

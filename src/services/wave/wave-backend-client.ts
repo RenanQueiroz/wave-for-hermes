@@ -17,6 +17,8 @@ import {
   WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
+  WaveTimelineRequestSchema,
+  WaveTimelineResponseSchema,
   WaveUpdateSessionRequestSchema,
   type WaveTurnEvent,
   type WaveCancelTurnResponse,
@@ -34,9 +36,12 @@ import {
   type WaveListSessionsRequest,
   type WaveStatusResponse,
   type WaveStartRealtimeCallResponse,
+  type WaveTimelineRequest,
+  type WaveTimelineResponse,
   type WaveTurnInput,
   type WaveUpdateSessionRequest,
 } from '@wave/contracts';
+import { fetch as expoFetch } from 'expo/fetch';
 
 import { parseWaveSseStream, WaveSseProtocolError } from './wave-sse.ts';
 
@@ -106,7 +111,9 @@ export class WaveBackendClient {
       allowInsecureHttp: options.allowInsecureHttp,
     });
     this.credential = options.credential;
-    this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.fetch =
+      options.fetch ??
+      (expoFetch as unknown as typeof globalThis.fetch).bind(globalThis);
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.realtimeSetupTimeoutMs =
@@ -199,6 +206,37 @@ export class WaveBackendClient {
     return this.request(
       WaveSessionHistoryResponseSchema,
       `/v1/sessions/${encodeURIComponent(validSessionId)}/messages`,
+      {
+        authenticated: true,
+        signal,
+      },
+    );
+  }
+
+  getSessionTimeline(
+    sessionId: string,
+    input: Partial<WaveTimelineRequest> = {},
+    signal?: AbortSignal,
+  ): Promise<WaveTimelineResponse> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    const page = parseClientInput(
+      WaveTimelineRequestSchema,
+      input,
+      'Enter valid Wave timeline pagination.',
+    );
+    const search = new URLSearchParams({
+      limit: String(page.limit),
+    });
+    if (page.before) {
+      search.set('before', page.before);
+    }
+    return this.request(
+      WaveTimelineResponseSchema,
+      `/v1/sessions/${encodeURIComponent(validSessionId)}/timeline?${search}`,
       {
         authenticated: true,
         signal,

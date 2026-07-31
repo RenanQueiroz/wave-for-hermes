@@ -42,17 +42,14 @@ The implementation must:
 - apply a changed selection to the next call, because OpenAI does not allow changing the voice
   after a session has already produced audio.
 
-## Later: conversation continuity and release hardening
+## Later: continuity validation and release hardening
 
-- Add a Companion-owned interaction ledger for finalized live-voice user/Wave transcript items and
-  Hermes handoff metadata. Store no raw audio, keep Hermes as the canonical source for its own
-  durable turns, and correlate records with stable IDs rather than text matching.
-- Merge that ledger with canonical Hermes history into one chronological mobile timeline. Render
-  each Hermes delegation as a collapsed nested task inside the surrounding Wave turn, with a
-  concise outcome visible by default and bounded raw handoff input/output available through
-  progressive disclosure.
-- Define retention, pagination, cross-device sync, and deletion-cascade behavior for the interaction
-  ledger before making Realtime-only speech durable.
+The Companion interaction ledger and unified timeline now persist finalized live-voice speech,
+merge it with canonical Hermes history, nest correlated handoffs, paginate with stable cursors, and
+cascade records when a session is deleted. Remaining work:
+
+- Expand runtime coverage for cross-device refresh, reconnect idempotency, multiple queued
+  handoffs, external Hermes-history deletion, and long-session pagination.
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.

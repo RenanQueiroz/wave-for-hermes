@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  historyToWaveChatMessages,
   initialWaveChatState,
+  timelineToWaveChatMessages,
   waveChatReducer,
 } from '../../src/features/chat/chat-state.ts';
+import type {
+  WaveConversationMessage,
+  WaveTimelineEntry,
+} from '@wave/contracts';
 
 test('reduces batched assistant text and bounded tool lifecycle details in order', () => {
   let state = waveChatReducer(initialWaveChatState, {
@@ -72,23 +76,25 @@ test('reduces batched assistant text and bounded tool lifecycle details in order
   ]);
 });
 
-test('history exposes only normalized bounded tool input and output details', () => {
-  const messages = historyToWaveChatMessages([
-    {
-      content: '',
-      id: 'tool-message',
-      role: 'tool',
-      toolInput: {
-        text: '{"date":"tomorrow"}',
-        truncated: false,
+test('timeline exposes only normalized bounded tool input and output details', () => {
+  const messages = timelineToWaveChatMessages(
+    hermesTimeline([
+      {
+        content: '',
+        id: 'tool-message',
+        role: 'tool',
+        toolInput: {
+          text: '{"date":"tomorrow"}',
+          truncated: false,
+        },
+        toolName: 'calendar',
+        toolOutput: {
+          text: '{"available":true}',
+          truncated: false,
+        },
       },
-      toolName: 'calendar',
-      toolOutput: {
-        text: '{"available":true}',
-        truncated: false,
-      },
-    },
-  ]);
+    ]),
+  );
 
   assert.deepEqual(messages, [
     {
@@ -114,49 +120,51 @@ test('history exposes only normalized bounded tool input and output details', ()
   ]);
 });
 
-test('history groups tool records into one assistant turn and removes empty avatars', () => {
-  const messages = historyToWaveChatMessages([
-    {
-      content: 'Research voice platforms',
-      id: 'user-message',
-      role: 'user',
-    },
-    {
-      content: '',
-      id: 'empty-assistant-before-tool',
-      role: 'assistant',
-    },
-    {
-      content: '',
-      id: 'tool-read',
-      role: 'tool',
-      toolName: 'read_file',
-      toolOutput: {
-        text: 'file contents',
-        truncated: false,
+test('timeline groups tool records into one assistant turn and removes empty avatars', () => {
+  const messages = timelineToWaveChatMessages(
+    hermesTimeline([
+      {
+        content: 'Research voice platforms',
+        id: 'user-message',
+        role: 'user',
       },
-    },
-    {
-      content: '',
-      id: 'empty-assistant-between-tools',
-      role: 'assistant',
-    },
-    {
-      content: '',
-      id: 'tool-search',
-      role: 'tool',
-      toolName: 'web_extract',
-      toolOutput: {
-        text: 'search results',
-        truncated: false,
+      {
+        content: '',
+        id: 'empty-assistant-before-tool',
+        role: 'assistant',
       },
-    },
-    {
-      content: 'Here is the comparison.',
-      id: 'assistant-answer',
-      role: 'assistant',
-    },
-  ]);
+      {
+        content: '',
+        id: 'tool-read',
+        role: 'tool',
+        toolName: 'read_file',
+        toolOutput: {
+          text: 'file contents',
+          truncated: false,
+        },
+      },
+      {
+        content: '',
+        id: 'empty-assistant-between-tools',
+        role: 'assistant',
+      },
+      {
+        content: '',
+        id: 'tool-search',
+        role: 'tool',
+        toolName: 'web_extract',
+        toolOutput: {
+          text: 'search results',
+          truncated: false,
+        },
+      },
+      {
+        content: 'Here is the comparison.',
+        id: 'assistant-answer',
+        role: 'assistant',
+      },
+    ]),
+  );
 
   assert.deepEqual(messages, [
     {
@@ -204,7 +212,72 @@ test('history groups tool records into one assistant turn and removes empty avat
   assert.equal(JSON.stringify(messages).includes('search results'), true);
 });
 
-test('keeps a safe turn error after reconciled history replaces optimistic messages', () => {
+test('timeline nests a Hermes handoff between Wave acknowledgement and result', () => {
+  const messages = timelineToWaveChatMessages([
+    {
+      id: 'voice-user',
+      message: {
+        content: 'Turn off the bedroom lights',
+        role: 'user',
+      },
+      source: 'wave',
+      turnId: 'voice-turn',
+      type: 'message',
+    },
+    {
+      id: 'wave-ack',
+      message: {
+        content: "I'll take care of that.",
+        role: 'assistant',
+      },
+      source: 'wave',
+      turnId: 'voice-turn',
+      type: 'message',
+    },
+    {
+      completedAt: '2026-07-30T02:00:02.000Z',
+      createdAt: '2026-07-30T02:00:01.000Z',
+      id: 'wave-handoff',
+      instruction: 'Turn off the lights in the bedroom.',
+      result: {
+        answer: 'The bedroom lights are off.',
+        ok: true,
+        truncated: false,
+      },
+      status: 'completed',
+      turnId: 'voice-turn',
+      type: 'handoff',
+    },
+    {
+      id: 'wave-result',
+      message: {
+        content: 'The bedroom lights are off.',
+        role: 'assistant',
+      },
+      source: 'wave',
+      turnId: 'voice-turn',
+      type: 'message',
+    },
+  ]);
+
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1]?.role, 'assistant');
+  assert.deepEqual(
+    messages[1]?.parts.map((part) => part.type),
+    ['text', 'task', 'text'],
+  );
+  const handoff = messages[1]?.parts[1];
+  assert.equal(
+    handoff?.type === 'task' && handoff.title,
+    'Hermes · Turn off the lights in the bedroom.',
+  );
+  assert.equal(
+    handoff?.type === 'task' && handoff.output?.text.includes('"ok": true'),
+    true,
+  );
+});
+
+test('keeps a safe turn error after the timeline replaces optimistic messages', () => {
   let state = waveChatReducer(initialWaveChatState, {
     assistantId: 'assistant-local',
     input: 'Do the work',
@@ -228,7 +301,7 @@ test('keeps a safe turn error after reconciled history replaces optimistic messa
     },
     type: 'event',
   });
-  state = waveChatReducer(state, { type: 'history.reconciled' });
+  state = waveChatReducer(state, { type: 'timeline.reconciled' });
 
   assert.deepEqual(state.messages, []);
   assert.deepEqual(state.error, {
@@ -302,4 +375,19 @@ function event(
     turnId: 'turn-1',
     ...value,
   };
+}
+
+function hermesTimeline(
+  messages: WaveConversationMessage[],
+): WaveTimelineEntry[] {
+  return messages.map((message, index) => {
+    const { id, ...normalized } = message;
+    return {
+      id: id ?? `timeline-message-${index}`,
+      message: normalized,
+      source: 'hermes',
+      turnId: 'timeline-turn-1',
+      type: 'message',
+    };
+  });
 }

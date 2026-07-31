@@ -19,10 +19,12 @@ import type {
 import { WaveHttpError } from '../http/errors.ts';
 import { RealtimeCallRegistry } from './realtime-call-registry.ts';
 import type {
+  RealtimeAssistantTranscript,
   RealtimeFunctionCall,
   RealtimeProvider,
   RealtimeProviderCall,
   RealtimeSideband,
+  RealtimeUserTranscript,
 } from './realtime-provider.ts';
 
 const SDP_OFFER = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n';
@@ -30,13 +32,21 @@ const SDP_ANSWER = 'v=0\r\no=- 2 3 IN IP4 127.0.0.1\r\n';
 
 class FakeRealtimeSideband implements RealtimeSideband {
   closed = false;
+  readonly handoffIds: string[] = [];
   readonly results: {
     callId: string;
     result: WaveAskHermesToolResult;
   }[] = [];
   private readonly closeListeners = new Set<() => void>();
+  private readonly assistantTranscriptListeners = new Set<
+    (transcript: RealtimeAssistantTranscript) => void
+  >();
   private readonly functionCallListeners = new Set<
     (call: RealtimeFunctionCall) => void
+  >();
+  private readonly userItemListeners = new Set<(itemId: string) => void>();
+  private readonly userTranscriptListeners = new Set<
+    (transcript: RealtimeUserTranscript) => void
   >();
 
   close() {
@@ -55,8 +65,32 @@ class FakeRealtimeSideband implements RealtimeSideband {
     }
   }
 
+  emitAssistantTranscript(transcript: RealtimeAssistantTranscript) {
+    for (const listener of this.assistantTranscriptListeners) {
+      listener(transcript);
+    }
+  }
+
+  emitUserItem(itemId: string) {
+    for (const listener of this.userItemListeners) {
+      listener(itemId);
+    }
+  }
+
+  emitUserTranscript(transcript: RealtimeUserTranscript) {
+    for (const listener of this.userTranscriptListeners) {
+      listener(transcript);
+    }
+  }
+
   onClose(listener: () => void) {
     this.closeListeners.add(listener);
+  }
+
+  onAssistantTranscript(
+    listener: (transcript: RealtimeAssistantTranscript) => void,
+  ) {
+    this.assistantTranscriptListeners.add(listener);
   }
 
   onError() {}
@@ -65,9 +99,24 @@ class FakeRealtimeSideband implements RealtimeSideband {
     this.functionCallListeners.add(listener);
   }
 
-  sendFunctionResult(callId: string, result: WaveAskHermesToolResult) {
+  onUserItem(listener: (itemId: string) => void) {
+    this.userItemListeners.add(listener);
+  }
+
+  onUserTranscript(listener: (transcript: RealtimeUserTranscript) => void) {
+    this.userTranscriptListeners.add(listener);
+  }
+
+  sendFunctionResult(
+    callId: string,
+    result: WaveAskHermesToolResult,
+    handoffId?: string,
+  ) {
     if (this.closed) {
       return false;
+    }
+    if (handoffId) {
+      this.handoffIds.push(handoffId);
     }
     this.results.push({ callId, result });
     return true;
@@ -210,6 +259,62 @@ test('binds a Realtime call to trusted device and session state', async () => {
   });
   await context.registry.end(context.deviceId, started.id);
   assert.equal(context.provider.calls[0]?.ended, true);
+  closeContext(context);
+});
+
+test('persists finalized speech and correlates the Hermes handoff result', async () => {
+  const context = createContext();
+  await context.registry.start({
+    deviceId: context.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: context.sessionId,
+  });
+  const sideband = context.provider.calls[0]?.sideband;
+  assert.ok(sideband);
+  sideband.emitUserItem('provider-user-item-1');
+  sideband.emitUserTranscript({
+    itemId: 'provider-user-item-1',
+    transcript: 'Turn off the bedroom lights',
+  });
+  sideband.emitAssistantTranscript({
+    handoffIds: [],
+    responseId: 'provider-response-ack',
+    transcript: "I'll take care of that.",
+    userItemId: 'provider-user-item-1',
+  });
+  sideband.emitFunctionCall({
+    arguments: JSON.stringify({
+      instruction: 'Turn off the lights in the bedroom.',
+    }),
+    callId: 'provider-tool-call-1',
+    name: 'ask_hermes',
+    userItemId: 'provider-user-item-1',
+  });
+  await waitFor(() => sideband.results.length === 1);
+  const handoffId = sideband.handoffIds[0];
+  assert.ok(handoffId);
+  sideband.emitAssistantTranscript({
+    handoffIds: [handoffId],
+    responseId: 'provider-response-final',
+    transcript: 'The bedroom lights are off.',
+    userItemId: 'provider-user-item-1',
+  });
+
+  const turns = context.store.listSessionTurns(context.sessionId);
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0]?.userTranscript, 'Turn off the bedroom lights');
+  assert.deepEqual(
+    turns[0]?.entries.map((entry) =>
+      entry.type === 'wave_message'
+        ? `wave:${entry.content}`
+        : `handoff:${entry.status}:${entry.hermesAssistantMessageId}`,
+    ),
+    [
+      "wave:I'll take care of that.",
+      'handoff:completed:message-1',
+      'wave:The bedroom lights are off.',
+    ],
+  );
   closeContext(context);
 });
 
@@ -489,6 +594,41 @@ test('coalesces identical instructions across distinct tool-call IDs', async () 
   closeContext(context);
 });
 
+test('runs the same instruction again when it belongs to a later user turn', async () => {
+  const context = createContext();
+  await context.registry.start({
+    deviceId: context.deviceId,
+    sdpOffer: SDP_OFFER,
+    sessionId: context.sessionId,
+  });
+  const sideband = context.provider.calls[0]?.sideband;
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({
+      instruction: 'Check the current state',
+    }),
+    callId: 'tool-call-first-turn',
+    name: 'ask_hermes',
+    userItemId: 'user-item-1',
+  });
+  await waitFor(() => sideband?.results.length === 1);
+
+  sideband?.emitFunctionCall({
+    arguments: JSON.stringify({
+      instruction: 'Check the current state',
+    }),
+    callId: 'tool-call-second-turn',
+    name: 'ask_hermes',
+    userItemId: 'user-item-2',
+  });
+  await waitFor(() => sideband?.results.length === 2);
+
+  assert.deepEqual(context.hermes.instructions, [
+    'Check the current state',
+    'Check the current state',
+  ]);
+  closeContext(context);
+});
+
 test('bounds outstanding background Hermes work per live call', async () => {
   const context = createContext();
   context.hermes.stream = async function* (input) {
@@ -602,9 +742,28 @@ test('returns a timeout result but ignores completion after the call closes', as
     callId: 'tool-call-close',
     name: 'ask_hermes',
   });
+  await waitFor(
+    () =>
+      closeContextValue.store.listSessionTurns(closeContextValue.sessionId)[0]
+        ?.entries.length === 1,
+  );
   closingSideband?.close();
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.deepEqual(closingSideband?.results, []);
+  const closedHandoff = closeContextValue.store.listSessionTurns(
+    closeContextValue.sessionId,
+  )[0]?.entries[0];
+  assert.equal(closedHandoff?.type, 'handoff');
+  assert.equal(
+    closedHandoff?.type === 'handoff' && closedHandoff.status,
+    'failed',
+  );
+  assert.equal(
+    closedHandoff?.type === 'handoff' &&
+      closedHandoff.result?.ok === false &&
+      closedHandoff.result.error.code,
+    'cancelled',
+  );
   closeContext(closeContextValue);
 });
 
@@ -633,6 +792,7 @@ function createContext(
     {
       deviceStore: store,
       hermesClient: hermes,
+      interactionStore: store,
       provider,
     },
   );

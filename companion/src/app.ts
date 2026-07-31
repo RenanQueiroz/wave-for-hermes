@@ -16,6 +16,7 @@ import { HttpHermesClient } from './hermes/hermes-client.ts';
 import { HermesClientError } from './hermes/hermes-errors.ts';
 import type { HermesClient } from './hermes/hermes-types.ts';
 import { normalizeHermesError, WaveHttpError } from './http/errors.ts';
+import type { InteractionStore } from './interactions/interaction-store.ts';
 import { OpenAIRealtimeProvider } from './realtime/openai-realtime-provider.ts';
 import { RealtimeCallRegistry } from './realtime/realtime-call-registry.ts';
 import { registerWaveApi } from './routes/wave-api.ts';
@@ -23,6 +24,7 @@ import { registerWaveApi } from './routes/wave-api.ts';
 export interface BuildCompanionServerOptions {
   deviceStore?: DeviceStore;
   hermesClient?: HermesClient;
+  interactionStore?: InteractionStore;
   logger?: FastifyServerOptions['logger'];
   now?: () => Date;
   realtimeCallRegistry?: RealtimeCallRegistry;
@@ -38,6 +40,14 @@ export function buildCompanionServer(
     options.deviceStore ?? new SqliteDeviceStore(config.databasePath);
   const hermesClient =
     options.hermesClient ?? new HttpHermesClient(config.hermes);
+  const interactionStore =
+    options.interactionStore ??
+    (deviceStore instanceof SqliteDeviceStore ? deviceStore : undefined);
+  if (!interactionStore) {
+    throw new Error(
+      'A custom device store requires a companion interaction store.',
+    );
+  }
   const turnRegistry =
     options.turnRegistry ?? new ActiveTurnRegistry(config.maxActiveTurns);
   const realtimeCallRegistry =
@@ -52,6 +62,7 @@ export function buildCompanionServer(
           {
             deviceStore,
             hermesClient,
+            interactionStore,
             provider: new OpenAIRealtimeProvider(config.openAI),
           },
         )
@@ -91,6 +102,7 @@ export function buildCompanionServer(
       {
         deviceStore,
         hermesClient,
+        interactionStore,
         realtimeCallRegistry,
         turnRegistry,
       },

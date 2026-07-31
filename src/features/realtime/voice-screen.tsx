@@ -16,7 +16,7 @@ import {
   WaveRealtimeController,
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
-import { refreshWaveSessionHistory } from '@/features/sessions/refresh-session-history';
+import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
 import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
 
@@ -70,10 +70,18 @@ function ConnectedVoiceScreen({
     const task = (async () => {
       await controller.stop();
       if (controller.getState().phase !== 'idle') return;
-      await refreshWaveSessionHistory({
+      await refreshWaveSessionTimeline({
         baseUrl,
         connectionId,
-        load: (signal) => client.getSessionHistory(sessionId, signal),
+        load: (before, signal) =>
+          client.getSessionTimeline(
+            sessionId,
+            {
+              ...(before ? { before } : {}),
+              limit: 100,
+            },
+            signal,
+          ),
         queryClient,
         sessionId,
       }).catch(() => undefined);

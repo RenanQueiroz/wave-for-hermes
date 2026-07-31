@@ -98,14 +98,14 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   saving the credential, then requires an authenticated live compatibility check. A saved
   credential is rechecked at launch. Local disconnect deletes the secure record but deliberately
   does not revoke the server-side device.
-- `WaveQueryProvider` owns finite server state for session lists and histories. Connection changes
+- `WaveQueryProvider` owns finite server state for session lists and unified timelines. Connection changes
   cancel and remove the connection-scoped `wave` cache so one companion/device cannot reuse
   another's data.
 - `ActiveSessionStore` persists only a versioned, non-secret connection/session identifier pair for
   current-flow coordination. Connected cold launch deliberately creates a new conversation;
   Hermes remains the durable source for every prior conversation shown in the drawer.
 - `useWaveChat` and its reducer own the single active stream, 50 ms assistant-delta batching,
-  cancellation races, safe error state, and post-stream history reconciliation. The reducer keeps
+  cancellation races, safe error state, and post-stream timeline reconciliation. The reducer keeps
   the composer busy until stream cleanup and reconciliation have settled, so a newly enabled send
   cannot race the prior turn. React screens do not parse SSE or construct protocol messages.
 - `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
@@ -121,8 +121,10 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
 - The PanelUI chat route renders normalized conversation data only. Tool events become
   bounded `Task` parts with a name, status, and optional raw input/output. Disclosures start
   collapsed and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs,
-  run IDs, and credentials never enter the mobile render model. Hermes avatars align with the
-  bottom of a grouped turn and only its last item keeps the avatar-facing pointer radius.
+  run IDs, and credentials never enter the mobile render model. Wave avatars align with the
+  bottom of a grouped turn and only its last item keeps the avatar-facing pointer radius. A
+  Realtime Hermes handoff is a nested task between Wave's acknowledgement and final response,
+  rather than a second assistant identity or a duplicate canonical Hermes message.
   `KeyboardProvider` is mounted once at the app root, and PanelUI's `KeyboardAvoider` docks the
   rounded `InputGroup` composer above the native keyboard. The attachment control sits inside the
   leading edge. The trailing slot shows exactly one of Stop, Send, or the live-wave action; when
@@ -299,7 +301,8 @@ See [`companion/README.md`](../companion/README.md) for the endpoint table and o
 - the companion status and feature-availability response;
 - stable safe error codes and error envelopes;
 - one-time pairing requests and responses;
-- compatibility, paginated session lifecycle, history, attachment-aware turn, read-only
+- compatibility, paginated session lifecycle, cursor-paginated unified timeline,
+  attachment-aware turn, read-only
   scheduled-job, and cancellation requests and responses;
 - a strict discriminated union of ordered normalized turn events;
 - strict inert tool-detail fields with explicit truncation;
@@ -313,21 +316,26 @@ protocol messages.
 
 ## State and UI direction
 
-- Hermes remains the source of truth for durable sessions and history.
-- TanStack Query owns finite server state such as status, paginated account sessions, history, and
-  read-only scheduled jobs.
+- Hermes remains the source of truth for its durable sessions, messages, and tool records. The
+  Companion interaction ledger is authoritative only for finalized Wave speech and handoff
+  lifecycle records; it stores no raw audio, partial transcripts, or hidden reasoning.
+- TanStack Query owns finite server state such as status, paginated account sessions, the
+  cursor-paginated unified timeline, and read-only scheduled jobs.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
-- History normalization drops empty assistant records and groups consecutive assistant/tool records
-  into one Hermes turn. Tool activity renders as collapsed named status rows with the Hermes avatar
-  aligned to the last item. Expanding a row lazily renders its bounded raw input and output as
-  copyable plain code, never Markdown; streaming previews are labeled until canonical history
-  replaces them.
-- Realtime-only speech remains an ephemeral overlay on the active Hermes session. Successful
-  hangup refreshes the canonical Hermes history query before returning to text chat, so completed
-  `ask_hermes` turns appear immediately without persisting casual Realtime conversation twice.
+- Timeline normalization drops empty records, groups entries by stable Wave-owned turn IDs, and
+  suppresses the canonical Hermes range already represented by a correlated Realtime handoff.
+  Direct Hermes work and Realtime handoffs both render under the Wave identity. Tool activity
+  renders as collapsed named status rows with the Wave avatar aligned to the last item. Expanding a
+  row lazily renders bounded raw input and output as copyable plain code, never Markdown.
+- The Companion persists only finalized Realtime user and assistant transcripts. Successful
+  hangup refreshes the unified timeline query before returning to text chat, so casual Wave speech
+  and completed `ask_hermes` work appear immediately without duplicating Hermes's canonical turn.
+- Timeline pagination uses a stable entry cursor rather than an offset. Deleting a Hermes session
+  cascades its Companion interaction records; clearing only Hermes history leaves the Wave handoff
+  record visible with its bounded result.
 - The initial Realtime tool is the strict
   `ask_hermes({ instruction: string })` operation. A model-controlled session ID is forbidden.
 - Wave owns the spoken interaction. The user addresses Wave naturally, and Wave selects and

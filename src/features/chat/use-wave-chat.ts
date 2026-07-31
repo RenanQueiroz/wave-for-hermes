@@ -11,13 +11,13 @@ const DELTA_FLUSH_MS = 50;
 
 interface UseWaveChatOptions {
   client: WaveBackendClient;
-  reconcileHistory(): Promise<unknown>;
+  reconcileTimeline(): Promise<unknown>;
   sessionId: string;
 }
 
 export function useWaveChat({
   client,
-  reconcileHistory,
+  reconcileTimeline,
   sessionId,
 }: UseWaveChatOptions) {
   const [state, dispatch] = useReducer(waveChatReducer, initialWaveChatState);
@@ -92,13 +92,13 @@ export function useWaveChat({
         }
         flush();
         if (!mountedRef.current) return;
-        const reconciled = await reconcileHistory().then(
+        const reconciled = await reconcileTimeline().then(
           () => true,
           () => false,
         );
         if (!mountedRef.current) return;
         if (reconciled) {
-          dispatch({ type: 'history.reconciled' });
+          dispatch({ type: 'timeline.reconciled' });
         }
       } catch (error) {
         flush();
@@ -117,12 +117,12 @@ export function useWaveChat({
             type: 'transport.error',
           });
         }
-        const reconciled = await reconcileHistory().then(
+        const reconciled = await reconcileTimeline().then(
           () => true,
           () => false,
         );
         if (reconciled && mountedRef.current) {
-          dispatch({ type: 'history.reconciled' });
+          dispatch({ type: 'timeline.reconciled' });
         }
       } finally {
         if (flushTimer) clearTimeout(flushTimer);
@@ -137,7 +137,7 @@ export function useWaveChat({
         }
       }
     },
-    [client, reconcileHistory, sessionId],
+    [client, reconcileTimeline, sessionId],
   );
 
   const stop = useCallback(async () => {

@@ -4,9 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseSync, type StatementResultingChanges } from 'node:sqlite';
 
 import {
+  WaveAskHermesToolResultSchema,
   WaveDeviceCredentialSchema,
   WaveDeviceNameSchema,
   WaveIdentifierSchema,
+  WaveIsoDateTimeSchema,
 } from '@wave/contracts';
 
 import {
@@ -22,8 +24,46 @@ import type {
   IssuedPairingCode,
   RedeemedDevice,
 } from './device-store.ts';
+import type {
+  InteractionEntryRecord,
+  InteractionStore,
+  InteractionTurnRecord,
+} from '../interactions/interaction-store.ts';
 
-const DATABASE_SCHEMA_VERSION = 2;
+const DATABASE_SCHEMA_VERSION = 3;
+const INTERACTION_SCHEMA_SQL = `
+  CREATE TABLE realtime_turns (
+    id TEXT PRIMARY KEY NOT NULL,
+    session_id TEXT NOT NULL,
+    event_key TEXT UNIQUE NOT NULL,
+    user_transcript TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX realtime_turns_session_order_index
+    ON realtime_turns (session_id, created_at, id);
+  CREATE TABLE realtime_entries (
+    id TEXT PRIMARY KEY NOT NULL,
+    turn_id TEXT NOT NULL,
+    event_key TEXT UNIQUE NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('wave_message', 'handoff')),
+    content TEXT,
+    instruction TEXT,
+    status TEXT CHECK (status IN ('pending', 'completed', 'failed')),
+    result_json TEXT,
+    hermes_assistant_message_id TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (turn_id) REFERENCES realtime_turns (id) ON DELETE CASCADE,
+    CHECK (
+      (kind = 'wave_message' AND content IS NOT NULL AND instruction IS NULL AND status IS NULL)
+      OR
+      (kind = 'handoff' AND content IS NULL AND instruction IS NOT NULL AND status IS NOT NULL)
+    )
+  ) STRICT;
+  CREATE INDEX realtime_entries_turn_order_index
+    ON realtime_entries (turn_id, created_at, id);
+`;
 
 interface SqliteDeviceStoreOptions {
   now?: () => Date;
@@ -42,7 +82,27 @@ interface PairingCodeRow {
   id: string;
 }
 
-export class SqliteDeviceStore implements DeviceStore {
+interface RealtimeEntryRow {
+  completed_at: string | null;
+  content: string | null;
+  created_at: string;
+  hermes_assistant_message_id: string | null;
+  id: string;
+  instruction: string | null;
+  kind: 'handoff' | 'wave_message';
+  result_json: string | null;
+  status: 'completed' | 'failed' | 'pending' | null;
+  turn_id: string;
+}
+
+interface RealtimeTurnRow {
+  created_at: string;
+  id: string;
+  session_id: string;
+  user_transcript: string | null;
+}
+
+export class SqliteDeviceStore implements DeviceStore, InteractionStore {
   private readonly database: DatabaseSync;
   private readonly now: () => Date;
 
@@ -91,6 +151,206 @@ export class SqliteDeviceStore implements DeviceStore {
     if (this.database.isOpen) {
       this.database.close();
     }
+  }
+
+  beginHandoff(input: {
+    createdAt: string;
+    eventKey: string;
+    instruction: string;
+    sessionId: string;
+    turnId: string;
+  }) {
+    const createdAt = WaveIsoDateTimeSchema.parse(input.createdAt);
+    const sessionId = WaveIdentifierSchema.parse(input.sessionId);
+    const turnId = WaveIdentifierSchema.parse(input.turnId);
+    const instruction = input.instruction.trim();
+    if (!instruction || instruction.length > 32_000) {
+      throw new Error('Interaction handoff instruction is invalid.');
+    }
+    this.requireTurnSession(turnId, sessionId);
+    const id = randomUUID();
+    this.database
+      .prepare(
+        `INSERT INTO realtime_entries (
+          id, turn_id, event_key, kind, content, instruction, status,
+          result_json, hermes_assistant_message_id, created_at, completed_at
+        ) VALUES (?, ?, ?, 'handoff', NULL, ?, 'pending', NULL, NULL, ?, NULL)
+        ON CONFLICT (event_key) DO NOTHING`,
+      )
+      .run(id, turnId, parseEventKey(input.eventKey), instruction, createdAt);
+    return this.findEntryId(input.eventKey, 'handoff');
+  }
+
+  beginRealtimeTurn(input: {
+    createdAt: string;
+    eventKey: string;
+    sessionId: string;
+  }) {
+    const createdAt = WaveIsoDateTimeSchema.parse(input.createdAt);
+    const sessionId = WaveIdentifierSchema.parse(input.sessionId);
+    const eventKey = parseEventKey(input.eventKey);
+    const id = randomUUID();
+    this.database
+      .prepare(
+        `INSERT INTO realtime_turns (
+          id, session_id, event_key, user_transcript, created_at, updated_at
+        ) VALUES (?, ?, ?, NULL, ?, ?)
+        ON CONFLICT (event_key) DO NOTHING`,
+      )
+      .run(id, sessionId, eventKey, createdAt, createdAt);
+    const row = this.database
+      .prepare(
+        `SELECT id, session_id
+         FROM realtime_turns
+         WHERE event_key = ?`,
+      )
+      .get(eventKey) as { id: string; session_id: string } | undefined;
+    if (!row || row.session_id !== sessionId) {
+      throw new Error('Interaction turn could not be created.');
+    }
+    return row.id;
+  }
+
+  completeHandoff(input: {
+    completedAt: string;
+    handoffId: string;
+    hermesAssistantMessageId?: string;
+    result: import('@wave/contracts').WaveAskHermesToolResult;
+  }) {
+    const completedAt = WaveIsoDateTimeSchema.parse(input.completedAt);
+    const handoffId = WaveIdentifierSchema.parse(input.handoffId);
+    const result = WaveAskHermesToolResultSchema.parse(input.result);
+    const resultJson = JSON.stringify(result);
+    const status = result.ok ? 'completed' : 'failed';
+    const existing = this.database
+      .prepare(
+        `SELECT status, result_json
+         FROM realtime_entries
+         WHERE id = ? AND kind = 'handoff'`,
+      )
+      .get(handoffId) as
+      { result_json: string | null; status: string | null } | undefined;
+    if (!existing) {
+      throw new Error('Interaction handoff was not found.');
+    }
+    if (existing.status !== 'pending') {
+      if (existing.status !== status || existing.result_json !== resultJson) {
+        throw new Error('Interaction handoff has already been settled.');
+      }
+      return;
+    }
+    this.database
+      .prepare(
+        `UPDATE realtime_entries
+         SET status = ?, result_json = ?, hermes_assistant_message_id = ?,
+             completed_at = ?
+         WHERE id = ? AND kind = 'handoff' AND status = 'pending'`,
+      )
+      .run(
+        status,
+        resultJson,
+        input.hermesAssistantMessageId ?? null,
+        completedAt,
+        handoffId,
+      );
+  }
+
+  deleteSession(sessionId: string) {
+    this.database
+      .prepare('DELETE FROM realtime_turns WHERE session_id = ?')
+      .run(WaveIdentifierSchema.parse(sessionId));
+  }
+
+  listSessionTurns(sessionId: string): InteractionTurnRecord[] {
+    const validSessionId = WaveIdentifierSchema.parse(sessionId);
+    const turnRows = this.database
+      .prepare(
+        `SELECT id, session_id, user_transcript, created_at
+         FROM realtime_turns
+         WHERE session_id = ?
+         ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all(validSessionId) as unknown as RealtimeTurnRow[];
+    if (turnRows.length === 0) {
+      return [];
+    }
+    const entryRows = this.database
+      .prepare(
+        `SELECT e.id, e.turn_id, e.kind, e.content, e.instruction, e.status,
+                e.result_json, e.hermes_assistant_message_id, e.created_at,
+                e.completed_at
+         FROM realtime_entries e
+         INNER JOIN realtime_turns t ON t.id = e.turn_id
+         WHERE t.session_id = ?
+         ORDER BY e.created_at ASC, e.rowid ASC`,
+      )
+      .all(validSessionId) as unknown as RealtimeEntryRow[];
+    const entriesByTurn = new Map<string, InteractionEntryRecord[]>();
+    for (const row of entryRows) {
+      const entries = entriesByTurn.get(row.turn_id) ?? [];
+      entries.push(toInteractionEntry(row));
+      entriesByTurn.set(row.turn_id, entries);
+    }
+    return turnRows.map((row) => ({
+      createdAt: row.created_at,
+      entries: entriesByTurn.get(row.id) ?? [],
+      id: row.id,
+      sessionId: row.session_id,
+      ...(row.user_transcript ? { userTranscript: row.user_transcript } : {}),
+    }));
+  }
+
+  recordUserTranscript(input: {
+    transcript: string;
+    turnId: string;
+    updatedAt: string;
+  }) {
+    const transcript = input.transcript.trim();
+    if (!transcript || transcript.length > 128_000) {
+      throw new Error('Interaction transcript is invalid.');
+    }
+    const result = this.database
+      .prepare(
+        `UPDATE realtime_turns
+         SET user_transcript = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        transcript,
+        WaveIsoDateTimeSchema.parse(input.updatedAt),
+        WaveIdentifierSchema.parse(input.turnId),
+      );
+    if (!hasOneChange(result)) {
+      throw new Error('Interaction turn was not found.');
+    }
+  }
+
+  recordWaveMessage(input: {
+    content: string;
+    createdAt: string;
+    eventKey: string;
+    sessionId: string;
+    turnId: string;
+  }) {
+    const content = input.content.trim();
+    if (!content || content.length > 128_000) {
+      throw new Error('Interaction message is invalid.');
+    }
+    const createdAt = WaveIsoDateTimeSchema.parse(input.createdAt);
+    const sessionId = WaveIdentifierSchema.parse(input.sessionId);
+    const turnId = WaveIdentifierSchema.parse(input.turnId);
+    this.requireTurnSession(turnId, sessionId);
+    const id = randomUUID();
+    this.database
+      .prepare(
+        `INSERT INTO realtime_entries (
+          id, turn_id, event_key, kind, content, instruction, status,
+          result_json, hermes_assistant_message_id, created_at, completed_at
+        ) VALUES (?, ?, ?, 'wave_message', ?, NULL, NULL, NULL, NULL, ?, NULL)
+        ON CONFLICT (event_key) DO NOTHING`,
+      )
+      .run(id, turnId, parseEventKey(input.eventKey), content, createdAt);
+    return this.findEntryId(input.eventKey, 'wave_message');
   }
 
   isDeviceActive(deviceId: string) {
@@ -233,10 +493,20 @@ export class SqliteDeviceStore implements DeviceStore {
     if (version === DATABASE_SCHEMA_VERSION) {
       return;
     }
+    if (version === 2) {
+      this.database.exec(`
+        BEGIN IMMEDIATE;
+        ${INTERACTION_SCHEMA_SQL}
+        PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
+        COMMIT;
+      `);
+      return;
+    }
     if (version === 1) {
       this.database.exec(`
         BEGIN IMMEDIATE;
         DROP TABLE device_sessions;
+        ${INTERACTION_SCHEMA_SQL}
         PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
         COMMIT;
       `);
@@ -267,9 +537,38 @@ export class SqliteDeviceStore implements DeviceStore {
       ) STRICT;
       CREATE INDEX pairing_codes_expiry_index
         ON pairing_codes (expires_at);
+      ${INTERACTION_SCHEMA_SQL}
       PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
       COMMIT;
     `);
+  }
+
+  private findEntryId(eventKey: string, kind: 'handoff' | 'wave_message') {
+    const row = this.database
+      .prepare(
+        `SELECT id, kind
+         FROM realtime_entries
+         WHERE event_key = ?`,
+      )
+      .get(parseEventKey(eventKey)) as
+      { id: string; kind: 'handoff' | 'wave_message' } | undefined;
+    if (!row || row.kind !== kind) {
+      throw new Error('Interaction entry could not be created.');
+    }
+    return row.id;
+  }
+
+  private requireTurnSession(turnId: string, sessionId: string) {
+    const row = this.database
+      .prepare(
+        `SELECT session_id
+         FROM realtime_turns
+         WHERE id = ?`,
+      )
+      .get(turnId) as { session_id: string } | undefined;
+    if (!row || row.session_id !== sessionId) {
+      throw new Error('Interaction turn does not belong to the session.');
+    }
   }
 
   private removeExpiredPairingCodes(now: string) {
@@ -280,6 +579,48 @@ export class SqliteDeviceStore implements DeviceStore {
       )
       .run(now);
   }
+}
+
+function parseEventKey(eventKey: string) {
+  if (!/^[a-f0-9]{64}$/.test(eventKey)) {
+    throw new Error('Interaction event key is invalid.');
+  }
+  return eventKey;
+}
+
+function toInteractionEntry(row: RealtimeEntryRow): InteractionEntryRecord {
+  if (row.kind === 'wave_message') {
+    if (!row.content) {
+      throw new Error('Stored Wave interaction message is invalid.');
+    }
+    return {
+      content: row.content,
+      createdAt: row.created_at,
+      id: row.id,
+      type: 'wave_message',
+    };
+  }
+  if (!row.instruction || !row.status) {
+    throw new Error('Stored Wave interaction handoff is invalid.');
+  }
+  return {
+    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+    createdAt: row.created_at,
+    ...(row.hermes_assistant_message_id
+      ? { hermesAssistantMessageId: row.hermes_assistant_message_id }
+      : {}),
+    id: row.id,
+    instruction: row.instruction,
+    ...(row.result_json
+      ? {
+          result: WaveAskHermesToolResultSchema.parse(
+            JSON.parse(row.result_json) as unknown,
+          ),
+        }
+      : {}),
+    status: row.status,
+    type: 'handoff',
+  };
 }
 
 function hasOneChange(result: StatementResultingChanges) {

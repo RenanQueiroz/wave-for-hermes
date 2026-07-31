@@ -16,10 +16,12 @@ import { z } from 'zod';
 import type { OpenAIRealtimeConfig } from '../config.ts';
 import {
   RealtimeProviderError,
+  type RealtimeAssistantTranscript,
   type RealtimeFunctionCall,
   type RealtimeProvider,
   type RealtimeProviderCall,
   type RealtimeSideband,
+  type RealtimeUserTranscript,
 } from './realtime-provider.ts';
 
 const OPENAI_API_BASE_URL = 'https://api.openai.com/v1';
@@ -57,6 +59,46 @@ const RealtimeFunctionCallSchema = z
     type: z.literal('function_call'),
   })
   .passthrough();
+const RealtimeUserItemEventSchema = z
+  .object({
+    item: z
+      .object({
+        id: z.string().min(1).max(300),
+        role: z.literal('user'),
+        type: z.literal('message'),
+      })
+      .passthrough(),
+    type: z.enum(['conversation.item.added', 'conversation.item.done']),
+  })
+  .passthrough();
+const RealtimeUserTranscriptEventSchema = z
+  .object({
+    item_id: z.string().min(1).max(300),
+    transcript: z.string().max(128_000),
+    type: z.literal('conversation.item.input_audio_transcription.completed'),
+  })
+  .passthrough();
+const RealtimeAssistantTranscriptEventSchema = z
+  .object({
+    response_id: z.string().min(1).max(300),
+    transcript: z.string().max(128_000),
+    type: z.literal('response.output_audio_transcript.done'),
+  })
+  .passthrough();
+const RealtimeResponseEventSchema = z
+  .object({
+    response: z
+      .object({
+        id: z.string().min(1).max(300).optional(),
+        metadata: z.record(z.string(), z.string()).nullish(),
+        output: z.array(z.unknown()).optional(),
+        status: z.string().max(100).optional(),
+      })
+      .passthrough(),
+    type: z.enum(['response.created', 'response.done']),
+  })
+  .passthrough();
+const WAVE_HANDOFF_METADATA_KEY = 'wave_handoff_ids';
 
 export class OpenAIRealtimeProvider implements RealtimeProvider {
   private readonly client: OpenAI;
@@ -199,6 +241,9 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 }
 
 class OpenAIRealtimeSideband implements RealtimeSideband {
+  private readonly assistantTranscriptListeners = new Set<
+    (transcript: RealtimeAssistantTranscript) => void
+  >();
   private closed = false;
   private readonly closeListeners = new Set<() => void>();
   private readonly errorListeners = new Set<
@@ -209,10 +254,23 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
   >();
   private readonly pendingFunctionResults: {
     callId: string;
+    handoffId?: string;
     output: string;
   }[] = [];
+  private readonly pendingResponseHandoffIds: string[][] = [];
+  private readonly responseContexts = new Map<
+    string,
+    { handoffIds: string[]; userItemId?: string }
+  >();
+  private readonly responseTranscripts = new Map<string, string>();
   private responseInProgress = false;
   private readonly socket: SidebandSocket;
+  private readonly seenUserItemIds = new Set<string>();
+  private readonly userItemListeners = new Set<(itemId: string) => void>();
+  private readonly userTranscriptListeners = new Set<
+    (transcript: RealtimeUserTranscript) => void
+  >();
+  private latestUserItemId?: string;
   private userSpeaking = false;
 
   constructor(socket: SidebandSocket) {
@@ -243,6 +301,12 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     }
   }
 
+  onAssistantTranscript(
+    listener: (transcript: RealtimeAssistantTranscript) => void,
+  ) {
+    this.assistantTranscriptListeners.add(listener);
+  }
+
   onClose(listener: () => void) {
     this.closeListeners.add(listener);
     if (this.closed) {
@@ -258,12 +322,28 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     this.functionCallListeners.add(listener);
   }
 
-  sendFunctionResult(callId: string, result: WaveAskHermesToolResult) {
+  onUserItem(listener: (itemId: string) => void) {
+    this.userItemListeners.add(listener);
+  }
+
+  onUserTranscript(listener: (transcript: RealtimeUserTranscript) => void) {
+    this.userTranscriptListeners.add(listener);
+  }
+
+  sendFunctionResult(
+    callId: string,
+    result: WaveAskHermesToolResult,
+    handoffId?: string,
+  ) {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return false;
     }
     const output = JSON.stringify(WaveAskHermesToolResultSchema.parse(result));
-    this.pendingFunctionResults.push({ callId, output });
+    this.pendingFunctionResults.push({
+      callId,
+      ...(handoffId ? { handoffId } : {}),
+      output,
+    });
     return this.flushFunctionResults();
   }
 
@@ -377,25 +457,106 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
       this.userSpeaking = false;
       return;
     }
+    if (
+      event.type === 'conversation.item.added' ||
+      event.type === 'conversation.item.done'
+    ) {
+      const parsed = RealtimeUserItemEventSchema.safeParse(event);
+      if (!parsed.success) {
+        return;
+      }
+      this.emitUserItem(parsed.data.item.id);
+      return;
+    }
+    if (
+      event.type === 'conversation.item.input_audio_transcription.completed'
+    ) {
+      const parsed = RealtimeUserTranscriptEventSchema.safeParse(event);
+      if (!parsed.success) {
+        this.emitProtocolError(
+          'OpenAI Realtime sent an invalid input transcript.',
+        );
+        return;
+      }
+      this.emitUserItem(parsed.data.item_id);
+      for (const listener of this.userTranscriptListeners) {
+        listener({
+          itemId: parsed.data.item_id,
+          transcript: parsed.data.transcript,
+        });
+      }
+      return;
+    }
+    if (event.type === 'response.output_audio_transcript.done') {
+      const parsed = RealtimeAssistantTranscriptEventSchema.safeParse(event);
+      if (!parsed.success) {
+        this.emitProtocolError(
+          'OpenAI Realtime sent an invalid output transcript.',
+        );
+        return;
+      }
+      this.responseTranscripts.set(
+        parsed.data.response_id,
+        parsed.data.transcript,
+      );
+      return;
+    }
     if (event.type === 'response.created') {
+      const parsed = RealtimeResponseEventSchema.safeParse(event);
+      if (!parsed.success) {
+        this.emitProtocolError('OpenAI Realtime sent an invalid response.');
+        return;
+      }
       this.responseInProgress = true;
+      if (parsed.data.response.id) {
+        const metadataHandoffIds = readHandoffMetadata(
+          parsed.data.response.metadata,
+        );
+        const pendingHandoffIds = this.pendingResponseHandoffIds.shift() ?? [];
+        this.responseContexts.set(parsed.data.response.id, {
+          handoffIds:
+            metadataHandoffIds.length > 0
+              ? metadataHandoffIds
+              : pendingHandoffIds,
+          ...(this.latestUserItemId
+            ? { userItemId: this.latestUserItemId }
+            : {}),
+        });
+      }
       return;
     }
     if (event.type !== 'response.done') {
       return;
     }
-    if (
-      !isRecord(event.response) ||
-      (event.response.output !== undefined &&
-        !Array.isArray(event.response.output))
-    ) {
+    const parsedResponse = RealtimeResponseEventSchema.safeParse(event);
+    if (!parsedResponse.success) {
       this.emitProtocolError(
         'OpenAI Realtime sent an invalid completed response.',
       );
       return;
     }
+    const response = parsedResponse.data.response;
+    const responseId = response.id;
+    const context = responseId
+      ? this.responseContexts.get(responseId)
+      : undefined;
+    const handoffIds = readHandoffMetadata(response.metadata);
+    const transcript = responseId
+      ? this.responseTranscripts.get(responseId)?.trim()
+      : undefined;
+    if (responseId && response.status === 'completed' && transcript) {
+      for (const listener of this.assistantTranscriptListeners) {
+        listener({
+          handoffIds:
+            handoffIds.length > 0 ? handoffIds : (context?.handoffIds ?? []),
+          responseId,
+          transcript,
+          ...(context?.userItemId ? { userItemId: context.userItemId } : {}),
+        });
+      }
+    }
     this.responseInProgress = false;
-    for (const output of event.response.output ?? []) {
+    for (const output of response.output ?? []) {
       if (!isRecord(output) || output.type !== 'function_call') {
         continue;
       }
@@ -411,8 +572,13 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
           arguments: parsed.data.arguments,
           callId: parsed.data.call_id,
           name: parsed.data.name,
+          ...(context?.userItemId ? { userItemId: context.userItemId } : {}),
         });
       }
+    }
+    if (responseId) {
+      this.responseContexts.delete(responseId);
+      this.responseTranscripts.delete(responseId);
     }
     this.flushFunctionResults();
   }
@@ -425,6 +591,9 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
       return true;
     }
     try {
+      const handoffIds = this.pendingFunctionResults.flatMap((result) =>
+        result.handoffId ? [result.handoffId] : [],
+      );
       for (const result of this.pendingFunctionResults) {
         this.socket.send(
           JSON.stringify({
@@ -438,8 +607,14 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
         );
       }
       this.pendingFunctionResults.length = 0;
+      this.pendingResponseHandoffIds.push(handoffIds);
       this.socket.send(
         JSON.stringify({
+          response: {
+            metadata: {
+              [WAVE_HANDOFF_METADATA_KEY]: JSON.stringify(handoffIds),
+            },
+          },
           type: 'response.create',
         }),
       );
@@ -464,6 +639,17 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     this.close();
   }
 
+  private emitUserItem(itemId: string) {
+    if (this.seenUserItemIds.has(itemId)) {
+      return;
+    }
+    this.seenUserItemIds.add(itemId);
+    this.latestUserItemId = itemId;
+    for (const listener of this.userItemListeners) {
+      listener(itemId);
+    }
+  }
+
   private emitError(error: RealtimeProviderError) {
     for (const listener of this.errorListeners) {
       listener(error);
@@ -478,6 +664,24 @@ class OpenAIRealtimeSideband implements RealtimeSideband {
     for (const listener of this.closeListeners) {
       listener();
     }
+  }
+}
+
+function readHandoffMetadata(
+  metadata: Record<string, string> | null | undefined,
+) {
+  const value = metadata?.[WAVE_HANDOFF_METADATA_KEY];
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = z
+      .array(z.string().uuid())
+      .max(8)
+      .safeParse(JSON.parse(value) as unknown);
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
   }
 }
 

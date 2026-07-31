@@ -74,10 +74,11 @@ media and attempts authenticated Companion cleanup. A failed server-side cleanup
 and retryable; Wave does not silently start a second call. A transient peer disconnect may recover
 inside a bounded window, while a closed event channel is terminal.
 
-The initial voice transcript is an ephemeral in-call overlay. Hermes remains the durable chat
-history source. Successful route exit refreshes the active Hermes history query before text chat
-is shown again, so completed voice-triggered Hermes turns appear without closing and reopening the
-conversation.
+The live transcript shown during a call is transient controller state. The Companion persists only
+finalized user and Wave transcript items plus bounded handoff lifecycle records; it stores no raw
+audio, partial speech, or hidden reasoning. Successful route exit refreshes the active unified
+timeline query before text chat is shown again, so casual speech and completed voice-triggered
+Hermes work appear without closing and reopening the conversation.
 
 ### Run the proof
 

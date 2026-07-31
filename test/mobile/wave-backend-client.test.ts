@@ -169,6 +169,46 @@ test('starts and ends a Realtime call through strict Wave-owned contracts', asyn
   ]);
 });
 
+test('loads a cursor-paginated unified conversation timeline', async () => {
+  let requestedUrl = '';
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test/root',
+    credential,
+    fetch: async (input) => {
+      requestedUrl = String(input);
+      return jsonResponse({
+        apiVersion: 'v1',
+        entries: [
+          {
+            id: 'wave-message-1',
+            message: {
+              content: 'The bedroom lights are off.',
+              role: 'assistant',
+            },
+            source: 'wave',
+            turnId: 'wave-turn-1',
+            type: 'message',
+          },
+        ],
+        hasMore: false,
+        limit: 50,
+        sessionId: 'session-1',
+      });
+    },
+  });
+
+  const timeline = await client.getSessionTimeline('session-1', {
+    before: 'wave-cursor-1',
+    limit: 50,
+  });
+
+  assert.equal(timeline.entries[0]?.type, 'message');
+  assert.equal(
+    requestedUrl,
+    'https://wave.test/root/v1/sessions/session-1/timeline?limit=50&before=wave-cursor-1',
+  );
+});
+
 test('uses paginated account sessions, lifecycle mutations, and read-only jobs', async () => {
   const requests: {
     body?: unknown;
@@ -283,6 +323,11 @@ test('rejects invalid client inputs before a request can leave the app', async (
 
   assert.throws(
     () => client.getSessionHistory('../admin'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'bad_request',
+  );
+  assert.throws(
+    () => client.getSessionTimeline('../admin'),
     (error: unknown) =>
       error instanceof WaveBackendError && error.kind === 'bad_request',
   );

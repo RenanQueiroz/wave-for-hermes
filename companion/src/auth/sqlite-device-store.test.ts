@@ -4,6 +4,9 @@ import test from 'node:test';
 import { SqliteDeviceStore } from './sqlite-device-store.ts';
 
 const NOW = new Date('2026-07-30T01:00:00.000Z');
+const EVENT_KEY_A = 'a'.repeat(64);
+const EVENT_KEY_B = 'b'.repeat(64);
+const EVENT_KEY_C = 'c'.repeat(64);
 
 test('redeems a short-lived pairing code exactly once', () => {
   const store = new SqliteDeviceStore(':memory:', {
@@ -66,5 +69,98 @@ test('rejects expired pairing codes', () => {
     store.redeemPairingCode(pairing.code, 'Expired device'),
     undefined,
   );
+  store.close();
+});
+
+test('persists idempotent realtime turns, messages, and Hermes handoffs', () => {
+  const store = new SqliteDeviceStore(':memory:', {
+    now: () => NOW,
+  });
+  const turnId = store.beginRealtimeTurn({
+    createdAt: NOW.toISOString(),
+    eventKey: EVENT_KEY_A,
+    sessionId: 'session-1',
+  });
+  assert.equal(
+    store.beginRealtimeTurn({
+      createdAt: NOW.toISOString(),
+      eventKey: EVENT_KEY_A,
+      sessionId: 'session-1',
+    }),
+    turnId,
+  );
+  store.recordUserTranscript({
+    transcript: 'Turn on the bedroom lights',
+    turnId,
+    updatedAt: NOW.toISOString(),
+  });
+  const acknowledgementId = store.recordWaveMessage({
+    content: "I'll take care of that.",
+    createdAt: NOW.toISOString(),
+    eventKey: EVENT_KEY_B,
+    sessionId: 'session-1',
+    turnId,
+  });
+  assert.equal(
+    store.recordWaveMessage({
+      content: "I'll take care of that.",
+      createdAt: NOW.toISOString(),
+      eventKey: EVENT_KEY_B,
+      sessionId: 'session-1',
+      turnId,
+    }),
+    acknowledgementId,
+  );
+  const handoffId = store.beginHandoff({
+    createdAt: NOW.toISOString(),
+    eventKey: EVENT_KEY_C,
+    instruction: 'Turn off the lights in the bedroom.',
+    sessionId: 'session-1',
+    turnId,
+  });
+  store.completeHandoff({
+    completedAt: '2026-07-30T01:00:01.000Z',
+    handoffId,
+    hermesAssistantMessageId: 'internal-hermes-message',
+    result: {
+      answer: 'The bedroom lights are off.',
+      ok: true,
+      truncated: false,
+    },
+  });
+
+  assert.deepEqual(store.listSessionTurns('session-1'), [
+    {
+      createdAt: NOW.toISOString(),
+      entries: [
+        {
+          content: "I'll take care of that.",
+          createdAt: NOW.toISOString(),
+          id: acknowledgementId,
+          type: 'wave_message',
+        },
+        {
+          completedAt: '2026-07-30T01:00:01.000Z',
+          createdAt: NOW.toISOString(),
+          hermesAssistantMessageId: 'internal-hermes-message',
+          id: handoffId,
+          instruction: 'Turn off the lights in the bedroom.',
+          result: {
+            answer: 'The bedroom lights are off.',
+            ok: true,
+            truncated: false,
+          },
+          status: 'completed',
+          type: 'handoff',
+        },
+      ],
+      id: turnId,
+      sessionId: 'session-1',
+      userTranscript: 'Turn on the bedroom lights',
+    },
+  ]);
+
+  store.deleteSession('session-1');
+  assert.deepEqual(store.listSessionTurns('session-1'), []);
   store.close();
 });

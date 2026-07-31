@@ -21,6 +21,8 @@ import {
   WaveStartRealtimeCallResponseSchema,
   WaveStartTurnRequestSchema,
   WaveStatusResponseSchema,
+  WaveTimelineRequestSchema,
+  WaveTimelineResponseSchema,
   WaveUpdateSessionRequestSchema,
   type WaveErrorCode,
   type WaveTurnInput,
@@ -44,6 +46,8 @@ import {
   WaveTurnEventFactory,
 } from '../hermes/wave-normalizers.ts';
 import { normalizeHermesError, WaveHttpError } from '../http/errors.ts';
+import type { InteractionStore } from '../interactions/interaction-store.ts';
+import { createUnifiedTimeline } from '../interactions/timeline.ts';
 import type { RealtimeCallRegistry } from '../realtime/realtime-call-registry.ts';
 
 const SERVICE_VERSION = '0.1.0';
@@ -58,6 +62,12 @@ const SessionListQuerySchema = z
     offset: z.coerce.number().int().nonnegative().max(1_000_000).default(0),
   })
   .strict();
+const TimelineQuerySchema = z
+  .object({
+    before: WaveIdentifierSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+  })
+  .strict();
 const TurnParamsSchema = SessionParamsSchema.extend({
   turnId: WaveIdentifierSchema,
 }).strict();
@@ -70,6 +80,7 @@ const RealtimeCallParamsSchema = z
 interface WaveApiServices {
   deviceStore: DeviceStore;
   hermesClient: HermesClient;
+  interactionStore: InteractionStore;
   realtimeCallRegistry?: RealtimeCallRegistry;
   turnRegistry: ActiveTurnRegistry;
 }
@@ -270,6 +281,7 @@ export function registerWaveApi(
             },
           );
         }
+        services.interactionStore.deleteSession(sessionId);
         return reply.send(
           WaveDeleteSessionResponseSchema.parse({
             ...responseMetadata(request),
@@ -296,6 +308,49 @@ export function registerWaveApi(
         WaveSessionHistoryResponseSchema.parse({
           ...responseMetadata(request),
           messages,
+          sessionId,
+        }),
+      );
+    },
+  );
+
+  app.get(
+    '/v1/sessions/:sessionId/timeline',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      const page = WaveTimelineRequestSchema.parse(
+        TimelineQuerySchema.parse(request.query),
+      );
+      const entries = createUnifiedTimeline({
+        hermesMessages:
+          await services.hermesClient.getSessionMessages(sessionId),
+        interactionTurns: services.interactionStore.listSessionTurns(sessionId),
+        sessionId,
+      });
+      const endIndex = page.before
+        ? entries.findIndex((entry) => entry.id === page.before)
+        : entries.length;
+      if (endIndex < 0) {
+        throw new WaveHttpError(
+          'The Wave timeline cursor is no longer available.',
+          {
+            code: 'bad_request',
+            statusCode: 400,
+          },
+        );
+      }
+      const startIndex = Math.max(0, endIndex - page.limit);
+      const pageEntries = entries.slice(startIndex, endIndex);
+      return reply.send(
+        WaveTimelineResponseSchema.parse({
+          ...responseMetadata(request),
+          entries: pageEntries,
+          hasMore: startIndex > 0,
+          limit: page.limit,
+          ...(startIndex > 0 && pageEntries[0]
+            ? { nextCursor: pageEntries[0].id }
+            : {}),
           sessionId,
         }),
       );

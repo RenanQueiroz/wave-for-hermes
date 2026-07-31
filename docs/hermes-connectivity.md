@@ -10,7 +10,7 @@ The Hermes adapter is server-only under `companion/src/hermes` and currently pro
 
 - bearer-authenticated capability probing;
 - paginated top-level session listing plus create, load, rename, and delete;
-- normalized session history;
+- normalized session history for the Companion-owned unified timeline;
 - streamed text and bounded multimodal session chat;
 - normalized read-only scheduled-job status;
 - typed assistant, tool-lifecycle, completion, and error events;
@@ -26,8 +26,8 @@ application will instead use `WaveBackendClient` and Wave-owned normalized contr
 `packages/contracts`.
 
 The companion exposes a non-sensitive `GET /v1/status` plus authenticated Wave-owned compatibility,
-paginated session lifecycle, history, attachment-aware streamed-turn, cancellation, read-only
-scheduled-job, and Realtime call routes. The authenticated
+paginated session lifecycle, cursor-paginated unified timeline, attachment-aware streamed-turn,
+cancellation, read-only scheduled-job, and Realtime call routes. The authenticated
 `GET /v1/compatibility` route performs a live Hermes capability probe. Mobile does not call Hermes
 routes directly: its contract-validating `WaveBackendClient` calls only the normalized Wave API,
 and pairing/bootstrap require the live compatibility probe before showing the connected route.
@@ -102,9 +102,10 @@ characters and all tool details share a 512,000-character budget for one turn; p
 so canonical history can replace them with the stored output. Transcript arrays, usage payloads,
 Hermes call IDs, and Hermes run IDs are deliberately not copied into UI-facing events.
 
-Session history performs the same normalization. It correlates an assistant tool call with its tool
-result inside the Companion, then discards the correlation ID and returns only the bounded input,
-output, name, and status. The mobile app treats those strings as untrusted inert text.
+Session history performs the same normalization before it enters the unified timeline. It
+correlates an assistant tool call with its tool result inside the Companion, then discards the
+correlation ID and returns only the bounded input, output, name, and status. The mobile app treats
+those strings as untrusted inert text.
 
 For the pinned release, the `run_id` emitted by the session streaming handler is local to that
 stream. It is not registered with `POST /v1/runs/{run_id}/stop`. Cancelling a session-chat stream
@@ -122,16 +123,20 @@ When OpenAI requests `ask_hermes`, the Companion:
 
 1. accepts only the strict bounded `{ instruction }` schema;
 2. rechecks that the device is active and uses the immutable session bound during call setup;
-3. permits only one active Hermes tool request for that call;
+3. queues distinct requests in a bounded per-call lane and executes them serially;
 4. streams the instruction through `HermesClient.streamChat`;
 5. returns only a bounded structured answer or safe error through the original Realtime tool call;
 6. aborts the Hermes stream when the tool times out or its Realtime call ends.
 
 Unknown tools, malformed JSON, unknown fields, model-selected session identifiers, duplicate tool
 IDs, and unauthorized calls never reach Hermes. Distinct tool IDs containing the same normalized
-instruction are coalesced onto one Hermes execution and each receive the shared result. Wave does
-not add another confirmation dialog for this narrow tool; Hermes's own tool safety behavior remains
-authoritative.
+instruction in one initiating user turn are coalesced onto one Hermes execution and each receive
+the shared result; the same request in a later user turn executes again. Wave does not add another
+confirmation dialog for this narrow tool; Hermes's own tool safety behavior remains authoritative.
+The interaction ledger records the validated handoff before dispatch, then records its terminal
+status and bounded result. Ending the call settles unfinished handoffs as cancelled. The terminal
+Hermes assistant message identifier remains server-internal and is used only to suppress the
+duplicate canonical range when building the unified timeline.
 
 ## Private production deployment
 

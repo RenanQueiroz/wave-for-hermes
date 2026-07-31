@@ -1,7 +1,8 @@
 import type {
-  WaveToolDetail,
-  WaveConversationMessage,
+  WaveTimelineEntry,
+  WaveTimelineHandoffEntry,
   WaveTurnEvent,
+  WaveToolDetail,
 } from '@wave/contracts';
 import { WAVE_TOOL_DETAIL_MAX_CHARS } from '@wave/contracts';
 
@@ -63,7 +64,7 @@ export type WaveChatAction =
       retryable: boolean;
       type: 'transport.error';
     }
-  | { type: 'history.reconciled' }
+  | { type: 'timeline.reconciled' }
   | { type: 'settled' };
 
 export const initialWaveChatState: WaveChatState = {
@@ -122,7 +123,7 @@ export function waveChatReducer(
         },
         status: 'error',
       };
-    case 'history.reconciled':
+    case 'timeline.reconciled':
       return {
         ...state,
         messages: [],
@@ -141,20 +142,40 @@ export function waveChatReducer(
   }
 }
 
-export function historyToWaveChatMessages(
-  history: WaveConversationMessage[],
+export function timelineToWaveChatMessages(
+  timeline: WaveTimelineEntry[],
 ): WaveChatMessage[] {
   const messages: WaveChatMessage[] = [];
   let assistantTurn: WaveChatMessage | undefined;
+  let assistantTurnId: string | undefined;
   const flushAssistantTurn = () => {
     if (!assistantTurn) return;
     messages.push(assistantTurn);
     assistantTurn = undefined;
+    assistantTurnId = undefined;
+  };
+  const ensureAssistantTurn = (id: string, turnId: string) => {
+    if (assistantTurn && assistantTurnId !== turnId) {
+      flushAssistantTurn();
+    }
+    assistantTurn ??= {
+      id,
+      parts: [],
+      role: 'assistant',
+    };
+    assistantTurnId = turnId;
+    return assistantTurn;
   };
 
-  history.forEach((message, index) => {
-    const id =
-      message.id ?? `history-${index}-${message.createdAt ?? 'undated'}`;
+  timeline.forEach((entry) => {
+    if (entry.type === 'handoff') {
+      ensureAssistantTurn(entry.id, entry.turnId).parts.push(
+        handoffToTaskPart(entry),
+      );
+      return;
+    }
+    const { message } = entry;
+    const id = entry.id;
     if (message.role === 'user' || message.role === 'system') {
       flushAssistantTurn();
       if (message.content) {
@@ -187,15 +208,36 @@ export function historyToWaveChatMessages(
     }
 
     if (!part) return;
-    assistantTurn ??= {
-      id,
-      parts: [],
-      role: 'assistant',
-    };
-    assistantTurn.parts.push(part);
+    ensureAssistantTurn(id, entry.turnId).parts.push(part);
   });
   flushAssistantTurn();
   return messages;
+}
+
+function handoffToTaskPart(handoff: WaveTimelineHandoffEntry): WaveChatPart {
+  const input = boundedLegacyToolOutput(handoff.instruction);
+  const output = handoff.result
+    ? boundedLegacyToolOutput(JSON.stringify(handoff.result, null, 2))
+    : undefined;
+  return {
+    id: `${handoff.id}-handoff`,
+    input,
+    ...(output ? { output } : {}),
+    status:
+      handoff.status === 'pending'
+        ? 'pending'
+        : handoff.status === 'completed'
+          ? 'complete'
+          : 'error',
+    title: handoffTitle(handoff.instruction),
+    type: 'task',
+  };
+}
+
+function handoffTitle(instruction: string) {
+  const line = instruction.split(/\r?\n/, 1)[0]?.trim() ?? '';
+  const summary = line.length > 64 ? `${line.slice(0, 61).trim()}…` : line;
+  return summary ? `Hermes · ${summary}` : 'Hermes task';
 }
 
 function applyEvent(

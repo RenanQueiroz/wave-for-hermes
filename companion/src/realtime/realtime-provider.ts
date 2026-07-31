@@ -4,6 +4,19 @@ export interface RealtimeFunctionCall {
   arguments: string;
   callId: string;
   name: string;
+  userItemId?: string;
+}
+
+export interface RealtimeAssistantTranscript {
+  handoffIds: string[];
+  responseId: string;
+  transcript: string;
+  userItemId?: string;
+}
+
+export interface RealtimeUserTranscript {
+  itemId: string;
+  transcript: string;
 }
 
 export type RealtimeSidebandErrorKind =
@@ -37,10 +50,21 @@ export class RealtimeProviderError extends Error {
 
 export interface RealtimeSideband {
   close(): void;
+  onAssistantTranscript(
+    listener: (transcript: RealtimeAssistantTranscript) => void,
+  ): void;
   onClose(listener: () => void): void;
   onError(listener: (error: RealtimeProviderError) => void): void;
   onFunctionCall(listener: (call: RealtimeFunctionCall) => void): void;
-  sendFunctionResult(callId: string, result: WaveAskHermesToolResult): boolean;
+  onUserItem(listener: (itemId: string) => void): void;
+  onUserTranscript(
+    listener: (transcript: RealtimeUserTranscript) => void,
+  ): void;
+  sendFunctionResult(
+    callId: string,
+    result: WaveAskHermesToolResult,
+    handoffId?: string,
+  ): boolean;
 }
 
 export interface RealtimeProviderCall {

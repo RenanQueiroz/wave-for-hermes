@@ -11,6 +11,7 @@ import {
   WaveSessionListResponseSchema,
   WaveSessionResponseSchema,
   WaveScheduledJobListResponseSchema,
+  WaveTimelineResponseSchema,
   WaveTurnEventSchema,
 } from '@wave/contracts';
 
@@ -328,6 +329,47 @@ test('exposes canonical Hermes sessions to every paired device', async () => {
   assert.equal(crossDevice.statusCode, 200);
   assert.equal(context.hermes.historyCalls, 2);
 
+  const realtimeTurnId = context.store.beginRealtimeTurn({
+    createdAt: NOW.toISOString(),
+    eventKey: 'd'.repeat(64),
+    sessionId: createdSession.id,
+  });
+  context.store.recordUserTranscript({
+    transcript: 'Hello over live voice',
+    turnId: realtimeTurnId,
+    updatedAt: NOW.toISOString(),
+  });
+  const timelineResponse = await context.app.inject({
+    headers: authorizationHeader(first.credential),
+    method: 'GET',
+    url: `/v1/sessions/${createdSession.id}/timeline?limit=1`,
+  });
+  assert.equal(timelineResponse.statusCode, 200);
+  const timeline = WaveTimelineResponseSchema.parse(timelineResponse.json());
+  assert.equal(timeline.entries.length, 1);
+  assert.equal(timeline.hasMore, true);
+  assert.equal(
+    timeline.entries[0]?.type === 'message' &&
+      timeline.entries[0].message.content,
+    'Hello over live voice',
+  );
+  assert.ok(timeline.nextCursor);
+  const olderTimelineResponse = await context.app.inject({
+    headers: authorizationHeader(first.credential),
+    method: 'GET',
+    url: `/v1/sessions/${createdSession.id}/timeline?limit=1&before=${timeline.nextCursor}`,
+  });
+  const olderTimeline = WaveTimelineResponseSchema.parse(
+    olderTimelineResponse.json(),
+  );
+  assert.equal(olderTimeline.entries.length, 1);
+  assert.equal(olderTimeline.hasMore, false);
+  assert.equal(
+    olderTimeline.entries[0]?.type === 'message' &&
+      olderTimeline.entries[0].message.content,
+    'Hello from Hermes',
+  );
+
   const renamed = await context.app.inject({
     headers: authorizationHeader(second.credential),
     method: 'PATCH',
@@ -350,6 +392,7 @@ test('exposes canonical Hermes sessions to every paired device', async () => {
     WaveDeleteSessionResponseSchema.parse(deleted.json()).deleted,
     true,
   );
+  assert.deepEqual(context.store.listSessionTurns(createdSession.id), []);
   await closeContext(context);
 });
 

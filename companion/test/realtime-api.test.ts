@@ -57,6 +57,7 @@ test('authenticates Realtime call setup and returns only Wave-owned call state',
     {
       deviceStore: store,
       hermesClient: hermes,
+      interactionStore: store,
       provider,
     },
     {
@@ -213,9 +214,15 @@ class FakeRealtimeSideband implements RealtimeSideband {
     this.closeListeners.add(listener);
   }
 
+  onAssistantTranscript() {}
+
   onError() {}
 
   onFunctionCall(_listener: (call: RealtimeFunctionCall) => void) {}
+
+  onUserItem() {}
+
+  onUserTranscript() {}
 
   sendFunctionResult() {
     return true;

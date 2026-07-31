@@ -124,12 +124,16 @@ documentation before implementing UI.
   Realtime playback, not the active Hermes run. Serialize and bound additional `ask_hermes` calls
   for the trusted session, and deliver completed results only when no user speech or default
   Realtime response is in progress.
-- Coalesce an exact normalized `ask_hermes` instruction within one live call. Distinct Realtime
-  tool-call IDs for that instruction must share one Hermes execution and each receive the same
-  structured result; model retries must not duplicate Hermes work.
-- When live voice ends successfully, refresh the active session's canonical Hermes history before
-  returning to text chat. Keep casual Realtime-only speech ephemeral rather than inventing a second
-  durable transcript.
+- Coalesce an exact normalized `ask_hermes` instruction within one initiating Realtime user turn.
+  Distinct tool-call IDs for that instruction must share one Hermes execution and each receive the
+  same structured result; model retries must not duplicate work, while a later user turn may
+  deliberately repeat the request.
+- Persist only finalized live-voice user/Wave transcripts and normalized handoff lifecycle data in
+  the Companion interaction ledger. Store no raw audio, partial transcripts, provider identifiers,
+  or hidden reasoning. Hermes remains canonical for its own turns.
+- Build mobile conversation history from the paginated unified timeline, not by joining text in the
+  client. Correlate handoffs to canonical Hermes messages through server-internal stable metadata,
+  and refresh that timeline before returning from live voice.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Device credentials authorize the paired user to the Wave Gateway account. They do not create
   per-device copies or allowlists of Hermes sessions. Session IDs must still be validated and
@@ -142,8 +146,8 @@ documentation before implementing UI.
 
 ## Chat tool presentation
 
-- Group consecutive assistant and tool records into one Hermes turn with one avatar aligned to the
-  bottom of the turn.
+- Group consecutive assistant, tool, and nested handoff records into one assistant turn with one
+  Wave avatar aligned to the bottom of the turn.
 - Render each tool call as a PanelUI `Task`, collapsed by default. Expanding it may lazily render
   normalized raw input/output with `CodeBlock`; keep the content inert and identify truncated or
   preview values explicitly.

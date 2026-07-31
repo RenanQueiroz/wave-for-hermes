@@ -4,4 +4,5 @@ export * from './operations.ts';
 export * from './pairing.ts';
 export * from './realtime.ts';
 export * from './sessions.ts';
+export * from './timeline.ts';
 export * from './tool-details.ts';

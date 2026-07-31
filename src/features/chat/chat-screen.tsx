@@ -1,5 +1,9 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { WaveTurnInput } from '@wave/contracts';
+import {
+  useInfiniteQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
+import type { WaveTimelineResponse, WaveTurnInput } from '@wave/contracts';
 import { Redirect, useNavigation, useRouter } from 'expo-router';
 import {
   Alert,
@@ -30,16 +34,16 @@ import { MenuButton } from '@/components/navigation/menu-button';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
-  historyToWaveChatMessages,
+  timelineToWaveChatMessages,
   type WaveChatPart,
   type WaveChatMessage,
 } from '@/features/chat/chat-state';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
-import { refreshWaveSessionHistory } from '@/features/sessions/refresh-session-history';
+import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
-  waveHistoryQueryKey,
   waveSessionQueryKey,
+  waveTimelineQueryKey,
 } from '@/features/sessions/session-query-keys';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import {
@@ -101,19 +105,43 @@ function ConnectedChatScreen({
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
   const attachmentState = useChatAttachments();
   const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
-  const historyKey = useMemo(
-    () => waveHistoryQueryKey(connectionId, baseUrl, sessionId),
+  const timelineKey = useMemo(
+    () => waveTimelineQueryKey(connectionId, baseUrl, sessionId),
     [baseUrl, connectionId, sessionId],
   );
-  const history = useQuery({
-    queryFn: ({ signal }) => client.getSessionHistory(sessionId, signal),
-    queryKey: historyKey,
+  const timeline = useInfiniteQuery<
+    WaveTimelineResponse,
+    WaveBackendError,
+    InfiniteData<WaveTimelineResponse, string | undefined>,
+    ReturnType<typeof waveTimelineQueryKey>,
+    string | undefined
+  >({
+    getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      client.getSessionTimeline(
+        sessionId,
+        {
+          ...(pageParam ? { before: pageParam } : {}),
+          limit: 100,
+        },
+        signal,
+      ),
+    queryKey: timelineKey,
   });
-  const reconcileHistory = useCallback(async () => {
-    const result = await refreshWaveSessionHistory({
+  const reconcileTimeline = useCallback(async () => {
+    const result = await refreshWaveSessionTimeline({
       baseUrl,
       connectionId,
-      load: (signal) => client.getSessionHistory(sessionId, signal),
+      load: (before, signal) =>
+        client.getSessionTimeline(
+          sessionId,
+          {
+            ...(before ? { before } : {}),
+            limit: 100,
+          },
+          signal,
+        ),
       queryClient,
       sessionId,
     });
@@ -124,7 +152,7 @@ function ConnectedChatScreen({
   }, [baseUrl, client, connectionId, queryClient, sessionId]);
   const chat = useWaveChat({
     client,
-    reconcileHistory,
+    reconcileTimeline,
     sessionId,
   });
 
@@ -147,8 +175,8 @@ function ConnectedChatScreen({
 
   useEffect(() => {
     if (
-      !(history.error instanceof WaveBackendError) ||
-      history.error.kind !== 'not_found'
+      !(timeline.error instanceof WaveBackendError) ||
+      timeline.error.kind !== 'not_found'
     ) {
       return;
     }
@@ -164,18 +192,25 @@ function ConnectedChatScreen({
     activeSessionStore,
     baseUrl,
     connectionId,
-    history.error,
+    timeline.error,
     queryClient,
     router,
   ]);
 
-  const historyMessages = useMemo(
-    () => historyToWaveChatMessages(history.data?.messages ?? []),
-    [history.data?.messages],
+  const timelineEntries = useMemo(
+    () =>
+      [...(timeline.data?.pages ?? [])]
+        .reverse()
+        .flatMap((page) => page.entries),
+    [timeline.data?.pages],
+  );
+  const timelineMessages = useMemo(
+    () => timelineToWaveChatMessages(timelineEntries),
+    [timelineEntries],
   );
   const messages = useMemo(
-    () => [...historyMessages, ...chat.state.messages].reverse(),
-    [chat.state.messages, historyMessages],
+    () => [...timelineMessages, ...chat.state.messages].reverse(),
+    [chat.state.messages, timelineMessages],
   );
   const emptyStateTitle = useMemo(
     () => emptyStateTitleForSession(sessionId),
@@ -240,21 +275,21 @@ function ConnectedChatScreen({
           className="flex-1 text-center"
           numberOfLines={1}
           type="h4">
-          Hermes
+          Wave
         </Typography.Heading>
         <View className="h-10 w-10" />
       </View>
 
-      {history.error ? (
+      {timeline.error ? (
         <Alert
           className="mx-4 mt-3"
           variant="destructive"
           testID="chat-history-error">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>History unavailable</Alert.Title>
+            <Alert.Title>Conversation unavailable</Alert.Title>
             <Alert.Description>
-              Wave could not refresh this Hermes conversation.
+              Wave could not refresh this conversation.
             </Alert.Description>
           </Alert.Content>
         </Alert>
@@ -284,23 +319,30 @@ function ConnectedChatScreen({
           keyboardShouldPersistTaps="handled"
           keyExtractor={(message) => message.id}
           ListFooterComponent={
-            history.isPending ? (
-              <Thinking label="Loading history…" />
+            timeline.isPending || timeline.isFetchingNextPage ? (
+              <Thinking label="Loading conversation…" />
             ) : chat.state.status === 'submitting' ? (
-              <Thinking label="Hermes is thinking…" />
+              <Thinking label="Wave is thinking…" />
             ) : null
           }
           maxToRenderPerBatch={8}
+          onEndReached={() => {
+            if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
+              void timeline.fetchNextPage();
+            }
+          }}
+          onEndReachedThreshold={0.25}
           renderItem={renderItem}
           windowSize={9}
         />
-        {!history.isPending && messages.length === 0 ? (
+        {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"
             className="absolute inset-0 items-center justify-center gap-2 px-6">
             <Typography.Heading type="h2">{emptyStateTitle}</Typography.Heading>
             <Typography.Paragraph muted className="text-center">
-              Messages are sent through your Wave Companion to Hermes.
+              Chat naturally. Wave delegates work when your Hermes agent is
+              needed.
             </Typography.Paragraph>
           </View>
         ) : null}
@@ -380,9 +422,9 @@ function ConnectedChatScreen({
           </InputGroup.Prefix>
           <InputGroup.Input
             multiline
-            accessibilityLabel="Message Hermes"
+            accessibilityLabel="Message Wave"
             className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
-            placeholder="Message Hermes"
+            placeholder="Message Wave"
             style={{ paddingLeft: 56, paddingRight: 56 }}
             submitBehavior="submit"
             testID="chat-composer-input"
@@ -395,7 +437,7 @@ function ConnectedChatScreen({
               <Button
                 size="icon"
                 variant="secondary"
-                accessibilityLabel="Stop Hermes response"
+                accessibilityLabel="Stop Wave response"
                 className="rounded-full"
                 disabled={chat.state.status === 'cancelling'}
                 testID="chat-stop-button"
@@ -405,7 +447,7 @@ function ConnectedChatScreen({
             ) : input.trim() ? (
               <Button
                 size="icon"
-                accessibilityLabel="Send message to Hermes"
+                accessibilityLabel="Send message to Wave"
                 className="rounded-full"
                 testID="chat-send-button"
                 onPress={send}>
@@ -510,7 +552,7 @@ const ChatTurn = memo(
         testID={`chat-message-${message.id}`}>
         {!isUser ? (
           <Message.Avatar>
-            <Avatar accessibilityLabel="Hermes" fallback="H" size="sm" />
+            <Avatar accessibilityLabel="Wave" fallback="W" size="sm" />
           </Message.Avatar>
         ) : null}
         <Message.Content>
@@ -546,7 +588,7 @@ const ChatTurn = memo(
           })}
           {isStreaming && message.parts.length === 0 ? (
             <Message.Bubble>
-              <Shimmer textClassName="text-base">Hermes is thinking…</Shimmer>
+              <Shimmer textClassName="text-base">Wave is thinking…</Shimmer>
             </Message.Bubble>
           ) : null}
         </Message.Content>
@@ -667,7 +709,7 @@ function Thinking({ label }: { label: string }) {
   return (
     <Message className="pb-2" testID="chat-thinking">
       <Message.Avatar>
-        <Avatar accessibilityLabel="Hermes" fallback="H" size="sm" />
+        <Avatar accessibilityLabel="Wave" fallback="W" size="sm" />
       </Message.Avatar>
       <Message.Content>
         <Message.Bubble>

@@ -6,7 +6,9 @@ Realtime is enabled, the standard OpenAI key, and never returns raw upstream eve
 identifiers, run identifiers, authorization headers, or stack traces to a client. Session history
 and turn events may include explicit raw tool input/output fields for the paired user, but the
 Companion bounds each field to 64,000 characters, applies a 512,000-character aggregate budget,
-and never forwards the upstream tool-call identifier.
+and never forwards the upstream tool-call identifier. Its interaction ledger stores finalized
+live-voice user/Wave transcripts and bounded Hermes handoff state, but no raw audio, partial
+transcripts, provider identifiers, or hidden reasoning.
 
 A paired device credential represents access to this Wave Gateway account. It can browse and
 continue the same top-level Hermes conversation history as other paired devices. The Companion
@@ -42,8 +44,9 @@ operator commands.
 
 The companion creates a new database directory with owner-only permissions and sets the database
 file to mode `0600`. An operator must apply equivalent permissions when pointing at an existing
-directory. Treat the database and its SQLite sidecar files as sensitive authorization state even
-though device credentials and pairing codes are stored only as SHA-256 verifiers.
+directory. Treat the database and its SQLite sidecar files as sensitive authorization and
+conversation state even though device credentials and pairing codes are stored only as SHA-256
+verifiers.
 
 ## Container artifact
 
@@ -141,21 +144,22 @@ All request and response bodies are validated with the strict runtime schemas in
 Authorization: Bearer <device-credential>
 ```
 
-| Method and path                                     | Authentication        | Purpose                                                          |
-| --------------------------------------------------- | --------------------- | ---------------------------------------------------------------- |
-| `GET /v1/status`                                    | Public                | Non-sensitive service and feature status                         |
-| `POST /v1/pairings/redeem`                          | One-time code         | Create a named device and return its credential once             |
-| `GET /v1/compatibility`                             | Device                | Probe the live Hermes capability contract                        |
-| `GET /v1/operations/jobs`                           | Device                | Read normalized scheduled-job status without prompts or controls |
-| `GET /v1/sessions?limit=&offset=`                   | Device                | Page through top-level Hermes sessions                           |
-| `POST /v1/sessions`                                 | Device                | Create a Hermes session                                          |
-| `PATCH /v1/sessions/:sessionId`                     | Device                | Rename a Hermes session                                          |
-| `DELETE /v1/sessions/:sessionId`                    | Device                | Delete an idle Hermes session                                    |
-| `GET /v1/sessions/:sessionId/messages`              | Device                | Read normalized history                                          |
-| `POST /v1/sessions/:sessionId/turns`                | Device                | Stream normalized Wave SSE events                                |
-| `POST /v1/sessions/:sessionId/turns/:turnId/cancel` | Device                | Cancel that device's active turn                                 |
-| `POST /v1/sessions/:sessionId/realtime/calls`       | Device                | Exchange a bounded SDP offer for transient Wave call state       |
-| `POST /v1/realtime/calls/:callId/end`               | Device and call owner | End and discard a Wave Realtime call                             |
+| Method and path                                       | Authentication        | Purpose                                                          |
+| ----------------------------------------------------- | --------------------- | ---------------------------------------------------------------- |
+| `GET /v1/status`                                      | Public                | Non-sensitive service and feature status                         |
+| `POST /v1/pairings/redeem`                            | One-time code         | Create a named device and return its credential once             |
+| `GET /v1/compatibility`                               | Device                | Probe the live Hermes capability contract                        |
+| `GET /v1/operations/jobs`                             | Device                | Read normalized scheduled-job status without prompts or controls |
+| `GET /v1/sessions?limit=&offset=`                     | Device                | Page through top-level Hermes sessions                           |
+| `POST /v1/sessions`                                   | Device                | Create a Hermes session                                          |
+| `PATCH /v1/sessions/:sessionId`                       | Device                | Rename a Hermes session                                          |
+| `DELETE /v1/sessions/:sessionId`                      | Device                | Delete an idle Hermes session                                    |
+| `GET /v1/sessions/:sessionId/messages`                | Device                | Read normalized history                                          |
+| `GET /v1/sessions/:sessionId/timeline?limit=&before=` | Device                | Page backward through the unified Wave/Hermes timeline           |
+| `POST /v1/sessions/:sessionId/turns`                  | Device                | Stream normalized Wave SSE events                                |
+| `POST /v1/sessions/:sessionId/turns/:turnId/cancel`   | Device                | Cancel that device's active turn                                 |
+| `POST /v1/sessions/:sessionId/realtime/calls`         | Device                | Exchange a bounded SDP offer for transient Wave call state       |
+| `POST /v1/realtime/calls/:callId/end`                 | Device and call owner | End and discard a Wave Realtime call                             |
 
 The client cannot select a Hermes model, provider, endpoint, header, run ID, or arbitrary
 operation. Unknown fields fail validation. The scheduled-jobs route is a fixed read-only adapter,
@@ -224,6 +228,14 @@ Realtime barge-in stops assistant playback but does not cancel Hermes. If Hermes
 user is speaking or a default-conversation response is active, the sideband holds the structured
 result until it can add the function output and safely create one follow-up response. Wave does not
 add a separate approval prompt; Hermes's own tool safety policy remains authoritative.
+
+The same authenticated sideband observes finalized user transcription and completed assistant
+audio-transcript events. The SQLite interaction ledger writes those items idempotently with
+Wave-owned IDs, records each validated handoff before Hermes executes it, and retains the terminal
+Hermes assistant message ID only as internal correlation metadata. The unified timeline suppresses
+that canonical Hermes request/result range when it is represented by the nested handoff, so mobile
+does not show the same work twice. Direct Hermes turns remain canonical and unchanged. Deleting the
+parent session removes its interaction ledger in the same Wave lifecycle operation.
 
 ## Configuration
 

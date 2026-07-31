@@ -184,6 +184,73 @@ test('uses the official SDK for unified setup and authenticated sideband control
   assert.equal(sockets[0]?.url.includes(config.apiKey), false);
   assert.equal(sidebandHeaders?.Authorization, `Bearer ${config.apiKey}`);
 
+  const userItems: string[] = [];
+  const userTranscripts: { itemId: string; transcript: string }[] = [];
+  const assistantTranscripts: {
+    handoffIds: string[];
+    responseId: string;
+    transcript: string;
+    userItemId?: string;
+  }[] = [];
+  call.sideband.onUserItem((itemId) => userItems.push(itemId));
+  call.sideband.onUserTranscript((transcript) =>
+    userTranscripts.push(transcript),
+  );
+  call.sideband.onAssistantTranscript((transcript) =>
+    assistantTranscripts.push(transcript),
+  );
+  sockets[0]?.emitMessage({
+    item: {
+      id: 'provider-user-item-1',
+      role: 'user',
+      type: 'message',
+    },
+    type: 'conversation.item.added',
+  });
+  sockets[0]?.emitMessage({
+    item_id: 'provider-user-item-1',
+    transcript: 'What is seven times eight?',
+    type: 'conversation.item.input_audio_transcription.completed',
+  });
+  sockets[0]?.emitMessage({
+    response: {
+      id: 'provider-response-direct',
+      metadata: null,
+      output: [],
+      status: 'in_progress',
+    },
+    type: 'response.created',
+  });
+  sockets[0]?.emitMessage({
+    response_id: 'provider-response-direct',
+    transcript: 'Fifty-six.',
+    type: 'response.output_audio_transcript.done',
+  });
+  sockets[0]?.emitMessage({
+    response: {
+      id: 'provider-response-direct',
+      metadata: null,
+      output: [],
+      status: 'completed',
+    },
+    type: 'response.done',
+  });
+  assert.deepEqual(userItems, ['provider-user-item-1']);
+  assert.deepEqual(userTranscripts, [
+    {
+      itemId: 'provider-user-item-1',
+      transcript: 'What is seven times eight?',
+    },
+  ]);
+  assert.deepEqual(assistantTranscripts, [
+    {
+      handoffIds: [],
+      responseId: 'provider-response-direct',
+      transcript: 'Fifty-six.',
+      userItemId: 'provider-user-item-1',
+    },
+  ]);
+
   let receivedToolCall:
     { arguments: string; callId: string; name: string } | undefined;
   call.sideband.onFunctionCall((toolCall) => {
