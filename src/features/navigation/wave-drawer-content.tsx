@@ -20,7 +20,7 @@ import {
   Typography,
 } from 'panelui-native';
 import { useMemo, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
@@ -213,17 +213,20 @@ function ConnectedWaveDrawerContent({
         onEndReachedThreshold={0.5}
         refreshing={sessionsQuery.isRefetching}
         renderItem={({ item }) => (
-          <Item
-            size="sm"
-            accessibilityLabel={`Open conversation ${sessionTitle(item)}`}
-            testID={`drawer-session-${item.id}`}
-            onPress={() => void openSession(item.id)}>
-            <Item.Content>
-              <Item.Title numberOfLines={1}>{sessionTitle(item)}</Item.Title>
-              <Item.Description numberOfLines={1}>
-                {sessionDescription(item)}
-              </Item.Description>
-            </Item.Content>
+          <Item size="sm">
+            <Pressable
+              accessibilityLabel={`Open conversation ${sessionTitle(item)}`}
+              accessibilityRole="button"
+              className="min-w-0 flex-1"
+              testID={`drawer-session-${item.id}`}
+              onPress={() => void openSession(item.id)}>
+              <Item.Content>
+                <Item.Title numberOfLines={1}>{sessionTitle(item)}</Item.Title>
+                <Item.Description numberOfLines={1}>
+                  {sessionDescription(item)}
+                </Item.Description>
+              </Item.Content>
+            </Pressable>
             <Item.Actions>
               <Menu haptics>
                 <Menu.Trigger>
