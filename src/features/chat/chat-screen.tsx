@@ -60,6 +60,10 @@ interface ChatScreenProps {
   sessionId: string;
 }
 
+// Explicit per-bar heights for the live-voice glyph. Supplying `levels` is also
+// what makes the Soundwave render still instead of animating.
+const LIVE_VOICE_WAVE_LEVELS = [0.3, 1, 0.65, 0.3];
+
 const EMPTY_STATE_TITLES = [
   'Ask me anything',
   'How can I help?',
@@ -488,13 +492,13 @@ function ConnectedChatScreen({
                   })
                 }>
                 <Soundwave
-                  paused
-                  barGap={3}
                   barWidth={4}
                   bars={4}
                   height={18}
+                  levels={LIVE_VOICE_WAVE_LEVELS}
                   state="idle"
-                  variant="pills"
+                  style={{ width: 25 }}
+                  variant="bars"
                 />
               </Button>
             )}
