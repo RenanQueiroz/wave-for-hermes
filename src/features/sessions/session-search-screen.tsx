@@ -66,7 +66,7 @@ function ConnectedSessionSearchScreen({
     () =>
       normalizedSearch
         ? sessions.filter((session) =>
-            (session.title ?? 'Untitled conversation')
+            (session.title ?? 'Untitled chat')
               .toLocaleLowerCase()
               .includes(normalizedSearch),
           )
@@ -141,7 +141,7 @@ function ConnectedSessionSearchScreen({
         }}
         renderItem={({ item }) => (
           <Item
-            accessibilityLabel={`Open conversation ${item.title ?? 'Untitled conversation'}`}
+            accessibilityLabel={`Open conversation ${item.title ?? 'Untitled chat'}`}
             testID={`search-session-${item.id}`}
             onPress={() => {
               void activeSessionStore.save(connectionId, item.id).then(() =>
@@ -153,7 +153,7 @@ function ConnectedSessionSearchScreen({
             }}>
             <Item.Content>
               <Item.Title numberOfLines={1}>
-                {item.title ?? 'Untitled conversation'}
+                {item.title ?? 'Untitled chat'}
               </Item.Title>
               <Item.Description numberOfLines={2}>
                 {item.preview ?? 'Hermes conversation'}

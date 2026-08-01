@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { WaveSessionSummary } from '@wave/contracts';
 import { usePathname, useRouter } from 'expo-router';
 import type { DrawerContentComponentProps } from 'expo-router/drawer';
-import type { ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -19,17 +18,18 @@ import {
   TrashIcon,
   Typography,
 } from 'panelui-native';
+import type { ReactNode } from 'react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LegendList } from '@/components/legend-list';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { waveSessionQueryKey } from '@/features/sessions/session-query-keys';
 import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
-import { waveSessionQueryKey } from '@/features/sessions/session-query-keys';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import {
   WaveBackendError,
@@ -476,7 +476,7 @@ function DrawerAction({
 }
 
 function sessionTitle(session: WaveSessionSummary) {
-  return session.title ?? 'Untitled conversation';
+  return session.title ?? 'Untitled chat';
 }
 
 function sessionDescription(session: WaveSessionSummary) {
