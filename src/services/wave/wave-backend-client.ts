@@ -53,6 +53,10 @@ import {
 } from '@wave/contracts';
 import { fetch as expoFetch } from 'expo/fetch';
 
+import {
+  applyDefaultScheme,
+  isTrustedPlainHttpHost,
+} from './companion-url-policy.ts';
 import { parseWaveSseStream, WaveSseProtocolError } from './wave-sse.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -786,18 +790,20 @@ export function normalizeWaveBaseUrl(
 ) {
   let url: URL;
   try {
-    url = new URL(value.trim());
+    url = new URL(applyDefaultScheme(value));
   } catch {
     throw new WaveBackendError('Enter a valid Wave Companion URL.', {
       kind: 'invalid_base_url',
     });
   }
+  const insecureHttpAllowed =
+    options.allowInsecureHttp || isTrustedPlainHttpHost(url.hostname);
   if (
     url.protocol !== 'https:' &&
-    !(options.allowInsecureHttp && url.protocol === 'http:')
+    !(insecureHttpAllowed && url.protocol === 'http:')
   ) {
     throw new WaveBackendError(
-      'Wave Companion must use HTTPS outside local development.',
+      'Wave Companion must use HTTPS unless it is reached over localhost or a Tailscale (100.64.0.0/10) address.',
       {
         kind: 'invalid_base_url',
       },

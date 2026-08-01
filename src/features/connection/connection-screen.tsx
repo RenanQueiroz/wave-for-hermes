@@ -234,12 +234,14 @@ export function ConnectionScreen() {
         </Alert.Content>
       </Alert>
 
-      {__DEV__ ? (
-        <Typography.Paragraph type="body-xs" muted align="center">
-          Local development also permits an explicit HTTP companion URL.
-          Production builds require HTTPS.
-        </Typography.Paragraph>
-      ) : null}
+      <Typography.Paragraph type="body-xs" muted align="center">
+        A bare address defaults to HTTPS. Plain HTTP is allowed only for
+        localhost and Tailscale (100.64.0.0/10) addresses, where the transport
+        is already private.
+        {__DEV__
+          ? ' Development builds also accept an explicit HTTP URL for trusted local testing.'
+          : ''}
+      </Typography.Paragraph>
     </ScrollView>
   );
 }

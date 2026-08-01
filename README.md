@@ -235,9 +235,10 @@ the same `WAVE_DATABASE_PATH`:
 npm run companion:pair
 ```
 
-In Wave, enter the companion URL, a recognizable device name, and the 16-character code. Production
-builds accept HTTPS only. Development builds also allow an explicit HTTP URL for trusted local
-testing. Pairing checks the public companion status, redeems the code exactly once, saves the
+In Wave, enter the companion URL, a recognizable device name, and the 16-character code. A bare
+address defaults to HTTPS — or to HTTP for localhost and Tailscale CGNAT (`100.64.0.0/10`)
+addresses, the only hosts where all builds accept plain HTTP because the transport is already
+private. Development builds additionally allow an explicit HTTP URL for trusted local testing. Pairing checks the public companion status, redeems the code exactly once, saves the
 device-scoped credential in platform secure storage, and performs an authenticated live Hermes
 compatibility check before entering the app.
 

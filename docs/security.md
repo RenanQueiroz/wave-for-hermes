@@ -147,7 +147,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 
 ### Transport and deployment
 
-- Production mobile connections require HTTPS. Homelab exposes `/wave/` only through private
+- Production mobile connections require HTTPS, with one deliberate carve-out: plain HTTP is
+  accepted when the Companion host is loopback or a Tailscale CGNAT address (`100.64.0.0/10`),
+  where the transport is already private and WireGuard-encrypted. Bare hosts entered during
+  pairing default to HTTPS outside that carve-out. Homelab exposes `/wave/` only through private
   Tailscale HTTPS and Nginx; Companion and Hermes ports remain unpublished.
 - CORS is disabled because Wave supports native iOS and Android only.
 - The Companion container runs non-root with a read-only root filesystem, dropped capabilities,

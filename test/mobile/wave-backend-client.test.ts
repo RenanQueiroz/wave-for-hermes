@@ -31,6 +31,39 @@ test('normalizes private base paths and rejects unsafe URLs', () => {
   );
 });
 
+test('defaults bare hosts to HTTPS and trusts plain HTTP only on private transports', () => {
+  assert.equal(
+    normalizeWaveBaseUrl('wave.example.internal:8787'),
+    'https://wave.example.internal:8787',
+  );
+  assert.equal(
+    normalizeWaveBaseUrl('100.101.102.103:8787'),
+    'http://100.101.102.103:8787',
+  );
+  assert.equal(normalizeWaveBaseUrl('localhost:8787'), 'http://localhost:8787');
+  // Explicit http to a Tailscale or loopback address is valid without the
+  // development-only allowInsecureHttp escape hatch.
+  assert.equal(
+    normalizeWaveBaseUrl('http://100.64.0.1:8787'),
+    'http://100.64.0.1:8787',
+  );
+  assert.equal(
+    normalizeWaveBaseUrl('http://127.0.0.1:8787'),
+    'http://127.0.0.1:8787',
+  );
+  // Outside the CGNAT range the production HTTPS rule still applies.
+  assert.throws(
+    () => normalizeWaveBaseUrl('http://100.63.255.255:8787'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_base_url',
+  );
+  assert.throws(
+    () => normalizeWaveBaseUrl('http://100.128.0.1:8787'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_base_url',
+  );
+});
+
 test('validates pairing responses without sending a device credential', async () => {
   const fetch = async (input: string | URL | Request, init?: RequestInit) => {
     assert.equal(String(input), 'https://wave.test/root/v1/pairings/redeem');
