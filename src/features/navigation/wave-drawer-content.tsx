@@ -219,9 +219,10 @@ function ConnectedWaveDrawerContent({
         </Alert>
       ) : null}
 
-      {/* No recycleItems: each row owns a Menu, and recycled rows would
-          carry that state across sessions. */}
+      {/* Not recycled: each row owns a Menu, and recycled rows would carry
+          that state across sessions. */}
       <LegendList
+        recycleItems={false}
         className="flex-1"
         contentContainerClassName="px-2 py-3"
         contentInsetAdjustmentBehavior="automatic"
@@ -240,7 +241,7 @@ function ConnectedWaveDrawerContent({
         }
         ListHeaderComponent={
           <Typography.Paragraph muted className="px-3 pb-2 text-xs uppercase">
-            Conversations
+            Chats
           </Typography.Paragraph>
         }
         onEndReached={() => {

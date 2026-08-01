@@ -38,7 +38,8 @@ export default function AppStackLayout() {
         name="conversation/[sessionId]"
         options={{
           headerLeft: () => <MenuButton onPress={openDrawer} />,
-          title: 'Wave',
+          // The chat screen sets the real conversation title once it resolves.
+          title: '',
         }}
       />
       <Stack.Screen

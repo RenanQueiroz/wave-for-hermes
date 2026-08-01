@@ -4,7 +4,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import type { WaveTimelineResponse, WaveTurnInput } from '@wave/contracts';
-import { Redirect, useFocusEffect, useRouter } from 'expo-router';
+import { Redirect, Stack, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
   Attachment,
@@ -50,6 +50,10 @@ import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
+import {
+  flattenWaveSessions,
+  useWaveSessions,
+} from '@/features/sessions/use-wave-sessions';
 import {
   waveSessionQueryKey,
   waveTimelineQueryKey,
@@ -250,6 +254,17 @@ function ConnectedChatScreen({
     () => emptyStateTitleForSession(sessionId),
     [sessionId],
   );
+  // The native header shows the conversation's Hermes title, resolved from the
+  // sessions list the drawer already caches.
+  const sessions = useWaveSessions({ baseUrl, client, connectionId });
+  const headerTitle = useMemo(() => {
+    const summary = flattenWaveSessions(sessions.data).find(
+      (session) => session.id === sessionId,
+    );
+    if (summary?.title) return summary.title;
+    if (timeline.isPending) return undefined;
+    return messages.length === 0 ? 'New chat' : 'Untitled chat';
+  }, [messages.length, sessionId, sessions.data, timeline.isPending]);
   const busy =
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
@@ -302,6 +317,7 @@ function ConnectedChatScreen({
 
   return (
     <View className="flex-1 bg-background">
+      {headerTitle ? <Stack.Screen options={{ title: headerTitle }} /> : null}
       {timeline.error ? (
         <Alert
           className="mx-4 mt-3"
@@ -336,6 +352,9 @@ function ConnectedChatScreen({
           initialScrollAtEnd
           maintainScrollAtEnd
           maintainVisibleContentPosition
+          // Turns hold disclosure state (expanded Tasks), which recycled
+          // rows would carry between messages.
+          recycleItems={false}
           className="flex-1"
           contentContainerClassName="px-4 py-3"
           data={messages}
