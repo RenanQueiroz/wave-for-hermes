@@ -115,6 +115,7 @@ function ConnectedSessionSearchScreen({
 
       <LegendList
         recycleItems
+        drawDistance={500}
         className="flex-1"
         contentContainerClassName="px-3 pb-6"
         data={matches}

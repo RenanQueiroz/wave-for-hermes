@@ -23,6 +23,8 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useRecyclingState } from '@legendapp/list/react-native';
+
 import { LegendList } from '@/components/legend-list';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import { waveSessionQueryKey } from '@/features/sessions/session-query-keys';
@@ -219,10 +221,13 @@ function ConnectedWaveDrawerContent({
         </Alert>
       ) : null}
 
-      {/* Not recycled: each row owns a Menu, and recycled rows would carry
-          that state across sessions. */}
+      {/* Recycled: mounting a fresh Menu-bearing row for every item during a
+          fast fling cannot keep up and leaves the viewport blank. The row
+          resets its menu state on recycle, and drawDistance buffers rows
+          beyond the viewport. */}
       <LegendList
-        recycleItems={false}
+        recycleItems
+        drawDistance={500}
         className="flex-1"
         contentContainerClassName="px-2 py-3"
         contentInsetAdjustmentBehavior="automatic"
@@ -399,6 +404,10 @@ const DrawerSessionItem = memo(function DrawerSessionItem({
   onOpen: (sessionId: string) => Promise<void>;
   onRename: (session: WaveSessionSummary) => void;
 }) {
+  // Resets when the recycled row is reused for another session, so an open
+  // menu never carries over.
+  const [menuOpen, setMenuOpen] = useRecyclingState(false);
+
   return (
     <Item size="sm">
       <Pressable
@@ -415,7 +424,7 @@ const DrawerSessionItem = memo(function DrawerSessionItem({
         </Item.Content>
       </Pressable>
       <Item.Actions>
-        <Menu haptics>
+        <Menu haptics open={menuOpen} onOpenChange={setMenuOpen}>
           <Menu.Trigger>
             <Button
               size="icon"

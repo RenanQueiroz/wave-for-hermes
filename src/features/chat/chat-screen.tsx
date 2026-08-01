@@ -353,8 +353,10 @@ function ConnectedChatScreen({
           maintainScrollAtEnd
           maintainVisibleContentPosition
           // Turns hold disclosure state (expanded Tasks), which recycled
-          // rows would carry between messages.
+          // rows would carry between messages — so no recycling; the draw
+          // buffer covers fast flings instead.
           recycleItems={false}
+          drawDistance={500}
           className="flex-1"
           contentContainerClassName="px-4 py-3"
           data={messages}
