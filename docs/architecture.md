@@ -115,11 +115,13 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   `WaveRealtimeController` owns the authenticated Companion call, cancellation/expiry, normalized
   activity and transcript state, and retryable server-cleanup failures. The PanelUI voice route
   renders controller snapshots and never owns raw WebRTC resources or provider protocol messages.
-- The Expo Router drawer is the connected app shell. Cold launch and **New conversation** create a
-  Hermes session immediately; sticky top actions provide new, title search, and read-only scheduled
-  jobs; paginated account history fills the middle; Settings and Disconnect stay fixed at the
-  bottom. Rename/delete use typed lifecycle mutations, and a deleted current session routes to a
-  new conversation.
+- The Expo Router drawer is the connected app shell around a single native stack: every app screen
+  lives in that stack, so screens get native headers, push transitions, and swipe-back, while the
+  drawer stays a conversation switcher rather than a sibling navigator. Cold launch and
+  **New conversation** create a Hermes session immediately; sticky top actions provide new, title
+  search, and read-only scheduled jobs; paginated account history fills the middle; Settings and
+  Disconnect stay fixed at the bottom. Rename/delete use typed lifecycle mutations, and a deleted
+  current session routes to a new conversation.
 - The PanelUI chat route renders normalized conversation data only. Tool events become
   bounded `Task` parts with a name, status, and optional raw input/output. Disclosures start
   collapsed and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs,

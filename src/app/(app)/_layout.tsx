@@ -8,7 +8,6 @@ export default function AppLayout() {
 
   return (
     <Drawer
-      backBehavior="history"
       drawerContent={(props) => <WaveDrawerContent {...props} />}
       screenOptions={{
         drawerStyle: {
@@ -20,12 +19,10 @@ export default function AppLayout() {
         overlayColor: 'rgba(0, 0, 0, 0.36)',
         swipeEdgeWidth: 36,
       }}>
-      <Drawer.Screen name="new" />
-      <Drawer.Screen name="conversation" />
-      <Drawer.Screen name="search" />
-      <Drawer.Screen name="operations/jobs" />
-      <Drawer.Screen name="settings" />
-      <Drawer.Screen name="development" />
+      {/* One screen: the native stack owns every app screen, so navigation
+          between them gets native headers, push transitions, and swipe-back.
+          The drawer is chrome around it, not a sibling switcher. */}
+      <Drawer.Screen name="(stack)" />
     </Drawer>
   );
 }

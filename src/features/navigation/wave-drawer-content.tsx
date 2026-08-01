@@ -135,7 +135,9 @@ function ConnectedWaveDrawerContent({
     pathname: '/new' | '/search' | '/operations/jobs' | '/settings',
   ) => {
     navigation.closeDrawer();
-    navigation.navigate(pathname.slice(1));
+    // Every app screen lives in the one native stack, so drawer entries push
+    // (or return to) stack routes rather than switching drawer siblings.
+    router.navigate(pathname);
   };
   const openSession = async (sessionId: string) => {
     try {

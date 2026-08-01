@@ -14,9 +14,7 @@ import {
 } from 'panelui-native';
 import { Platform, ScrollView, Share, View } from 'react-native';
 
-import { ScreenHeader } from '@/components/navigation/screen-header';
 import { useWaveConnection } from '@/features/connection/connection-provider';
-import { useReturnToActiveConversation } from '@/features/navigation/use-return-to-active-conversation';
 import {
   realtimeVoiceCatalogQueryKey,
   realtimeVoicePreferenceQueryKey,
@@ -64,8 +62,6 @@ function ConnectedSettingsScreen({
   deviceName: string;
   onOpenDevelopment: () => void;
 }) {
-  const returnToActiveConversation =
-    useReturnToActiveConversation(connectionId);
   const queryClient = useQueryClient();
   const diagnostics = useQuery({
     queryFn: ({ signal }) => client.getDiagnostics(signal),
@@ -132,7 +128,6 @@ function ConnectedSettingsScreen({
 
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Settings" onBack={returnToActiveConversation} />
       <ScrollView
         className="flex-1"
         contentContainerClassName="gap-5 px-4 py-5">

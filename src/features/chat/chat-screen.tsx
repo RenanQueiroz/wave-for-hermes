@@ -4,12 +4,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import type { WaveTimelineResponse, WaveTurnInput } from '@wave/contracts';
-import {
-  Redirect,
-  useFocusEffect,
-  useNavigation,
-  useRouter,
-} from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
   Attachment,
@@ -44,7 +39,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
 import { CameraIcon } from '@/components/icons/camera-icon';
-import { MenuButton } from '@/components/navigation/menu-button';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
   timelineToWaveChatMessages,
@@ -121,7 +115,6 @@ function ConnectedChatScreen({
   sessionId: string;
 }) {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
@@ -282,10 +275,6 @@ function ConnectedChatScreen({
     void chat.send(turnInput, optimisticText);
   }, [attachmentState, busy, chat, input]);
 
-  const openDrawer = useCallback(() => {
-    navigation.getParent()?.dispatch({ type: 'OPEN_DRAWER' });
-  }, [navigation]);
-
   const selectAttachmentSource = useCallback((action: () => Promise<void>) => {
     setAttachmentSheetOpen(false);
     void action();
@@ -310,19 +299,6 @@ function ConnectedChatScreen({
 
   return (
     <View className="flex-1 bg-background">
-      <View
-        className="flex-row items-center px-3 pb-2"
-        style={{ paddingTop: Math.max(insets.top, 10) }}>
-        <MenuButton onPress={openDrawer} />
-        <Typography.Heading
-          className="flex-1 text-center"
-          numberOfLines={1}
-          type="h4">
-          Wave
-        </Typography.Heading>
-        <View className="h-10 w-10" />
-      </View>
-
       {timeline.error ? (
         <Alert
           className="mx-4 mt-3"
