@@ -4,6 +4,7 @@ import {
   WAVE_MAX_TURN_ATTACHMENTS,
   type WaveTurnInputPart,
 } from '@wave/contracts';
+import * as Device from 'expo-device';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
@@ -141,6 +142,13 @@ export function useChatAttachments() {
 
   const takePhoto = useCallback(async () => {
     setError(undefined);
+    // expo-image-picker's iOS camera launch throws an uncatchable native
+    // exception on simulators, which have no camera — the try below never
+    // sees it, so the app aborts. Android emulators emulate a camera.
+    if (Platform.OS === 'ios' && !Device.isDevice) {
+      setError('The iOS Simulator has no camera. Choose Photos instead.');
+      return;
+    }
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
