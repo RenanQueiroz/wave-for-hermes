@@ -46,22 +46,16 @@ export interface RealtimeVoiceSampleSource {
   getSample(voice: WaveRealtimeVoiceId): Promise<Buffer>;
 }
 
-const SampleAudioDeltaEventSchema = z
-  .object({
-    delta: z.string().max(MAX_SAMPLE_EVENT_BYTES),
-    type: z.literal('response.output_audio.delta'),
-  })
-  .passthrough();
-const SampleResponseDoneEventSchema = z
-  .object({
-    response: z
-      .object({
-        status: z.string().max(100).optional(),
-      })
-      .passthrough(),
-    type: z.literal('response.done'),
-  })
-  .passthrough();
+const SampleAudioDeltaEventSchema = z.looseObject({
+  delta: z.string().max(MAX_SAMPLE_EVENT_BYTES),
+  type: z.literal('response.output_audio.delta'),
+});
+const SampleResponseDoneEventSchema = z.looseObject({
+  response: z.looseObject({
+    status: z.string().max(100).optional(),
+  }),
+  type: z.literal('response.done'),
+});
 
 export class RealtimeVoiceSampler implements RealtimeVoiceSampleSource {
   readonly samplesVersion: string;

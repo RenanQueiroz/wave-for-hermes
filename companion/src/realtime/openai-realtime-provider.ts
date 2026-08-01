@@ -52,53 +52,39 @@ type SidebandSocketFactory = (
   input: SidebandSocketFactoryInput,
 ) => SidebandSocket;
 
-const RealtimeFunctionCallSchema = z
-  .object({
-    arguments: z.string().max(64_000),
-    call_id: z.string().min(1).max(300),
-    name: z.string().min(1).max(100),
-    type: z.literal('function_call'),
-  })
-  .passthrough();
-const RealtimeUserItemEventSchema = z
-  .object({
-    item: z
-      .object({
-        id: z.string().min(1).max(300),
-        role: z.literal('user'),
-        type: z.literal('message'),
-      })
-      .passthrough(),
-    type: z.enum(['conversation.item.added', 'conversation.item.done']),
-  })
-  .passthrough();
-const RealtimeUserTranscriptEventSchema = z
-  .object({
-    item_id: z.string().min(1).max(300),
-    transcript: z.string().max(128_000),
-    type: z.literal('conversation.item.input_audio_transcription.completed'),
-  })
-  .passthrough();
-const RealtimeAssistantTranscriptEventSchema = z
-  .object({
-    response_id: z.string().min(1).max(300),
-    transcript: z.string().max(128_000),
-    type: z.literal('response.output_audio_transcript.done'),
-  })
-  .passthrough();
-const RealtimeResponseEventSchema = z
-  .object({
-    response: z
-      .object({
-        id: z.string().min(1).max(300).optional(),
-        metadata: z.record(z.string(), z.string()).nullish(),
-        output: z.array(z.unknown()).optional(),
-        status: z.string().max(100).optional(),
-      })
-      .passthrough(),
-    type: z.enum(['response.created', 'response.done']),
-  })
-  .passthrough();
+const RealtimeFunctionCallSchema = z.looseObject({
+  arguments: z.string().max(64_000),
+  call_id: z.string().min(1).max(300),
+  name: z.string().min(1).max(100),
+  type: z.literal('function_call'),
+});
+const RealtimeUserItemEventSchema = z.looseObject({
+  item: z.looseObject({
+    id: z.string().min(1).max(300),
+    role: z.literal('user'),
+    type: z.literal('message'),
+  }),
+  type: z.enum(['conversation.item.added', 'conversation.item.done']),
+});
+const RealtimeUserTranscriptEventSchema = z.looseObject({
+  item_id: z.string().min(1).max(300),
+  transcript: z.string().max(128_000),
+  type: z.literal('conversation.item.input_audio_transcription.completed'),
+});
+const RealtimeAssistantTranscriptEventSchema = z.looseObject({
+  response_id: z.string().min(1).max(300),
+  transcript: z.string().max(128_000),
+  type: z.literal('response.output_audio_transcript.done'),
+});
+const RealtimeResponseEventSchema = z.looseObject({
+  response: z.looseObject({
+    id: z.string().min(1).max(300).optional(),
+    metadata: z.record(z.string(), z.string()).nullish(),
+    output: z.array(z.unknown()).optional(),
+    status: z.string().max(100).optional(),
+  }),
+  type: z.enum(['response.created', 'response.done']),
+});
 const WAVE_HANDOFF_METADATA_KEY = 'wave_handoff_ids';
 
 export class OpenAIRealtimeProvider implements RealtimeProvider {
@@ -681,7 +667,7 @@ function readHandoffMetadata(
   }
   try {
     const parsed = z
-      .array(z.string().uuid())
+      .array(z.uuid())
       .max(8)
       .safeParse(JSON.parse(value) as unknown);
     return parsed.success ? parsed.data : [];
