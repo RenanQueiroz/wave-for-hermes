@@ -20,9 +20,9 @@ import {
   FileIcon,
   ImageIcon,
   InputGroup,
-  Item,
   KeyboardAvoider,
   Message,
+  PaperclipIcon,
   PlusIcon,
   SendIcon,
   Shimmer,
@@ -31,10 +31,19 @@ import {
   Typography,
   XIcon,
 } from 'panelui-native';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, ScrollView, View } from 'react-native';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { FlatList, Keyboard, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCSSVariable } from 'uniwind';
 
+import { CameraIcon } from '@/components/icons/camera-icon';
 import { MenuButton } from '@/components/navigation/menu-button';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
@@ -63,6 +72,11 @@ interface ChatScreenProps {
 // Explicit per-bar heights for the live-voice glyph. Supplying `levels` is also
 // what makes the Soundwave render still instead of animating.
 const LIVE_VOICE_WAVE_LEVELS = [0.3, 1, 0.65, 0.3];
+
+// Space kept visible between the composer and the open keyboard. Dock travel is
+// keyboardHeight − bottomInset, so undershooting the composer's real bottom
+// padding by this much leaves exactly this gap above the keyboard.
+const KEYBOARD_GAP = 12;
 
 const EMPTY_STATE_TITLES = [
   'Ask me anything',
@@ -277,6 +291,11 @@ function ConnectedChatScreen({
     void action();
   }, []);
 
+  // Icon `color` is a native prop, so the theme token is resolved here.
+  const foreground = useCSSVariable('--color-foreground');
+  const attachmentIconColor =
+    typeof foreground === 'string' ? foreground : undefined;
+
   const renderItem = useCallback(
     ({ item }: { item: WaveChatMessage }) => (
       <ChatTurn
@@ -375,7 +394,7 @@ function ConnectedChatScreen({
       </View>
 
       <KeyboardAvoider
-        bottomInset={insets.bottom}
+        bottomInset={Math.max(insets.bottom, 12) - KEYBOARD_GAP}
         className="gap-2 bg-background px-4 pt-2"
         mode="dock"
         style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
@@ -442,7 +461,12 @@ function ConnectedChatScreen({
               disabled={busy}
               className="rounded-full"
               testID="chat-attachment-button"
-              onPress={() => setAttachmentSheetOpen(true)}>
+              onPress={() => {
+                // The styled sheet renders in the app window, underneath the
+                // keyboard's own window — close the keyboard before opening it.
+                Keyboard.dismiss();
+                setAttachmentSheetOpen(true);
+              }}>
               <PlusIcon size={20} />
             </Button>
           </InputGroup.Prefix>
@@ -509,58 +533,64 @@ function ConnectedChatScreen({
       <BottomSheet
         open={attachmentSheetOpen}
         onOpenChange={setAttachmentSheetOpen}>
-        <BottomSheet.Content detached blur>
-          <BottomSheet.Header
-            title="Add to your message"
-            description="Images are sent inline. Supported text files are added as text."
-          />
-          <BottomSheet.Body
-            className="gap-2"
-            contentContainerClassName="gap-2 py-2">
-            <Item
+        {/* No Header and no close button: the tiles are the whole sheet, and
+            the backdrop, grabber drag, and Android back all still dismiss.
+            Not BottomSheet.Body either — that is a flex-1 scroll region for
+            sized sheets, and in this auto-sized sheet it collapses to zero
+            height. */}
+        <BottomSheet.Content detached blur showClose={false}>
+          <View className="flex-row gap-3 py-2">
+            <AttachmentSourceButton
               accessibilityLabel="Take a photo"
+              label="Camera"
               testID="attachment-source-camera"
               onPress={() => selectAttachmentSource(attachmentState.takePhoto)}>
-              <Item.Media variant="icon">
-                <ImageIcon size={20} />
-              </Item.Media>
-              <Item.Content>
-                <Item.Title>Camera</Item.Title>
-                <Item.Description>Take a new photo</Item.Description>
-              </Item.Content>
-            </Item>
-            <Item
+              <CameraIcon color={attachmentIconColor} size={22} />
+            </AttachmentSourceButton>
+            <AttachmentSourceButton
               accessibilityLabel="Choose a photo"
+              label="Photos"
               testID="attachment-source-photos"
               onPress={() => selectAttachmentSource(attachmentState.pickImage)}>
-              <Item.Media variant="icon">
-                <ImageIcon size={20} />
-              </Item.Media>
-              <Item.Content>
-                <Item.Title>Photos</Item.Title>
-                <Item.Description>
-                  Choose an image from your library
-                </Item.Description>
-              </Item.Content>
-            </Item>
-            <Item
+              <ImageIcon color={attachmentIconColor} size={22} />
+            </AttachmentSourceButton>
+            <AttachmentSourceButton
               accessibilityLabel="Choose a text file"
+              label="Files"
               testID="attachment-source-files"
               onPress={() => selectAttachmentSource(attachmentState.pickFile)}>
-              <Item.Media variant="icon">
-                <FileIcon size={20} />
-              </Item.Media>
-              <Item.Content>
-                <Item.Title>Files</Item.Title>
-                <Item.Description>
-                  Add text, code, JSON, CSV, XML, or Markdown
-                </Item.Description>
-              </Item.Content>
-            </Item>
-          </BottomSheet.Body>
+              <PaperclipIcon color={attachmentIconColor} size={22} />
+            </AttachmentSourceButton>
+          </View>
         </BottomSheet.Content>
       </BottomSheet>
     </View>
+  );
+}
+
+function AttachmentSourceButton({
+  accessibilityLabel,
+  children,
+  label,
+  onPress,
+  testID,
+}: {
+  accessibilityLabel: string;
+  children: ReactNode;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      className="flex-1 items-center gap-2 rounded-2xl bg-muted py-5 active:opacity-70"
+      testID={testID}
+      onPress={onPress}>
+      {children}
+      <Typography className="text-sm font-medium">{label}</Typography>
+    </Pressable>
   );
 }
 

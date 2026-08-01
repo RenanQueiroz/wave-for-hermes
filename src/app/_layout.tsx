@@ -4,7 +4,6 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { PanelUIProvider, useThemeMode } from 'panelui-native';
 import { useEffect, useMemo } from 'react';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Platform, type ColorValue } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
@@ -73,13 +72,14 @@ function ThemedApp() {
 }
 
 export default function RootLayout() {
+  // PanelUIProvider mounts react-native-keyboard-controller's KeyboardProvider
+  // itself. A second one here nests two providers, which breaks per-frame
+  // keyboard events on Android.
   return (
-    <KeyboardProvider>
-      <PanelUIProvider>
-        <WaveQueryProvider>
-          <ThemedApp />
-        </WaveQueryProvider>
-      </PanelUIProvider>
-    </KeyboardProvider>
+    <PanelUIProvider>
+      <WaveQueryProvider>
+        <ThemedApp />
+      </WaveQueryProvider>
+    </PanelUIProvider>
   );
 }

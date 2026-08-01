@@ -127,8 +127,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   bottom of a grouped turn and only its last item keeps the avatar-facing pointer radius. A
   Realtime Hermes handoff is a nested task between Wave's acknowledgement and final response,
   rather than a second assistant identity or a duplicate canonical Hermes message.
-  `KeyboardProvider` is mounted once at the app root, and PanelUI's `KeyboardAvoider` docks the
-  rounded `InputGroup` composer above the native keyboard. The attachment control sits inside the
+  `PanelUIProvider` mounts the keyboard controller's `KeyboardProvider` exactly once at the app
+  root — mounting a second one breaks per-frame keyboard animation on Android — and PanelUI's
+  `KeyboardAvoider` docks the rounded `InputGroup` composer above the native keyboard, keeping a
+  small gap while the keyboard is open. Opening the attachment sheet dismisses the keyboard first,
+  since the styled sheet draws under the keyboard's own window. The attachment control sits inside the
   leading edge. The trailing slot shows exactly one of Stop, Send, or the live-wave action; when
   idle, trimmed text selects Send and empty text selects live voice.
 - Camera/Photos become bounded inline JPEG turn parts. Supported text-based Files are read from the
