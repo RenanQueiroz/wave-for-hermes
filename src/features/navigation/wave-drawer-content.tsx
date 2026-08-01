@@ -13,6 +13,7 @@ import {
   Menu,
   PencilIcon,
   PlusSquareIcon,
+  ScrollFade,
   SearchIcon,
   Spinner,
   TrashIcon,
@@ -229,48 +230,57 @@ function ConnectedWaveDrawerContent({
           fast fling cannot keep up and leaves the viewport blank. The row
           resets its menu state on recycle, and drawDistance buffers rows
           beyond the viewport. */}
-      <LegendList
-        recycleItems
-        drawDistance={500}
-        className="flex-1"
-        contentContainerClassName="px-2 py-3"
-        contentInsetAdjustmentBehavior="automatic"
-        data={sessions}
-        keyExtractor={(session) => session.id}
-        ListEmptyComponent={
-          sessionsQuery.isPending ? (
-            <View className="items-center py-8">
-              <Spinner />
-            </View>
-          ) : (
-            <Typography.Paragraph muted className="px-3 py-6">
-              No previous conversations.
-            </Typography.Paragraph>
-          )
-        }
-        ListHeaderComponent={
-          <>
-            <Typography.Paragraph muted className="px-3 pb-2 text-xs uppercase">
-              Chats
-            </Typography.Paragraph>
-            {showingCachedSessions ? (
-              <OfflineNotice
-                label="Offline — showing cached chats"
-                testID="drawer-offline-notice"
-              />
-            ) : null}
-          </>
-        }
-        onEndReached={() => {
-          if (sessionsQuery.hasNextPage && !sessionsQuery.isFetchingNextPage) {
-            void sessionsQuery.fetchNextPage();
+      {/* Orientation is explicit: ScrollFade cannot infer it from a
+          virtualized list the way it can from a ScrollView. */}
+      <ScrollFade className="flex-1" orientation="vertical" size={40}>
+        <LegendList
+          recycleItems
+          drawDistance={500}
+          className="flex-1"
+          contentContainerClassName="px-2 py-3"
+          contentInsetAdjustmentBehavior="automatic"
+          data={sessions}
+          keyExtractor={(session) => session.id}
+          ListEmptyComponent={
+            sessionsQuery.isPending ? (
+              <View className="items-center py-8">
+                <Spinner />
+              </View>
+            ) : (
+              <Typography.Paragraph muted className="px-3 py-6">
+                No previous conversations.
+              </Typography.Paragraph>
+            )
           }
-        }}
-        onEndReachedThreshold={0.5}
-        refreshing={sessionsQuery.isRefetching}
-        renderItem={renderSession}
-        onRefresh={() => void sessionsQuery.refetch()}
-      />
+          ListHeaderComponent={
+            <>
+              <Typography.Paragraph
+                muted
+                className="px-3 pb-2 text-xs uppercase">
+                Chats
+              </Typography.Paragraph>
+              {showingCachedSessions ? (
+                <OfflineNotice
+                  label="Offline — showing cached chats"
+                  testID="drawer-offline-notice"
+                />
+              ) : null}
+            </>
+          }
+          onEndReached={() => {
+            if (
+              sessionsQuery.hasNextPage &&
+              !sessionsQuery.isFetchingNextPage
+            ) {
+              void sessionsQuery.fetchNextPage();
+            }
+          }}
+          onEndReachedThreshold={0.5}
+          refreshing={sessionsQuery.isRefetching}
+          renderItem={renderSession}
+          onRefresh={() => void sessionsQuery.refetch()}
+        />
+      </ScrollFade>
 
       <View className="gap-1 border-t border-border px-3 pt-3">
         <DrawerAction

@@ -19,6 +19,7 @@ import {
   Message,
   PaperclipIcon,
   PlusIcon,
+  ScrollFade,
   SendIcon,
   Shimmer,
   Soundwave,
@@ -375,41 +376,45 @@ function ConnectedChatScreen({
       ) : null}
 
       <View className="flex-1">
-        <LegendList
-          alignItemsAtEnd
-          initialScrollAtEnd
-          maintainScrollAtEnd
-          maintainVisibleContentPosition
-          // Turns hold disclosure state (expanded Tasks), which recycled
-          // rows would carry between messages — so no recycling; the draw
-          // buffer covers fast flings instead.
-          recycleItems={false}
-          drawDistance={500}
-          className="flex-1"
-          contentContainerClassName="px-4 py-3"
-          data={messages}
-          ItemSeparatorComponent={ChatTurnSeparator}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          keyExtractor={(message) => message.id}
-          ListFooterComponent={
-            chat.state.status === 'submitting' ? (
-              <Thinking label="Wave is thinking…" />
-            ) : null
-          }
-          ListHeaderComponent={
-            timeline.isPending || timeline.isFetchingNextPage ? (
-              <Thinking label="Loading conversation…" />
-            ) : null
-          }
-          onStartReached={() => {
-            if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
-              void timeline.fetchNextPage();
+        {/* Orientation is explicit: ScrollFade cannot infer it from a
+            virtualized list the way it can from a ScrollView. */}
+        <ScrollFade className="flex-1" orientation="vertical" size={40}>
+          <LegendList
+            alignItemsAtEnd
+            initialScrollAtEnd
+            maintainScrollAtEnd
+            maintainVisibleContentPosition
+            // Turns hold disclosure state (expanded Tasks), which recycled
+            // rows would carry between messages — so no recycling; the draw
+            // buffer covers fast flings instead.
+            recycleItems={false}
+            drawDistance={500}
+            className="flex-1"
+            contentContainerClassName="px-4 py-3"
+            data={messages}
+            ItemSeparatorComponent={ChatTurnSeparator}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            keyExtractor={(message) => message.id}
+            ListFooterComponent={
+              chat.state.status === 'submitting' ? (
+                <Thinking label="Wave is thinking…" />
+              ) : null
             }
-          }}
-          onStartReachedThreshold={0.25}
-          renderItem={renderItem}
-        />
+            ListHeaderComponent={
+              timeline.isPending || timeline.isFetchingNextPage ? (
+                <Thinking label="Loading conversation…" />
+              ) : null
+            }
+            onStartReached={() => {
+              if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
+                void timeline.fetchNextPage();
+              }
+            }}
+            onStartReachedThreshold={0.25}
+            renderItem={renderItem}
+          />
+        </ScrollFade>
         {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"
