@@ -26,7 +26,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRecyclingState } from '@legendapp/list/react-native';
 
 import { LegendList } from '@/components/legend-list';
+import { OfflineNotice } from '@/components/offline-notice';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { waveSessionQueryKey } from '@/features/sessions/session-query-keys';
 import {
   flattenWaveSessions,
@@ -177,6 +179,8 @@ function ConnectedWaveDrawerContent({
   const errorMessage =
     localError ??
     (mutationError ? drawerErrorMessage(mutationError) : undefined);
+  const showingCachedSessions =
+    sessions.length > 0 && isOfflineLikeWaveError(sessionsQuery.error);
 
   return (
     <View
@@ -245,9 +249,17 @@ function ConnectedWaveDrawerContent({
           )
         }
         ListHeaderComponent={
-          <Typography.Paragraph muted className="px-3 pb-2 text-xs uppercase">
-            Chats
-          </Typography.Paragraph>
+          <>
+            <Typography.Paragraph muted className="px-3 pb-2 text-xs uppercase">
+              Chats
+            </Typography.Paragraph>
+            {showingCachedSessions ? (
+              <OfflineNotice
+                label="Offline — showing cached chats"
+                testID="drawer-offline-notice"
+              />
+            ) : null}
+          </>
         }
         onEndReached={() => {
           if (sessionsQuery.hasNextPage && !sessionsQuery.isFetchingNextPage) {

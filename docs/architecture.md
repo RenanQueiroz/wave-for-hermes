@@ -342,6 +342,12 @@ protocol messages.
   cursor-paginated unified timeline, read-only scheduled jobs, diagnostics, and the Realtime voice
   catalog. Retryable finite reads retry at most twice with the shared 500 ms exponential-jitter
   policy capped at 8 seconds; mutations never retry automatically.
+- The query cache is persisted to one sandboxed cache file so previously viewed sessions and
+  timelines stay readable offline. Only successful session-list and timeline reads dehydrate
+  (never diagnostics, jobs, or Realtime state), entries expire after seven days or a cache-buster
+  bump, and pairing, forgetting, and disconnecting purge the file alongside the in-memory cache.
+  A connectivity-shaped refetch failure over cached data renders a quiet offline notice; every
+  other error keeps its explicit surface.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.

@@ -147,6 +147,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   or hidden reasoning.
 - The Companion database and its SQLite sidecars are sensitive even though bearer credentials are
   hashed; deployment keeps them on an operator-owned private writable mount.
+- The mobile offline read cache stores only normalized session-list and timeline responses as one
+  JSON file in the app sandbox (platform encryption at rest, no credentials or provider
+  identifiers), expires after seven days, and is purged whenever the device pairs, forgets, or
+  disconnects.
 
 ### Transport and deployment
 

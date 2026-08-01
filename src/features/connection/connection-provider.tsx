@@ -21,6 +21,7 @@ import {
   WaveCredentialStoreError,
 } from '@/services/credentials/connection-record';
 import { SecureWaveCredentialStore } from '@/services/credentials/secure-credential-store';
+import { waveQueryPersister } from '@/services/query/wave-query-cache';
 import {
   ActiveSessionStore,
   ActiveSessionStoreError,
@@ -189,6 +190,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       const operation = ++operationRef.current;
       await queryClient.cancelQueries({ queryKey: ['wave'] });
       queryClient.removeQueries({ queryKey: ['wave'] });
+      await waveQueryPersister.removeClient();
       setState({ phase: 'pairing' });
       try {
         const publicClient = createMobileWaveBackendClient({
@@ -235,6 +237,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     async (operation: number) => {
       await queryClient.cancelQueries({ queryKey: ['wave'] });
       queryClient.removeQueries({ queryKey: ['wave'] });
+      await waveQueryPersister.removeClient();
       await activeSessionStore.clear();
       await store.clear();
       if (operation !== operationRef.current) return false;

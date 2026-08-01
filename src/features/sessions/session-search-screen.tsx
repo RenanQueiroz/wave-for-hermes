@@ -11,7 +11,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { LegendList } from '@/components/legend-list';
+import { OfflineNotice } from '@/components/offline-notice';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import {
   flattenWaveSessions,
   useWaveSessions,
@@ -99,7 +101,14 @@ function ConnectedSessionSearchScreen({
         </InputGroup>
       </View>
 
-      {sessionsError ? (
+      {sessionsError &&
+      sessions.length > 0 &&
+      isOfflineLikeWaveError(sessionsError) ? (
+        <OfflineNotice
+          label="Offline — searching cached chats"
+          testID="session-search-offline-notice"
+        />
+      ) : sessionsError ? (
         <Alert
           className="mx-4 mb-3"
           variant="destructive"

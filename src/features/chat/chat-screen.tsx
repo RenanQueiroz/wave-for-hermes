@@ -40,6 +40,7 @@ import { useCSSVariable } from 'uniwind';
 
 import { CameraIcon } from '@/components/icons/camera-icon';
 import { LegendList } from '@/components/legend-list';
+import { OfflineNotice } from '@/components/offline-notice';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
   timelineToWaveChatMessages,
@@ -58,6 +59,7 @@ import {
   waveSessionQueryKey,
   waveTimelineQueryKey,
 } from '@/features/sessions/session-query-keys';
+import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import {
   WaveBackendError,
@@ -337,7 +339,14 @@ function ConnectedChatScreen({
   return (
     <View className="flex-1 bg-background">
       {headerTitle ? <Stack.Screen options={{ title: headerTitle }} /> : null}
-      {timeline.error ? (
+      {timeline.error &&
+      messages.length > 0 &&
+      isOfflineLikeWaveError(timeline.error) ? (
+        <OfflineNotice
+          label="Offline — showing this conversation from cache"
+          testID="chat-offline-notice"
+        />
+      ) : timeline.error ? (
         <Alert
           className="mx-4 mt-3"
           variant="destructive"
