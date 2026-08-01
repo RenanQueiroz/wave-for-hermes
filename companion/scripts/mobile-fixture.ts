@@ -22,6 +22,7 @@ import type {
 const host = process.env.WAVE_FIXTURE_HOST?.trim() || '127.0.0.1';
 const port = parsePort(process.env.WAVE_FIXTURE_PORT);
 const cancellationPrompt = 'Cancel the Wave chat fixture';
+const slowStreamPrompt = 'Stream slowly for the Wave fixture';
 const store = new SqliteDeviceStore(':memory:');
 const hermes = createFixtureHermesClient();
 const config: CompanionConfig = {
@@ -143,6 +144,28 @@ function createFixtureHermesClient(): HermesClient {
   const sessions: HermesSessionSummary[] = [];
   const messages = new Map<string, HermesConversationMessage[]>();
   let turnCount = 0;
+  // A long deterministic history exercises timeline pagination under scroll.
+  const longSessionStart = Math.floor(Date.now() / 1_000) - 130 * 60;
+  sessions.push({
+    id: 'fixture-long-conversation',
+    messageCount: 130,
+    preview: 'Seeded pagination history',
+    startedAt: longSessionStart,
+    title: 'Long fixture conversation',
+  });
+  messages.set(
+    'fixture-long-conversation',
+    Array.from({ length: 130 }, (_, index): HermesConversationMessage => ({
+      content:
+        index % 2 === 0
+          ? `Fixture question ${index / 2 + 1}: does pagination hold up under scroll?`
+          : `Fixture answer ${(index + 1) / 2}: this is entry ${index + 1} of 130 in the seeded history.`,
+      id: `fixture-long-${index + 1}`,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      sessionId: 'fixture-long-conversation',
+      timestamp: longSessionStart + index * 60,
+    })),
+  );
   return {
     async createSession(
       input: HermesCreateSessionInput = {},
@@ -251,6 +274,67 @@ function createFixtureHermesClient(): HermesClient {
         yield {
           ...base,
           sequence: 3,
+          type: 'done',
+        };
+        return;
+      }
+      if (input.input === slowStreamPrompt) {
+        // Streams one chunk per second so resumable-turn flows (backgrounding,
+        // relaunch, reattach) can be exercised against a live in-flight turn.
+        const chunks: string[] = [];
+        let sequence = 1;
+        for (let step = 1; step <= 30; step += 1) {
+          await delayForFixtureStream(1_000, input.signal);
+          if (input.signal?.aborted) return;
+          const chunk = `Slow chunk ${step} of 30. `;
+          chunks.push(chunk);
+          yield {
+            ...base,
+            delta: chunk,
+            messageId,
+            sequence,
+            type: 'assistant.delta',
+          };
+          sequence += 1;
+        }
+        const slowContent = chunks.join('');
+        yield {
+          ...base,
+          content: slowContent,
+          interrupted: false,
+          messageId,
+          partial: false,
+          sequence,
+          type: 'assistant.completed',
+        };
+        yield {
+          ...base,
+          completed: true,
+          messageId,
+          sequence: sequence + 1,
+          type: 'run.completed',
+        };
+        const slowHistory = messages.get(sessionId) ?? [];
+        slowHistory.push(
+          {
+            content: slowStreamPrompt,
+            id: `fixture-user-${turnCount}`,
+            role: 'user',
+            sessionId,
+            timestamp,
+          },
+          {
+            content: slowContent,
+            id: messageId,
+            role: 'assistant',
+            sessionId,
+            timestamp,
+          },
+        );
+        messages.set(sessionId, slowHistory);
+        yield {
+          ...base,
+          sequence: sequence + 2,
           type: 'done',
         };
         return;
@@ -370,6 +454,22 @@ function createFixtureHermesClient(): HermesClient {
       return session;
     },
   };
+}
+
+function delayForFixtureStream(ms: number, signal: AbortSignal | undefined) {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const settle = () => {
+      signal?.removeEventListener('abort', settle);
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(settle, ms);
+    signal?.addEventListener('abort', settle, { once: true });
+  });
 }
 
 function waitForFixtureCancellation(signal: AbortSignal | undefined) {

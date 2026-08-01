@@ -24,14 +24,17 @@ The detailed evidence and acceptance gates live in
 
 ## Now: connectivity resilience follow-through
 
-- Exercise resumable turn streams end to end on physical devices: background the app mid-turn,
-  lock and unlock, and confirm transport reattach plus mount-time resume against a live companion
-  on both platforms. The companion and client logic is deterministically tested and was smoked
-  against the local fixture; the real radio and app-lifecycle path is not yet exercised.
-- Exercise the offline read cache on-device: airplane mode over cached chats, cold-start restore,
-  the offline notices, and purge on disconnect.
-- Live-test timeline pagination under scroll against a conversation longer than one hundred
-  entries.
+- Validated on the iOS simulator against the extended mobile fixture (2026-08-01): timeline
+  pagination under scroll across a seeded 130-entry conversation (older page loaded via
+  `onStartReached`, no gaps or jumps), and turn survival across a hard app kill mid-stream — the
+  slow fixture turn ran to completion detached twice and its full response was recovered on
+  return. Cached chats also stayed readable with the companion process down.
+- Remaining: repeat on physical devices over real radio (background/lock mid-turn), observe the
+  live mid-stream reattach UI (the fixture's 30-second stream ended before slow automation could
+  reopen the screen), exercise airplane-mode offline notices and purge-on-disconnect, and confirm
+  offline cold-start behavior — launch verification currently gates on a reachable companion, so
+  the persisted cache may be unreachable when starting fully offline; decide whether cold-start
+  should degrade to cached reading instead.
 
 ## Next: release hardening and focused operations
 
