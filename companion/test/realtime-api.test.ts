@@ -43,6 +43,7 @@ const config: CompanionConfig = {
   port: 8787,
   realtimeCallTtlMs: 1_800_000,
   realtimeToolTimeoutMs: 120_000,
+  turnResumeWindowMs: 120_000,
 };
 const SDP_OFFER = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n';
 

@@ -122,6 +122,9 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   limits.
 - Shared schemas bound identifiers, text, attachment count, decoded image bytes, text files, SDP,
   tool input/output, transcripts, handoff instructions, and tool results.
+- Turn replay buffers are bounded (4,096 frames / 4 MiB per turn, oldest evicted first), retained
+  past the terminal event only for the bounded resume window, reattachable only by the device that
+  started the turn, and purged on revocation, self-disconnect, session deletion, and shutdown.
 - Text streams enforce first-event, idle, and total timeouts. Realtime setup, sideband connection,
   tools, calls, and reconnect behavior are separately bounded.
 - Mobile JSON reads, SSE frames, ordered sequences, stream identities, idle time, and total time

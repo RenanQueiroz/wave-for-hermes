@@ -26,6 +26,7 @@ const config: CompanionConfig = {
   port: 8787,
   realtimeCallTtlMs: 1_800_000,
   realtimeToolTimeoutMs: 120_000,
+  turnResumeWindowMs: 120_000,
 };
 
 test('returns a strict, non-sensitive compatibility status', async () => {

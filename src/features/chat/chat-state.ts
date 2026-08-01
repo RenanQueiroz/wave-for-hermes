@@ -50,6 +50,11 @@ export type WaveChatAction =
       userId: string;
     }
   | {
+      assistantId: string;
+      turnId: string;
+      type: 'resume';
+    }
+  | {
       delta: string;
       type: 'assistant.delta';
     }
@@ -85,6 +90,21 @@ export function waveChatReducer(
             parts: [{ text: action.input, type: 'text' }],
             role: 'user',
           },
+          {
+            id: action.assistantId,
+            parts: [],
+            role: 'assistant',
+          },
+        ],
+        status: 'submitting',
+      };
+    case 'resume':
+      // Reattaching to a turn the server reports as still active. The user's
+      // message already lives in the refreshed timeline, so only the
+      // assistant placeholder is seeded locally.
+      return {
+        activeTurnId: action.turnId,
+        messages: [
           {
             id: action.assistantId,
             parts: [],

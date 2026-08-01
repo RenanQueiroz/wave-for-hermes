@@ -54,7 +54,10 @@ export function buildCompanionServer(
     );
   }
   const turnRegistry =
-    options.turnRegistry ?? new ActiveTurnRegistry(config.maxActiveTurns);
+    options.turnRegistry ??
+    new ActiveTurnRegistry(config.maxActiveTurns, {
+      resumeWindowMs: config.turnResumeWindowMs,
+    });
   const realtimeCallRegistry =
     options.realtimeCallRegistry ??
     (config.openAI

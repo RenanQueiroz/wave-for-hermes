@@ -128,6 +128,106 @@ test('streams authenticated ordered turns and cancels an abandoned reader', asyn
   assert.equal(cancelled, true);
 });
 
+test('resumes a turn stream from a prior sequence without re-dispatching', async () => {
+  const fetch = async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(
+      String(input),
+      'https://wave.test/v1/sessions/session-1/turns/turn-1/stream?after=1',
+    );
+    assert.equal(init?.method, 'GET');
+    assert.equal(init?.body, undefined);
+    assert.equal(new Headers(init?.headers).has('content-type'), false);
+    return sseResponse([
+      event({
+        delta: 'resumed',
+        messageId: 'message-1',
+        sequence: 2,
+        type: 'assistant.delta',
+      }),
+      event({
+        completed: true,
+        sequence: 3,
+        type: 'turn.completed',
+      }),
+    ]);
+  };
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch,
+  });
+
+  const events = await collect(
+    client.resumeTurnStream('session-1', 'turn-1', 1),
+  );
+  assert.deepEqual(
+    events.map(({ sequence, type }) => ({ sequence, type })),
+    [
+      { sequence: 2, type: 'assistant.delta' },
+      { sequence: 3, type: 'turn.completed' },
+    ],
+  );
+});
+
+test('rejects resumed streams at the wrong position or for another turn', async () => {
+  const skipped = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async () =>
+      sseResponse([
+        event({
+          completed: true,
+          sequence: 3,
+          type: 'turn.completed',
+        }),
+      ]),
+  });
+  await assert.rejects(
+    collect(skipped.resumeTurnStream('session-1', 'turn-1', 1)),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_response',
+  );
+
+  const foreignTurn = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async () =>
+      sseResponse([
+        event({
+          completed: true,
+          sequence: 2,
+          turnId: 'turn-2',
+          type: 'turn.completed',
+        }),
+      ]),
+  });
+  await assert.rejects(
+    collect(foreignTurn.resumeTurnStream('session-1', 'turn-1', 1)),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_response',
+  );
+
+  // A full replay (after: -1) must still begin with turn.started.
+  const noStart = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch: async () =>
+      sseResponse([
+        event({
+          delta: 'no start',
+          messageId: 'message-1',
+          sequence: 0,
+          type: 'assistant.delta',
+        }),
+      ]),
+  });
+  await assert.rejects(
+    collect(noStart.resumeTurnStream('session-1', 'turn-1', -1)),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_response',
+  );
+});
+
 test('rejects out-of-order and incomplete Wave turn streams', async () => {
   const outOfOrder = new WaveBackendClient({
     baseUrl: 'https://wave.test',
@@ -169,9 +269,17 @@ function event(
         type: 'assistant.started';
       }
     | {
+        delta: string;
+        messageId: string;
+        sequence: number;
+        type: 'assistant.delta';
+        turnId?: string;
+      }
+    | {
         completed: boolean;
         sequence: number;
         type: 'turn.completed';
+        turnId?: string;
       },
 ): WaveTurnEvent {
   return {

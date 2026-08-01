@@ -176,6 +176,25 @@ function ConnectedChatScreen({
     reconcileTimeline,
     sessionId,
   });
+  const { resume } = chat;
+
+  // A turn this device started may still be running server-side after a
+  // backgrounding, a navigation away, or an app restart. Ask the companion
+  // and reattach to it instead of leaving it invisible; the probe is
+  // best-effort and silent when it cannot be answered.
+  useEffect(() => {
+    let cancelled = false;
+    void client
+      .getActiveTurn(sessionId)
+      .then((response) => {
+        if (cancelled || !response.activeTurn) return;
+        void resume(response.activeTurn.turnId);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, resume, sessionId]);
 
   useEffect(() => {
     if (!__DEV__) return;

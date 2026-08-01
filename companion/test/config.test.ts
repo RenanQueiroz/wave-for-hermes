@@ -29,6 +29,7 @@ test('loads server-only Hermes and listener configuration', () => {
     port: 9000,
     realtimeCallTtlMs: 1_800_000,
     realtimeToolTimeoutMs: 120_000,
+    turnResumeWindowMs: 120_000,
   });
 });
 

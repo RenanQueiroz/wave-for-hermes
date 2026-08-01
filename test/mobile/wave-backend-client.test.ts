@@ -701,6 +701,34 @@ test('distinguishes cancellation from request timeout', async () => {
   );
 });
 
+test('reads the active turn for a session', async () => {
+  const fetch = async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(
+      String(input),
+      'https://wave.test/v1/sessions/session-1/turns/active',
+    );
+    assert.equal(
+      new Headers(init?.headers).get('authorization'),
+      `Bearer ${credential}`,
+    );
+    return jsonResponse({
+      activeTurn: { latestSequence: 4, turnId: 'turn-1' },
+      apiVersion: 'v1',
+      requestId: 'request-1',
+      sessionId: 'session-1',
+    });
+  };
+  const client = new WaveBackendClient({
+    baseUrl: 'https://wave.test',
+    credential,
+    fetch,
+  });
+
+  const response = await client.getActiveTurn('session-1');
+  assert.equal(response.activeTurn?.turnId, 'turn-1');
+  assert.equal(response.activeTurn?.latestSequence, 4);
+});
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: { 'content-type': 'application/json' },

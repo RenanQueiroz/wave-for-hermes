@@ -267,10 +267,14 @@ decision first.
 
 One device can run one turn at a time, one session can have one active turn, and the process-wide
 maximum defaults to four. Wave starts a normalized SSE stream before contacting Hermes, then
-enforces first-event, idle, and total timers. An authenticated cancellation request, mobile
-disconnect, timeout, upstream error, or downstream consumer exit aborts or cancels the Hermes
-stream. Events contain only Wave-owned identifiers, assistant text, and sanitized tool lifecycle
-status plus optional bounded tool input/output details. Each detail is capped at 64,000 characters,
+enforces first-event, idle, and total timers. An authenticated cancellation request, timeout, or
+upstream error aborts the Hermes stream. A mobile disconnect only detaches the turn: the Hermes
+run continues under the same timers while the companion buffers its ordered events in a bounded
+in-memory replay buffer, the owning device may reattach with `after=<sequence>` replay during the
+turn and for a bounded window after its terminal event, and the mobile client reattaches
+automatically after transport drops and on chat-screen mount via the active-turn probe — the turn
+itself is never re-dispatched. Events contain only Wave-owned identifiers, assistant text, and
+sanitized tool lifecycle status plus optional bounded tool input/output details. Each detail is capped at 64,000 characters,
 all details share a 512,000-character per-history-response or per-turn budget, and truncation is
 explicit.
 

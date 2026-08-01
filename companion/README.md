@@ -174,6 +174,8 @@ Authorization: Bearer <device-credential>
 | `GET /v1/sessions/:sessionId/timeline?limit=&before=` | Device                | Page backward through the unified Wave/Hermes timeline           |
 | `POST /v1/sessions/:sessionId/turns`                  | Device                | Stream normalized Wave SSE events                                |
 | `POST /v1/sessions/:sessionId/turns/:turnId/cancel`   | Device                | Cancel that device's active turn                                 |
+| `GET /v1/sessions/:sessionId/turns/active`            | Device                | Report that device's active turn in the session, if any          |
+| `GET /v1/sessions/:sessionId/turns/:turnId/stream`    | Device and turn owner | Reattach to a turn, replaying events after the `after` sequence  |
 | `POST /v1/sessions/:sessionId/realtime/calls`         | Device                | Exchange a bounded SDP offer for transient Wave call state       |
 | `POST /v1/realtime/calls/:callId/end`                 | Device and call owner | End and discard a Wave Realtime call                             |
 
@@ -200,8 +202,20 @@ turn.error
 ```
 
 The companion permits one active turn per device and one per Hermes session, with a bounded global
-maximum. Cancellation, client disconnect, first-event timeout, idle timeout, and total timeout all
-abort the upstream Hermes request.
+maximum. Cancellation, first-event timeout, idle timeout, and total timeout all abort the upstream
+Hermes request.
+
+Turn streams are resumable. A client disconnect detaches the turn without cancelling Hermes; the
+turn keeps running to its terminal event under the same timeouts and still counts against the
+active-turn limits. Every event carries a monotonic `sequence`, and the companion keeps a bounded
+in-memory replay buffer per turn (4,096 frames / 4 MiB, oldest evicted first). The owning device
+may reattach through the stream route with `?after=<sequence>` — buffered events after that
+position replay, then the stream continues live, and the newest attachment preempts any earlier
+one. After the terminal event the buffer is retained for `WAVE_TURN_RESUME_WINDOW_MS` so a briefly
+backgrounded client can still collect the tail. A reattach that names an unknown turn, another
+device's turn, or an evicted position returns 404, and the client falls back to a timeline
+refresh. Revocation, self-disconnect, session deletion, and shutdown purge replay state
+immediately.
 
 ### Realtime call and tool policy
 
@@ -283,6 +297,7 @@ Deleting the parent session removes its interaction ledger in the same Wave life
 | `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000`                        | Sideband connection timeout                                  |
 | `WAVE_REALTIME_CALL_TTL_MS`                 | `1800000`                      | Maximum call lifetime, from 1 minute through 2 hours         |
 | `WAVE_REALTIME_TOOL_TIMEOUT_MS`             | `120000`                       | Per-tool timeout, from 10 seconds through 10 minutes         |
+| `WAVE_TURN_RESUME_WINDOW_MS`                | `120000`                       | Post-turn replay retention, up to 10 minutes; `0` disables   |
 
 The Hermes total timeout must exceed both event timeouts, and the Realtime call lifetime must
 exceed its tool timeout. Request bodies are limited to 6,000,000 bytes; stricter turn and

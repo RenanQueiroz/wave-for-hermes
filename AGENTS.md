@@ -116,6 +116,8 @@ documentation before implementing UI.
   streams. Mobile screens consume normalized state and never parse SSE directly.
 - Finite retryable reads may retry at most twice with the shared bounded exponential-jitter policy.
   Mutations and active streams must not retry automatically after an ambiguous failure.
+  Reattaching to an already-dispatched turn stream by turn ID and sequence is a read of the same
+  execution, not a mutation retry; the turn submission itself is never re-sent automatically.
 - Use Expo SDK 57's `expo/fetch` for response streaming. Keep stream framing, ordering, timeout,
   cancellation, and size limits in `WaveBackendClient` and its service helpers.
 - Hermes HTTP, SSE, capability, and error normalization belongs in the companion's server-only

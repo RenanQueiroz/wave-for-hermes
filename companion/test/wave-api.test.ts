@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  WaveActiveTurnResponseSchema,
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
   WaveDeleteSessionResponseSchema,
@@ -51,6 +52,7 @@ const config: CompanionConfig = {
   port: 8787,
   realtimeCallTtlMs: 1_800_000,
   realtimeToolTimeoutMs: 120_000,
+  turnResumeWindowMs: 120_000,
 };
 
 class FakeHermesClient implements HermesClient {
@@ -930,35 +932,56 @@ test('self-revocation aborts that device active turn and invalidates its credent
   await closeContext(context);
 });
 
-test('aborts Hermes when the downstream client disconnects', async () => {
-  const context = createContext();
+test('keeps Hermes running across a client disconnect and replays on reattach', async () => {
+  const context = createContext({
+    hermesFirstEventTimeoutMs: 5_000,
+    hermesIdleTimeoutMs: 5_000,
+    hermesTotalTimeoutMs: 10_000,
+  });
   const paired = pairDevice(context.store, 'Disconnecting device');
-  let observeDisconnect: (() => void) | undefined;
-  const disconnected = new Promise<void>((resolve) => {
-    observeDisconnect = resolve;
+  let hermesAborted = false;
+  let releaseTail: (() => void) | undefined;
+  const tailGate = new Promise<void>((resolve) => {
+    releaseTail = resolve;
   });
   context.hermes.stream = async function* (
     sessionId,
     input,
   ): AsyncGenerator<HermesStreamEvent> {
-    yield {
-      runId: 'run-disconnecting',
+    input.signal?.addEventListener('abort', () => {
+      hermesAborted = true;
+    });
+    const base = {
+      runId: 'run-detached',
       sequence: 0,
       sessionId,
       timestamp: 1_785_370_001,
-      type: 'run.started',
     };
-    await new Promise<void>((resolve) => {
-      const onAbort = () => {
-        observeDisconnect?.();
-        resolve();
-      };
-      if (input.signal?.aborted) {
-        onAbort();
-      } else {
-        input.signal?.addEventListener('abort', onAbort, { once: true });
-      }
-    });
+    yield { ...base, messageId: 'assistant-1', type: 'message.started' };
+    yield {
+      ...base,
+      delta: 'Working',
+      messageId: 'assistant-1',
+      sequence: 1,
+      type: 'assistant.delta',
+    };
+    await tailGate;
+    yield {
+      ...base,
+      content: 'Done while detached',
+      interrupted: false,
+      messageId: 'assistant-1',
+      partial: false,
+      sequence: 2,
+      type: 'assistant.completed',
+    };
+    yield {
+      ...base,
+      completed: true,
+      messageId: 'assistant-1',
+      sequence: 3,
+      type: 'run.completed',
+    };
   };
   const address = await context.app.listen({
     host: '127.0.0.1',
@@ -967,7 +990,7 @@ test('aborts Hermes when the downstream client disconnects', async () => {
   const response = await fetch(
     `${address}/v1/sessions/existing-session/turns`,
     {
-      body: JSON.stringify({ input: 'Disconnect me' }),
+      body: JSON.stringify({ input: 'Keep working while I am away' }),
       headers: {
         ...authorizationHeader(paired.credential),
         'content-type': 'application/json',
@@ -975,27 +998,112 @@ test('aborts Hermes when the downstream client disconnects', async () => {
       method: 'POST',
     },
   );
+  assert.equal(response.status, 200);
+  const turnId = response.headers.get('x-wave-turn-id');
+  assert.ok(turnId);
   assert.ok(response.body);
   const reader = response.body.getReader();
   assert.equal((await reader.read()).done, false);
 
   await reader.cancel();
-  let disconnectTimeout: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      disconnected,
-      new Promise<never>((_resolve, reject) => {
-        disconnectTimeout = setTimeout(
-          () => reject(new Error('Hermes did not observe the disconnect.')),
-          1_000,
-        );
-      }),
-    ]);
-  } finally {
-    if (disconnectTimeout) {
-      clearTimeout(disconnectTimeout);
-    }
+  // Disconnecting no longer aborts Hermes; the turn stays active and
+  // reportable for this device.
+  const activeResponse = await fetch(
+    `${address}/v1/sessions/existing-session/turns/active`,
+    { headers: authorizationHeader(paired.credential) },
+  );
+  assert.equal(activeResponse.status, 200);
+  const active = WaveActiveTurnResponseSchema.parse(
+    await activeResponse.json(),
+  );
+  assert.equal(active.activeTurn?.turnId, turnId);
+  assert.equal(hermesAborted, false);
+
+  releaseTail?.();
+  const resumed = await fetch(
+    `${address}/v1/sessions/existing-session/turns/${turnId}/stream?after=-1`,
+    { headers: authorizationHeader(paired.credential) },
+  );
+  assert.equal(resumed.status, 200);
+  assert.ok(resumed.body);
+  const resumedReader = resumed.body.getReader();
+  let resumedText = '';
+  while (true) {
+    const chunk = await resumedReader.read();
+    if (chunk.done) break;
+    resumedText += new TextDecoder().decode(chunk.value);
   }
+  const events = parseSseEvents(resumedText);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [
+      'turn.started',
+      'assistant.started',
+      'assistant.delta',
+      'assistant.completed',
+      'turn.completed',
+    ],
+  );
+  assert.deepEqual(
+    events.map((event) => event.sequence),
+    [0, 1, 2, 3, 4],
+  );
+  assert.equal(hermesAborted, false);
+
+  const afterCompletion = await fetch(
+    `${address}/v1/sessions/existing-session/turns/active`,
+    { headers: authorizationHeader(paired.credential) },
+  );
+  assert.equal(
+    WaveActiveTurnResponseSchema.parse(await afterCompletion.json()).activeTurn,
+    null,
+  );
+  await closeContext(context);
+});
+
+test('rejects reattachment for a device that does not own the turn', async () => {
+  const context = createContext({
+    hermesFirstEventTimeoutMs: 5_000,
+    hermesIdleTimeoutMs: 5_000,
+    hermesTotalTimeoutMs: 10_000,
+  });
+  const owner = pairDevice(context.store, 'Owner device');
+  const other = pairDevice(context.store, 'Other device');
+  context.hermes.stream = waitingHermesStream;
+  const address = await context.app.listen({
+    host: '127.0.0.1',
+    port: 0,
+  });
+  const response = await fetch(
+    `${address}/v1/sessions/existing-session/turns`,
+    {
+      body: JSON.stringify({ input: 'Wait around' }),
+      headers: {
+        ...authorizationHeader(owner.credential),
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  );
+  assert.equal(response.status, 200);
+  const turnId = response.headers.get('x-wave-turn-id');
+  assert.ok(turnId);
+
+  const foreignResume = await fetch(
+    `${address}/v1/sessions/existing-session/turns/${turnId}/stream?after=-1`,
+    { headers: authorizationHeader(other.credential) },
+  );
+  assert.equal(foreignResume.status, 404);
+  const foreignActive = await fetch(
+    `${address}/v1/sessions/existing-session/turns/active`,
+    { headers: authorizationHeader(other.credential) },
+  );
+  assert.equal(
+    WaveActiveTurnResponseSchema.parse(await foreignActive.json()).activeTurn,
+    null,
+  );
+
+  await response.body?.cancel();
   await closeContext(context);
 });
 
@@ -1020,16 +1128,19 @@ test('normalizes an upstream compatibility failure', async () => {
   await closeContext(context);
 });
 
-function createContext() {
+function createContext(configOverrides: Partial<typeof config> = {}) {
   const store = new SqliteDeviceStore(':memory:', {
     now: () => NOW,
   });
   const hermes = new FakeHermesClient();
-  const app = buildCompanionServer(config, {
-    deviceStore: store,
-    hermesClient: hermes,
-    now: () => NOW,
-  });
+  const app = buildCompanionServer(
+    { ...config, ...configOverrides },
+    {
+      deviceStore: store,
+      hermesClient: hermes,
+      now: () => NOW,
+    },
+  );
   return { app, hermes, store };
 }
 

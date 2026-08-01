@@ -190,11 +190,34 @@ export const WaveCancelTurnResponseSchema = WaveResponseMetadataSchema.extend({
   turnId: WaveIdentifierSchema,
 }).strict();
 
+export const WaveResumeTurnStreamRequestSchema = z
+  .object({
+    after: z.coerce.number().int().min(-1).max(1_000_000),
+  })
+  .strict();
+
+export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
+  activeTurn: z
+    .object({
+      latestSequence: z.number().int().min(-1).max(1_000_000),
+      turnId: WaveIdentifierSchema,
+    })
+    .strict()
+    .nullable(),
+  sessionId: WaveIdentifierSchema,
+}).strict();
+
+export type WaveActiveTurnResponse = z.infer<
+  typeof WaveActiveTurnResponseSchema
+>;
 export type WaveCompatibilityResponse = z.infer<
   typeof WaveCompatibilityResponseSchema
 >;
 export type WaveCancelTurnResponse = z.infer<
   typeof WaveCancelTurnResponseSchema
+>;
+export type WaveResumeTurnStreamRequest = z.infer<
+  typeof WaveResumeTurnStreamRequestSchema
 >;
 export type WaveConversationMessage = z.infer<
   typeof WaveConversationMessageSchema

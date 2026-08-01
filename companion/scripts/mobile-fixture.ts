@@ -40,6 +40,7 @@ const config: CompanionConfig = {
   port,
   realtimeCallTtlMs: 1_800_000,
   realtimeToolTimeoutMs: 120_000,
+  turnResumeWindowMs: 120_000,
 };
 // The fixture cannot reach OpenAI, so live calls stay unavailable while the
 // voice catalog and previews work end to end with locally synthesized tones.

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   WAVE_API_VERSION,
   WAVE_COMPANION_SERVICE,
+  WaveActiveTurnResponseSchema,
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
@@ -15,6 +16,7 @@ import {
   WaveEndRealtimeCallResponseSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
+  WaveResumeTurnStreamRequestSchema,
   WaveRevokeCurrentDeviceResponseSchema,
   WaveRealtimeVoiceIdSchema,
   WaveRealtimeVoiceListResponseSchema,
@@ -39,7 +41,10 @@ import {
   requireAuthenticatedDevice,
 } from '../auth/http-auth.ts';
 import type { DeviceStore } from '../auth/device-store.ts';
-import type { ActiveTurnRegistry } from '../chat/active-turns.ts';
+import type {
+  ActiveTurnRegistry,
+  TurnAttachment,
+} from '../chat/active-turns.ts';
 import type { CompanionConfig } from '../config.ts';
 import { HermesClientError } from '../hermes/hermes-errors.ts';
 import type { HermesClient } from '../hermes/hermes-types.ts';
@@ -597,6 +602,70 @@ export function registerWaveApi(
       );
     },
   );
+
+  app.get(
+    '/v1/sessions/:sessionId/turns/active',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { sessionId } = SessionParamsSchema.parse(request.params);
+      const activeTurn = services.turnRegistry.activeTurnFor(
+        device.id,
+        sessionId,
+      );
+      return reply.send(
+        WaveActiveTurnResponseSchema.parse({
+          ...responseMetadata(request),
+          activeTurn: activeTurn ?? null,
+          sessionId,
+        }),
+      );
+    },
+  );
+
+  app.get(
+    '/v1/sessions/:sessionId/turns/:turnId/stream',
+    { onRequest: authenticateDevice },
+    async (request, reply) => {
+      const device = requireAuthenticatedDevice(request);
+      const { sessionId, turnId } = TurnParamsSchema.parse(request.params);
+      const { after } = WaveResumeTurnStreamRequestSchema.parse(request.query);
+      const record = services.turnRegistry.lookup(device.id, sessionId, turnId);
+      if (!record) {
+        throw new WaveHttpError('The Wave turn was not found.', {
+          code: 'not_found',
+          statusCode: 404,
+        });
+      }
+      const frames = record.buffer.replayAfter(after);
+      if (frames === undefined) {
+        throw new WaveHttpError(
+          'The Wave turn can no longer be replayed from that position.',
+          {
+            code: 'not_found',
+            statusCode: 404,
+          },
+        );
+      }
+      // No awaits between the lookup above and the attachment handoff below:
+      // the replay plus live takeover is atomic on the event loop, so no
+      // emitted frame can fall between the buffer copy and the attachment.
+      const attachment = createSseAttachment(reply);
+      reply.raw.once('close', () =>
+        services.turnRegistry.clearAttachment(turnId, attachment),
+      );
+      reply.hijack();
+      reply.raw.writeHead(200, sseHeaders(turnId));
+      for (const frame of frames) {
+        attachment.write(frame);
+      }
+      if (record.state === 'completed') {
+        attachment.end();
+        return;
+      }
+      services.turnRegistry.setAttachment(turnId, attachment);
+    },
+  );
 }
 
 function requireRealtimeCallRegistry(
@@ -680,6 +749,27 @@ async function streamTurn(
   input: WaveTurnInput,
   now: () => Date,
 ) {
+  // The initiating response is only the first attachment. Losing it detaches
+  // the turn instead of aborting Hermes; the device can reattach through the
+  // resume route while the turn runs and for the resume window afterwards.
+  const attachment = createSseAttachment(reply);
+  reply.raw.once('close', () =>
+    turnRegistry.clearAttachment(turn.turnId, attachment),
+  );
+  reply.hijack();
+  reply.raw.writeHead(200, sseHeaders(turn.turnId));
+  turnRegistry.setAttachment(turn.turnId, attachment);
+  await runTurn(config, hermesClient, turnRegistry, turn, input, now);
+}
+
+async function runTurn(
+  config: CompanionConfig,
+  hermesClient: HermesClient,
+  turnRegistry: ActiveTurnRegistry,
+  turn: ReturnType<ActiveTurnRegistry['start']>,
+  input: WaveTurnInput,
+  now: () => Date,
+) {
   const events = new WaveTurnEventFactory(turn.sessionId, turn.turnId, now);
   let idleTimer: NodeJS.Timeout | undefined;
   const totalTimer = setTimeout(
@@ -697,21 +787,11 @@ async function streamTurn(
         : config.hermesIdleTimeoutMs,
     );
   };
-  const onClose = () => {
-    if (!reply.raw.writableEnded) {
-      turn.abort('client_disconnected');
-    }
+  const emit = (event: WaveTurnEvent) => {
+    turnRegistry.record(turn.turnId, event.sequence, formatWaveSseEvent(event));
   };
 
-  reply.raw.once('close', onClose);
-  reply.hijack();
-  reply.raw.writeHead(200, {
-    'cache-control': 'no-store',
-    connection: 'keep-alive',
-    'content-type': 'text/event-stream; charset=utf-8',
-    'x-accel-buffering': 'no',
-  });
-  writeEvent(reply, events.createStarted());
+  emit(events.createStarted());
   resetIdleTimer(true);
 
   try {
@@ -722,7 +802,7 @@ async function streamTurn(
       resetIdleTimer(false);
       const normalized = events.fromHermes(event);
       if (normalized) {
-        writeEvent(reply, normalized);
+        emit(normalized);
       }
       if (event.type === 'error') {
         break;
@@ -730,20 +810,41 @@ async function streamTurn(
     }
   } catch (error) {
     const failure = streamFailureEvent(events, turn.abortReason(), error);
-    if (failure && canWrite(reply)) {
-      writeEvent(reply, failure);
+    if (failure) {
+      emit(failure);
     }
   } finally {
     if (idleTimer) {
       clearTimeout(idleTimer);
     }
     clearTimeout(totalTimer);
-    reply.raw.off('close', onClose);
     turnRegistry.finish(turn.turnId);
-    if (canWrite(reply)) {
-      reply.raw.end();
-    }
   }
+}
+
+function sseHeaders(turnId: string) {
+  return {
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'content-type': 'text/event-stream; charset=utf-8',
+    'x-accel-buffering': 'no',
+    'x-wave-turn-id': turnId,
+  };
+}
+
+function createSseAttachment(reply: FastifyReply): TurnAttachment {
+  return {
+    end: () => {
+      if (canWrite(reply)) {
+        reply.raw.end();
+      }
+    },
+    write: (frame) => {
+      if (canWrite(reply)) {
+        reply.raw.write(frame);
+      }
+    },
+  };
 }
 
 function toHermesChatContent(input: WaveTurnInput) {
@@ -785,8 +886,6 @@ function streamFailureEvent(
   error: unknown,
 ) {
   switch (reason) {
-    case 'client_disconnected':
-      return undefined;
     case 'cancelled':
       return events.createError(
         'cancelled',
@@ -836,12 +935,6 @@ function asStreamErrorCode(
       return code;
     default:
       return 'upstream_unavailable';
-  }
-}
-
-function writeEvent(reply: FastifyReply, event: WaveTurnEvent) {
-  if (canWrite(reply)) {
-    reply.raw.write(formatWaveSseEvent(event));
   }
 }
 

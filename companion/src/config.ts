@@ -80,6 +80,12 @@ const CompanionEnvironmentSchema = z.object({
     .min(10_000)
     .max(600_000)
     .default(120_000),
+  WAVE_TURN_RESUME_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(600_000)
+    .default(120_000),
 });
 
 export interface OpenAIRealtimeConfig {
@@ -104,6 +110,7 @@ export interface CompanionConfig {
   port: number;
   realtimeCallTtlMs: number;
   realtimeToolTimeoutMs: number;
+  turnResumeWindowMs: number;
 }
 
 export interface CompanionStorageConfig {
@@ -207,6 +214,7 @@ export function loadCompanionConfig(
     port: parsed.data.WAVE_PORT,
     realtimeCallTtlMs: parsed.data.WAVE_REALTIME_CALL_TTL_MS,
     realtimeToolTimeoutMs: parsed.data.WAVE_REALTIME_TOOL_TIMEOUT_MS,
+    turnResumeWindowMs: parsed.data.WAVE_TURN_RESUME_WINDOW_MS,
   };
 }
 

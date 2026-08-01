@@ -75,3 +75,78 @@ test('makes session deletion mutually exclusive with new turns', () => {
   registry.finish(turn.turnId);
   assert.equal(registry.reserveSessionDeletion('session-1'), true);
 });
+
+test('retains a finished turn for replay within the resume window', () => {
+  const registry = new ActiveTurnRegistry(2);
+  const turn = registry.start('device-1', 'session-1');
+  registry.record(turn.turnId, 0, 'frame-0');
+  registry.record(turn.turnId, 1, 'frame-1');
+  registry.finish(turn.turnId);
+
+  const record = registry.lookup('device-1', 'session-1', turn.turnId);
+  assert.equal(record?.state, 'completed');
+  assert.deepEqual(record?.buffer.replayAfter(0), ['frame-1']);
+  // A retained turn is not active work: it must not be reported, block a new
+  // turn, or block session deletion.
+  assert.equal(registry.activeTurnFor('device-1', 'session-1'), undefined);
+  assert.doesNotThrow(() => registry.start('device-1', 'session-1'));
+});
+
+test('purges a finished turn immediately when the resume window is disabled', () => {
+  const registry = new ActiveTurnRegistry(2, { resumeWindowMs: 0 });
+  const turn = registry.start('device-1', 'session-1');
+  registry.record(turn.turnId, 0, 'frame-0');
+  registry.finish(turn.turnId);
+
+  assert.equal(
+    registry.lookup('device-1', 'session-1', turn.turnId),
+    undefined,
+  );
+});
+
+test('hides turns from other devices and forwards frames to the newest attachment', () => {
+  const registry = new ActiveTurnRegistry(2);
+  const turn = registry.start('device-1', 'session-1');
+  assert.equal(
+    registry.lookup('device-2', 'session-1', turn.turnId),
+    undefined,
+  );
+  assert.equal(
+    registry.lookup('device-1', 'session-2', turn.turnId),
+    undefined,
+  );
+
+  const received: string[] = [];
+  let firstEnded = false;
+  registry.setAttachment(turn.turnId, {
+    end: () => {
+      firstEnded = true;
+    },
+    write: () => {},
+  });
+  registry.setAttachment(turn.turnId, {
+    end: () => {},
+    write: (frame) => received.push(frame),
+  });
+  assert.equal(firstEnded, true);
+
+  registry.record(turn.turnId, 0, 'frame-0');
+  assert.deepEqual(received, ['frame-0']);
+  assert.deepEqual(registry.activeTurnFor('device-1', 'session-1'), {
+    latestSequence: 0,
+    turnId: turn.turnId,
+  });
+});
+
+test('drops retained replay state when the owning device is revoked', () => {
+  const registry = new ActiveTurnRegistry(2);
+  const turn = registry.start('device-1', 'session-1');
+  registry.record(turn.turnId, 0, 'frame-0');
+  registry.finish(turn.turnId);
+
+  registry.abortDevice('device-1', 'cancelled');
+  assert.equal(
+    registry.lookup('device-1', 'session-1', turn.turnId),
+    undefined,
+  );
+});

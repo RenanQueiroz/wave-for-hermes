@@ -76,6 +76,32 @@ test('reduces batched assistant text and bounded tool lifecycle details in order
   ]);
 });
 
+test('resume seeds only an assistant placeholder and streams replayed events', () => {
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'assistant-resumed',
+    turnId: 'turn-1',
+    type: 'resume',
+  });
+  assert.equal(state.status, 'submitting');
+  assert.equal(state.activeTurnId, 'turn-1');
+  assert.deepEqual(state.messages, [
+    { id: 'assistant-resumed', parts: [], role: 'assistant' },
+  ]);
+
+  state = waveChatReducer(state, {
+    event: event({ type: 'turn.started' }),
+    type: 'event',
+  });
+  state = waveChatReducer(state, {
+    delta: 'Picked back up',
+    type: 'assistant.delta',
+  });
+  assert.equal(state.status, 'streaming');
+  assert.deepEqual(state.messages[0]?.parts, [
+    { text: 'Picked back up', type: 'text' },
+  ]);
+});
+
 test('timeline exposes only normalized bounded tool input and output details', () => {
   const messages = timelineToWaveChatMessages(
     hermesTimeline([

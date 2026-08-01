@@ -1,4 +1,5 @@
 import {
+  WaveActiveTurnResponseSchema,
   WaveCancelTurnResponseSchema,
   WaveCompatibilityResponseSchema,
   WaveCreateSessionRequestSchema,
@@ -10,6 +11,7 @@ import {
   WaveListSessionsRequestSchema,
   WaveRedeemPairingRequestSchema,
   WaveRedeemPairingResponseSchema,
+  WaveResumeTurnStreamRequestSchema,
   WaveRevokeCurrentDeviceResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveSessionListResponseSchema,
@@ -27,6 +29,7 @@ import {
   WaveTimelineResponseSchema,
   WaveUpdateSessionRequestSchema,
   type WaveTurnEvent,
+  type WaveActiveTurnResponse,
   type WaveCancelTurnResponse,
   type WaveCompatibilityResponse,
   type WaveCreateSessionRequest,
@@ -196,6 +199,25 @@ export class WaveBackendClient {
       {
         authenticated: true,
         method: 'DELETE',
+        signal,
+      },
+    );
+  }
+
+  getActiveTurn(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<WaveActiveTurnResponse> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    return this.request(
+      WaveActiveTurnResponseSchema,
+      `/v1/sessions/${encodeURIComponent(validSessionId)}/turns/active`,
+      {
+        authenticated: true,
         signal,
       },
     );
@@ -509,6 +531,72 @@ export class WaveBackendClient {
       { input },
       'Enter a valid message.',
     );
+    yield* this.consumeTurnStream({
+      body: JSON.stringify(body),
+      expected: { firstSequence: 0, requireTurnStartedFirst: true },
+      method: 'POST',
+      sessionId: validSessionId,
+      signal,
+      url: this.buildUrl(
+        `/v1/sessions/${encodeURIComponent(validSessionId)}/turns`,
+      ),
+    });
+  }
+
+  /**
+   * Reattaches to a turn this device already started. The companion replays
+   * buffered events with `sequence > afterSequence`, then continues live.
+   * This is a read of the same execution — the turn is never re-dispatched.
+   */
+  async *resumeTurnStream(
+    sessionId: string,
+    turnId: string,
+    afterSequence: number,
+    signal?: AbortSignal,
+  ): AsyncGenerator<WaveTurnEvent> {
+    const validSessionId = parseClientInput(
+      WaveIdentifierSchema,
+      sessionId,
+      'Enter a valid Wave session identifier.',
+    );
+    const validTurnId = parseClientInput(
+      WaveIdentifierSchema,
+      turnId,
+      'Enter a valid Wave turn identifier.',
+    );
+    const { after } = parseClientInput(
+      WaveResumeTurnStreamRequestSchema,
+      { after: afterSequence },
+      'Enter a valid Wave stream position.',
+    );
+    yield* this.consumeTurnStream({
+      expected: {
+        firstSequence: after + 1,
+        requireTurnStartedFirst: after === -1,
+        turnId: validTurnId,
+      },
+      method: 'GET',
+      sessionId: validSessionId,
+      signal,
+      url: this.buildUrl(
+        `/v1/sessions/${encodeURIComponent(validSessionId)}/turns/${encodeURIComponent(validTurnId)}/stream?after=${after}`,
+      ),
+    });
+  }
+
+  private async *consumeTurnStream(options: {
+    body?: string;
+    expected: {
+      firstSequence: number;
+      requireTurnStartedFirst: boolean;
+      turnId?: string;
+    };
+    method: 'GET' | 'POST';
+    sessionId: string;
+    signal?: AbortSignal;
+    url: string;
+  }): AsyncGenerator<WaveTurnEvent> {
+    const { body, expected, method, sessionId, signal, url } = options;
     if (!this.credential) {
       throw new WaveBackendError(
         'This Wave connection does not have a device credential.',
@@ -546,22 +634,17 @@ export class WaveBackendClient {
     }
 
     try {
-      const response = await this.fetch(
-        this.buildUrl(
-          `/v1/sessions/${encodeURIComponent(validSessionId)}/turns`,
-        ),
-        {
-          body: JSON.stringify(body),
-          headers: {
-            accept: 'text/event-stream',
-            authorization: `Bearer ${this.credential}`,
-            'content-type': 'application/json',
-          },
-          method: 'POST',
-          redirect: 'error',
-          signal: controller.signal,
+      const response = await this.fetch(url, {
+        ...(body === undefined ? {} : { body }),
+        headers: {
+          accept: 'text/event-stream',
+          authorization: `Bearer ${this.credential}`,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
-      );
+        method,
+        redirect: 'error',
+        signal: controller.signal,
+      });
       clearTimeout(connectTimer);
       if (!response.ok) {
         const payload = await readResponseJson(response);
@@ -585,8 +668,9 @@ export class WaveBackendClient {
         );
       }
 
-      let expectedSequence = 0;
-      let turnId: string | undefined;
+      let expectedSequence = expected.firstSequence;
+      let turnId = expected.turnId;
+      let first = true;
       let terminal = false;
       resetIdleTimer();
       for await (const event of parseWaveSseStream(response.body, {
@@ -594,9 +678,11 @@ export class WaveBackendClient {
       })) {
         if (
           terminal ||
-          event.sessionId !== validSessionId ||
+          event.sessionId !== sessionId ||
           event.sequence !== expectedSequence ||
-          (expectedSequence === 0 && event.type !== 'turn.started') ||
+          (first &&
+            expected.requireTurnStartedFirst &&
+            event.type !== 'turn.started') ||
           (turnId !== undefined && event.turnId !== turnId)
         ) {
           throw new WaveBackendError(
@@ -605,6 +691,7 @@ export class WaveBackendClient {
           );
         }
         turnId ??= event.turnId;
+        first = false;
         expectedSequence += 1;
         terminal =
           event.type === 'turn.completed' || event.type === 'turn.error';
