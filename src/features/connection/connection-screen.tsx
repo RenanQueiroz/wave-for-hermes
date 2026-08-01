@@ -6,11 +6,16 @@ import {
   Card,
   Input,
   LockIcon,
+  ShareNodesIcon,
   Typography,
 } from 'panelui-native';
 import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, Share, View } from 'react-native';
 
+import {
+  COMPANION_SETUP_PROMPT,
+  COMPANION_SETUP_PROMPT_SHARE_TITLE,
+} from './companion-setup-prompt';
 import { useWaveConnection } from './connection-provider';
 
 const PAIRING_CODE_LENGTH = 16;
@@ -233,6 +238,28 @@ export function ConnectionScreen() {
           </Alert.Description>
         </Alert.Content>
       </Alert>
+
+      <View className="gap-2">
+        <Button
+          fullWidth
+          variant="outline"
+          accessibilityLabel="Share the companion setup prompt"
+          startContent={<ShareNodesIcon size={18} />}
+          testID="share-setup-prompt-button"
+          onPress={() =>
+            void Share.share({
+              message: COMPANION_SETUP_PROMPT,
+              title: COMPANION_SETUP_PROMPT_SHARE_TITLE,
+            })
+          }>
+          Share setup prompt
+        </Button>
+        <Typography.Paragraph type="body-xs" muted align="center">
+          No companion yet? Send this prompt to the coding agent on the machine
+          that runs Hermes and it will set everything up, then reply with the
+          URL and pairing code to enter here.
+        </Typography.Paragraph>
+      </View>
 
       <Typography.Paragraph type="body-xs" muted align="center">
         A bare address defaults to HTTPS. Plain HTTP is allowed only for

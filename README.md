@@ -226,6 +226,15 @@ Android release builds enable R8 code minification and resource shrinking throug
 clients, which include Metro and debugging infrastructure and are therefore substantially larger
 than store-ready release artifacts.
 
+### Set up a companion with your agent
+
+The Connect screen's **Share setup prompt** action shares a self-contained prompt for the coding
+agent on the machine that runs Hermes. The agent builds and runs the Companion container, makes it
+reachable over Tailscale (preferring `tailscale serve` for HTTPS), verifies `/v1/status`, and
+replies with the companion URL and a one-time pairing code — no manual server work on the phone
+side. The prompt text lives in `src/features/connection/companion-setup-prompt.ts` and contains no
+credentials.
+
 ### Pair a mobile development build
 
 Start a companion that the emulator or simulator can reach, then generate a one-time code against
