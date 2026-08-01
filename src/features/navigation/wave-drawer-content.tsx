@@ -20,9 +20,10 @@ import {
   Typography,
 } from 'panelui-native';
 import { memo, useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LegendList } from '@/components/legend-list';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
   flattenWaveSessions,
@@ -218,7 +219,9 @@ function ConnectedWaveDrawerContent({
         </Alert>
       ) : null}
 
-      <FlatList
+      {/* No recycleItems: each row owns a Menu, and recycled rows would
+          carry that state across sessions. */}
+      <LegendList
         className="flex-1"
         contentContainerClassName="px-2 py-3"
         contentInsetAdjustmentBehavior="automatic"

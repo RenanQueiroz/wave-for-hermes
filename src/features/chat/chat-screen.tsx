@@ -34,11 +34,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { FlatList, Keyboard, Pressable, ScrollView, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
 import { CameraIcon } from '@/components/icons/camera-icon';
+import { LegendList } from '@/components/legend-list';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
   timelineToWaveChatMessages,
@@ -239,8 +240,10 @@ function ConnectedChatScreen({
     () => timelineToWaveChatMessages(timelineEntries),
     [timelineEntries],
   );
+  // Oldest first: LegendList chats are not inverted — the list aligns its
+  // content to the end and keeps itself pinned there instead.
   const messages = useMemo(
-    () => [...timelineMessages, ...chat.state.messages].reverse(),
+    () => [...timelineMessages, ...chat.state.messages],
     [chat.state.messages, timelineMessages],
   );
   const emptyStateTitle = useMemo(
@@ -328,31 +331,35 @@ function ConnectedChatScreen({
       ) : null}
 
       <View className="flex-1">
-        <FlatList
+        <LegendList
+          alignItemsAtEnd
+          initialScrollAtEnd
+          maintainScrollAtEnd
+          maintainVisibleContentPosition
           className="flex-1"
-          contentContainerClassName="gap-3 px-4 py-3"
+          contentContainerClassName="px-4 py-3"
           data={messages}
-          inverted
-          initialNumToRender={12}
+          ItemSeparatorComponent={ChatTurnSeparator}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           keyExtractor={(message) => message.id}
           ListFooterComponent={
-            timeline.isPending || timeline.isFetchingNextPage ? (
-              <Thinking label="Loading conversation…" />
-            ) : chat.state.status === 'submitting' ? (
+            chat.state.status === 'submitting' ? (
               <Thinking label="Wave is thinking…" />
             ) : null
           }
-          maxToRenderPerBatch={8}
-          onEndReached={() => {
+          ListHeaderComponent={
+            timeline.isPending || timeline.isFetchingNextPage ? (
+              <Thinking label="Loading conversation…" />
+            ) : null
+          }
+          onStartReached={() => {
             if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
               void timeline.fetchNextPage();
             }
           }}
-          onEndReachedThreshold={0.25}
+          onStartReachedThreshold={0.25}
           renderItem={renderItem}
-          windowSize={9}
         />
         {!timeline.isPending && messages.length === 0 ? (
           <View
@@ -542,6 +549,12 @@ function ConnectedChatScreen({
       </BottomSheet>
     </View>
   );
+}
+
+// FlashList's content container only honors padding, so the former `gap-3`
+// between turns is a separator instead.
+function ChatTurnSeparator() {
+  return <View className="h-3" />;
 }
 
 function AttachmentSourceButton({

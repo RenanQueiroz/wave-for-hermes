@@ -8,8 +8,9 @@ import {
   Typography,
 } from 'panelui-native';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { View } from 'react-native';
 
+import { LegendList } from '@/components/legend-list';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
   flattenWaveSessions,
@@ -112,7 +113,8 @@ function ConnectedSessionSearchScreen({
         </Alert>
       ) : null}
 
-      <FlatList
+      <LegendList
+        recycleItems
         className="flex-1"
         contentContainerClassName="px-3 pb-6"
         data={matches}
