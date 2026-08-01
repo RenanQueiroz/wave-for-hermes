@@ -2,6 +2,7 @@ import '../global.css';
 
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { PanelUIProvider, useThemeMode } from 'panelui-native';
 import { useEffect, useMemo } from 'react';
 import { Platform, type ColorValue } from 'react-native';
@@ -10,6 +11,7 @@ import { useCSSVariable } from 'uniwind';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { WaveConnectionProvider } from '@/features/connection/connection-provider';
+import { useApplyThemePreference } from '@/features/settings/theme-preference';
 import { WaveQueryProvider } from '@/services/query/wave-query-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -59,6 +61,9 @@ function ThemedApp() {
 
   return (
     <ThemeProvider value={navigationTheme}>
+      {/* The theme preference can differ from the OS scheme, so the status
+          bar follows the app's resolved mode rather than the system's. */}
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <WaveConnectionProvider>
         <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -72,6 +77,8 @@ function ThemedApp() {
 }
 
 export default function RootLayout() {
+  useApplyThemePreference();
+
   // PanelUIProvider mounts react-native-keyboard-controller's KeyboardProvider
   // itself. A second one here nests two providers, which breaks per-frame
   // keyboard events on Android.

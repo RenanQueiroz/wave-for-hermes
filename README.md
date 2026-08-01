@@ -85,6 +85,9 @@ currently includes:
   in-settings voice previews served as bounded Gateway-generated samples that both sides cache
   until the Gateway's Realtime model changes, plus actionable microphone-permission recovery on
   both mobile platforms;
+- a persisted appearance setting pairing PanelUI's Panel, Moon, and Grass theme families with a
+  separate system/light/dark choice, applied live across the app including native headers and the
+  status bar;
 - a PanelUI pairing flow that exchanges a one-time code for a revocable device credential, stores
   the connection in Expo SecureStore, restores and verifies it on launch, and can revoke the
   current device before clearing local access;

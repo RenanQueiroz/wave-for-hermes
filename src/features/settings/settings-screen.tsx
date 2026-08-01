@@ -15,6 +15,7 @@ import {
 import { Platform, ScrollView, Share, View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { AppearanceCard } from '@/features/settings/appearance-card';
 import {
   realtimeVoiceCatalogQueryKey,
   realtimeVoicePreferenceQueryKey,
@@ -147,6 +148,8 @@ function ConnectedSettingsScreen({
             </Item>
           </Card.Content>
         </Card>
+
+        <AppearanceCard />
 
         <Card testID="support-diagnostics-card">
           <Card.Header>
