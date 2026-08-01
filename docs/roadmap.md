@@ -1,87 +1,72 @@
 # Wave roadmap
 
-This roadmap records product work that remains after the first authenticated text-chat and
-live-voice vertical slice. It is ordered by user impact and production risk, not by implementation
-convenience.
-
-## Completed: physical Android background work
-
-The physical Android background-work barge-in gate passed on a Google Pixel 8 Pro on 2026-07-30.
-While the first Hermes request occupied the full configured 120-second execution window, Wave
-answered a direct spoken follow-up, admitted a second `ask_hermes` request, and kept it waiting
-instead of cancelling the active request or reporting an in-flight conflict. Hermes history then
-recorded the second request and response after the first slot released, and hangup refreshed that
-ordered canonical history immediately in the text UI.
+This roadmap records product work that remains after the authenticated text-chat and live-voice
+vertical slices, ordered by user impact and production risk. Feature-level detail for completed
+work lives in the README, [`architecture.md`](./architecture.md), and [`security.md`](./security.md).
 
 ## Now: production voice behavior
 
 1. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
    when hardware is available.
-2. Validate speaker, receiver, Bluetooth, and wired-headset selection and route changes on physical
-   devices.
-3. Validate phone/audio interruptions, device lock, route changes, and bounded reconnect behavior
-   on physical devices. Simulator validation now covers permission denial and recovery, direct
-   access to system settings, established-call background teardown, and a clean subsequent call on
-   both iOS and Android.
-4. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
+2. Validate speaker, receiver, Bluetooth, and wired-headset selection and route changes on
+   physical devices.
+3. Validate phone/audio interruptions, device lock, route changes, and reconnect behavior on
+   physical devices. Simulator validation covers permission denial and recovery, direct access to
+   system settings, established-call background teardown, and a clean subsequent call on both
+   platforms.
+4. Implement bounded Realtime reconnection. The controller reports a `reconnecting` phase on ICE
+   disconnection but never restarts ICE or re-offers; attempts should be bounded with the shared
+   exponential-jitter policy before the call fails explicitly.
+5. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
 
 The detailed evidence and acceptance gates live in
 [`webrtc-foundation.md`](./webrtc-foundation.md).
 
-## Completed: voice personalization
+## Now: connectivity resilience follow-through
 
-Wave now exposes a strict Gateway-owned voice catalog, stores the selected voice in device secure
-storage, and applies it only when creating the next Realtime call. Settings presents the Gateway
-default plus the supported OpenAI Realtime voices with accessible descriptions. The Companion
-validates the selection against the shared allowlist and retains `OPENAI_REALTIME_VOICE` as its
-default.
-
-This preserves the required boundaries:
-
-- mobile cannot submit an arbitrary provider voice;
-- the standard OpenAI key and provider session remain server-side;
-- selecting a voice is user-facing personalization, not model/provider administration; and
-- an active call is never mutated after audio has started.
-
-## Completed: deterministic continuity validation
-
-The Companion interaction ledger and unified timeline now persist finalized live-voice speech,
-merge it with canonical Hermes history, nest correlated handoffs, paginate with stable cursors, and
-cascade records when a session is deleted. Deterministic coverage includes:
-
-- account-wide cross-device history visibility and post-call refresh;
-- idempotent persisted Realtime events and duplicate tool-call coalescing;
-- multiple ordered queued handoffs without cancelling active Hermes work;
-- explicit handling when Hermes history is cleared externally; and
-- a 226-entry mixed timeline paginated across seven cursor pages without gaps or duplicates.
-
-## Completed: device self-revocation
-
-Disconnect now revokes the calling device at the Gateway before Wave clears its secure local
-credential. The Companion cancels that device's active text turn and Realtime call, closes a
-Realtime setup that finishes after concurrent revocation, and leaves every other paired device
-active. If the Gateway cannot be reached, Wave exposes a clearly labeled local-only forget action
-instead of implying that server access was revoked.
+- Exercise resumable turn streams end to end on physical devices: background the app mid-turn,
+  lock and unlock, and confirm transport reattach plus mount-time resume against a live companion
+  on both platforms. The companion and client logic is deterministically tested and was smoked
+  against the local fixture; the real radio and app-lifecycle path is not yet exercised.
+- Exercise the offline read cache on-device: airplane mode over cached chats, cold-start restore,
+  the offline notices, and purge on disconnect.
+- Live-test timeline pagination under scroll against a conversation longer than one hundred
+  entries.
 
 ## Next: release hardening and focused operations
 
+- Add reviewed iOS App Transport Security and Android cleartext-network exceptions before a
+  store-style release build ships the Tailscale plain-HTTP carve-out; development clients already
+  permit it.
+- Bound the Companion interaction ledger. Deletion cascades with the parent session, but a
+  long-lived session's finalized voice transcripts and handoff records currently grow without an
+  age or size limit; define retention before that storage becomes operationally meaningful.
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.
-- Use the authenticated Settings diagnostics report for user support. It includes only app/platform
-  details, Companion version/uptime and feature availability, and normalized Hermes compatibility;
-  it excludes credentials, server addresses, device identifiers, and conversation content.
-- Production request observability is now correlation-safe: each HTTP response exposes the same
-  opaque Wave request ID carried by metadata/errors, while Companion logs retain only that ID,
-  method/status, duration, and reviewed lifecycle fields. URLs, network addresses, headers,
-  conversation identifiers, and content are excluded.
-- Finite retryable reads now use an explicit bounded exponential-jitter delay and stop after two
-  retries. Mutations, streamed turns, and Realtime setup remain non-retrying after ambiguous
-  failures; their existing reconciliation and explicit retry paths preserve server truth.
-- Use [`security.md`](./security.md) as the release-security checklist. Deterministic
-  self-revocation, lifecycle-race, schema, resource-bound, production-bundle, exact-edge, and
-  private-deployment validation now pass. The exact-edge work also aligned Nginx with Wave's
-  6,000,000-byte request ceiling so supported image attachments are no longer truncated by a
-  stricter production-only limit. The dependency/container review also passes with Expo-compatible
-  remediation decisions and a package-manager-free Alpine Companion runtime. Physical-device and
+- Use [`security.md`](./security.md) as the release-security checklist. Physical-device and
   signed-release gates remain before the first store release.
+
+## Later: deliberate options
+
+- Publish the Companion container image to a registry so future users can deploy without cloning
+  the repository; the in-app setup prompt covers the source-build path today.
+- Move the persisted query cache to `expo-sqlite/kv-store` with TanStack's per-query persister
+  only if persist-write jank is measured, the cache file grows past a few megabytes in real use,
+  or offline search over conversation content becomes a product goal. The storage seam in
+  `src/services/query/wave-query-cache.ts` keeps that swap contained.
+- Recycle chat-timeline rows by keying Task disclosure state per message if very long
+  conversations show fling gaps despite the draw-distance buffer.
+
+## Completed milestones
+
+- Physical Android background-work barge-in gate on a Pixel 8 Pro (2026-07-30).
+- Voice personalization through the strict Gateway-owned voice catalog.
+- Deterministic continuity validation of the interaction ledger and unified timeline, including
+  cross-device visibility and multi-page cursor pagination.
+- Device self-revocation with an explicit local-only forget fallback.
+- Correlation-safe request observability and the bounded finite-read retry policy.
+- Release-security checklist runs: schema, resource-bound, lifecycle-race, production-bundle,
+  exact-edge, private-deployment, and dependency/container reviews.
+- Hermex-inspired connectivity work (2026-08-01): the in-app companion setup prompt,
+  Tailscale-first URL policy, resumable turn streams, and the offline read cache.

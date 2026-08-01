@@ -58,6 +58,28 @@ private `svc:hermes` Tailscale HTTPS origin. The LAN Nginx listener has no Wave 
 The repository root remains both the Expo application and npm workspace root. Do not move it into
 an `apps/mobile` directory.
 
+The companion deliberately stays in this monorepo rather than its own repository. Wave features
+routinely change the contract, the server, and the client in one atomic commit; splitting the
+repositories would reintroduce a version-skew window between the shipped app and its only backend,
+plus the contract-pinning machinery that clients of unstable third-party servers need. The
+deployment split already exists where it matters — Homelab owns manifests, networking, pinned
+images, and secrets. If the companion should ever be distributed on its own, publish the container
+image, not a second source tree.
+
+The Companion exists because of two hard external constraints, not preference: Hermes exposes a
+single server-wide API key with no scoped, revocable per-device credential, and OpenAI Realtime
+requires a trusted server to hold the standard key and attach the server-side sideband. Platform
+secure storage protects a credential at rest but cannot make a client-held server-wide key safe.
+Reconsider a companion-free topology only if Hermes itself ever provides both scoped revocable
+mobile credentials limited to the conversation surface and a supported server-side Realtime
+credential and sideband extension point.
+
+The companion targets Node.js 24 rather than Bun or Python: the official OpenAI SDK and Fastify
+are first-class on Node LTS, and one language spans the contracts, the client, and the server.
+Hermes's own implementation language is irrelevant — do not import Hermes internals merely to
+share its language. Revisit only if the repository standardizes on another runtime or the
+companion acquires substantial Python-native behavior.
+
 Dependency direction is one-way:
 
 ```text

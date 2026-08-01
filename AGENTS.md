@@ -62,6 +62,18 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - Homelab owns deployment manifests, private networking, pinned production images, Nginx routing,
   and secrets. This repository owns the companion implementation and its API contract.
 
+## Dependency policy
+
+- Do not add: the Vercel `ai` SDK or `@ai-sdk/*`, Axios or another HTTP client, a second
+  SSE/EventSource implementation, Redux/Zustand/MobX/XState, AsyncStorage, LiveKit, or Expo Router
+  `+api.ts` server routes. State lives in TanStack Query plus focused controllers/reducers, and
+  streaming stays on `expo/fetch` with the Wave SSE parser.
+- Add analytics or crash reporting only after consent and retention are deliberately designed.
+- Install optional PanelUI peer dependencies only when an adopted component needs them.
+- PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
+  version and never adopt beta/next/canary builds; the lockfile records the validated build, the
+  manifest records the policy.
+
 ## UI system
 
 PanelUI is the shared UI component system. Read https://www.panelui.dev/docs and its component
@@ -164,6 +176,12 @@ documentation before implementing UI.
   preview values explicitly.
 - Preserve turn-aware radii: only the final item in an assistant turn keeps the avatar-facing
   pointer corner.
+- Conversation surfaces render through Legend List v3 (`@legendapp/list` via
+  `src/components/legend-list.tsx`); do not reintroduce FlatList there or adopt PanelUI
+  `MessageScroller` for unbounded histories — it is not virtualized. Keep turn rows memoized with
+  stable `renderItem`/`keyExtractor`, mark only the active turn as streaming, render streaming
+  text as plain text and parse rich content only once the turn completes, and never call
+  `scrollToEnd` or run layout animation per token.
 - Do not log access tokens, full authorization headers, request URLs, network addresses, opaque
   conversation identifiers, or sensitive conversation payloads. Production request logs keep only
   the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle
@@ -178,6 +196,10 @@ documentation before implementing UI.
 - Wave live voice is audio-only. Keep product-specific microphone configuration in `app.json` and
   do not request video for Realtime. Camera permission is deliberately enabled only for the
   user-invoked chat attachment flow; do not make it part of voice setup or background capture.
+- WebRTC owns the live-call audio session for full-duplex capture and playback. Never start an
+  `expo-audio` recorder — for metering or anything else — while a call can be active; `expo-audio`
+  is reserved for the user-invoked Settings voice previews. Add real input levels only through
+  data WebRTC itself exposes safely.
 - Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
   SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
   native edits or repository-owned config plugin.
