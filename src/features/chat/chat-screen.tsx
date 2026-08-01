@@ -488,6 +488,7 @@ function ConnectedChatScreen({
                   })
                 }>
                 <Soundwave
+                  paused
                   barGap={3}
                   barWidth={4}
                   bars={4}
