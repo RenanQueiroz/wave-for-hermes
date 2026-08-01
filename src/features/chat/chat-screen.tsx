@@ -433,7 +433,7 @@ function ConnectedChatScreen({
           <InputGroup.Prefix className="px-2">
             <Button
               size="icon"
-              variant="ghost"
+              variant="secondary"
               accessibilityLabel="Add an attachment"
               disabled={busy}
               className="rounded-full"
@@ -447,7 +447,7 @@ function ConnectedChatScreen({
             accessibilityLabel="Message Wave"
             className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
             placeholder="Message Wave"
-            style={{ paddingLeft: 56, paddingRight: 56 }}
+            style={{ paddingLeft: 60, paddingRight: 56 }}
             submitBehavior="submit"
             testID="chat-composer-input"
             value={input}
