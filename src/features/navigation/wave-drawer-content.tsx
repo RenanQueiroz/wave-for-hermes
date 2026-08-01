@@ -19,7 +19,7 @@ import {
   TrashIcon,
   Typography,
 } from 'panelui-native';
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -139,19 +139,37 @@ function ConnectedWaveDrawerContent({
     // (or return to) stack routes rather than switching drawer siblings.
     router.navigate(pathname);
   };
-  const openSession = async (sessionId: string) => {
-    try {
-      setLocalError(undefined);
-      await activeSessionStore.save(connectionId, sessionId);
-      navigation.closeDrawer();
-      router.push({
-        pathname: '/conversation/[sessionId]',
-        params: { sessionId },
-      });
-    } catch {
-      setLocalError('Wave could not open that conversation.');
-    }
-  };
+  const openSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        setLocalError(undefined);
+        await activeSessionStore.save(connectionId, sessionId);
+        navigation.closeDrawer();
+        router.push({
+          pathname: '/conversation/[sessionId]',
+          params: { sessionId },
+        });
+      } catch {
+        setLocalError('Wave could not open that conversation.');
+      }
+    },
+    [activeSessionStore, connectionId, navigation, router],
+  );
+  const startRename = useCallback((session: WaveSessionSummary) => {
+    setRenameSession(session);
+    setRenameTitle(sessionTitle(session));
+  }, []);
+  const renderSession = useCallback(
+    ({ item }: { item: WaveSessionSummary }) => (
+      <DrawerSessionItem
+        session={item}
+        onDelete={setDeleteSession}
+        onOpen={openSession}
+        onRename={startRename}
+      />
+    ),
+    [openSession, startRename],
+  );
   const mutationError = renameMutation.error ?? deleteMutation.error;
   const errorMessage =
     localError ??
@@ -229,53 +247,7 @@ function ConnectedWaveDrawerContent({
         }}
         onEndReachedThreshold={0.5}
         refreshing={sessionsQuery.isRefetching}
-        renderItem={({ item }) => (
-          <Item size="sm">
-            <Pressable
-              accessibilityLabel={`Open conversation ${sessionTitle(item)}`}
-              accessibilityRole="button"
-              className="min-w-0 flex-1"
-              testID={`drawer-session-${item.id}`}
-              onPress={() => void openSession(item.id)}>
-              <Item.Content>
-                <Item.Title numberOfLines={1}>{sessionTitle(item)}</Item.Title>
-                <Item.Description numberOfLines={1}>
-                  {sessionDescription(item)}
-                </Item.Description>
-              </Item.Content>
-            </Pressable>
-            <Item.Actions>
-              <Menu haptics>
-                <Menu.Trigger>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    accessibilityLabel={`Conversation actions for ${sessionTitle(item)}`}
-                    testID={`drawer-session-actions-${item.id}`}>
-                    <EllipsisIcon size={18} />
-                  </Button>
-                </Menu.Trigger>
-                <Menu.Content align="end" scrollable={false} width={200}>
-                  <Menu.Item
-                    icon={<PencilIcon size={16} />}
-                    onSelect={() => {
-                      setRenameSession(item);
-                      setRenameTitle(sessionTitle(item));
-                    }}>
-                    Rename
-                  </Menu.Item>
-                  <Menu.Separator />
-                  <Menu.Item
-                    icon={<TrashIcon size={16} />}
-                    variant="destructive"
-                    onSelect={() => setDeleteSession(item)}>
-                    Delete
-                  </Menu.Item>
-                </Menu.Content>
-              </Menu>
-            </Item.Actions>
-          </Item>
-        )}
+        renderItem={renderSession}
         onRefresh={() => void sessionsQuery.refetch()}
       />
 
@@ -409,6 +381,65 @@ function ConnectedWaveDrawerContent({
     </View>
   );
 }
+
+// Memoized because the drawer re-renders on every dialog keystroke and
+// mutation, and an inline row would rebuild the whole visible list each time.
+const DrawerSessionItem = memo(function DrawerSessionItem({
+  session,
+  onDelete,
+  onOpen,
+  onRename,
+}: {
+  session: WaveSessionSummary;
+  onDelete: (session: WaveSessionSummary) => void;
+  onOpen: (sessionId: string) => Promise<void>;
+  onRename: (session: WaveSessionSummary) => void;
+}) {
+  return (
+    <Item size="sm">
+      <Pressable
+        accessibilityLabel={`Open conversation ${sessionTitle(session)}`}
+        accessibilityRole="button"
+        className="min-w-0 flex-1"
+        testID={`drawer-session-${session.id}`}
+        onPress={() => void onOpen(session.id)}>
+        <Item.Content>
+          <Item.Title numberOfLines={1}>{sessionTitle(session)}</Item.Title>
+          <Item.Description numberOfLines={1}>
+            {sessionDescription(session)}
+          </Item.Description>
+        </Item.Content>
+      </Pressable>
+      <Item.Actions>
+        <Menu haptics>
+          <Menu.Trigger>
+            <Button
+              size="icon"
+              variant="ghost"
+              accessibilityLabel={`Conversation actions for ${sessionTitle(session)}`}
+              testID={`drawer-session-actions-${session.id}`}>
+              <EllipsisIcon size={18} />
+            </Button>
+          </Menu.Trigger>
+          <Menu.Content align="end" scrollable={false} width={200}>
+            <Menu.Item
+              icon={<PencilIcon size={16} />}
+              onSelect={() => onRename(session)}>
+              Rename
+            </Menu.Item>
+            <Menu.Separator />
+            <Menu.Item
+              icon={<TrashIcon size={16} />}
+              variant="destructive"
+              onSelect={() => onDelete(session)}>
+              Delete
+            </Menu.Item>
+          </Menu.Content>
+        </Menu>
+      </Item.Actions>
+    </Item>
+  );
+});
 
 function DrawerAction({
   description,
