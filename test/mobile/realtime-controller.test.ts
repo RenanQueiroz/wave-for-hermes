@@ -271,3 +271,100 @@ async function waitFor(condition: () => boolean, timeoutMs = 1_000) {
   }
   assert.fail('Timed out waiting for Realtime controller state.');
 }
+
+class ReconnectableTransport implements RealtimeTransport {
+  onEvent?: (event: RealtimeTransportEvent) => void;
+  readonly prepares: FakePreparedTransport[] = [];
+
+  async prepare(options: PrepareRealtimeTransportOptions) {
+    this.onEvent = options.onEvent;
+    const prepared = new FakePreparedTransport();
+    this.prepares.push(prepared);
+    return prepared;
+  }
+
+  emit(event: RealtimeTransportEvent) {
+    this.onEvent?.(event);
+  }
+}
+
+class SequencedBackend implements RealtimeBackend {
+  readonly endedCallIds: string[] = [];
+  failStartsAfterFirst = false;
+  startCalls = 0;
+
+  async endRealtimeCall(callId: string): Promise<WaveEndRealtimeCallResponse> {
+    this.endedCallIds.push(callId);
+    return { apiVersion: 'v1', callId, status: 'ended' };
+  }
+
+  async startRealtimeCall(): Promise<WaveStartRealtimeCallResponse> {
+    this.startCalls += 1;
+    if (this.failStartsAfterFirst && this.startCalls > 1) {
+      throw backendError('unreachable', 'connection', true);
+    }
+    return {
+      apiVersion: 'v1',
+      call: {
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        id: `call-${this.startCalls}`,
+        sdpAnswer: 'v=0\r\nwave-answer',
+      },
+    };
+  }
+}
+
+test('re-establishes a dropped call with a full re-offer and keeps transcripts', async () => {
+  const backend = new SequencedBackend();
+  const transport = new ReconnectableTransport();
+  const controller = new WaveRealtimeController({ backend, transport });
+
+  await controller.start('session-1');
+  transport.emit({
+    final: true,
+    role: 'assistant',
+    text: 'Before the drop',
+    type: 'transcript',
+  });
+  transport.emit({ state: 'disconnected', type: 'connection' });
+  assert.equal(controller.getState().phase, 'reconnecting');
+
+  await waitFor(() => controller.getState().phase === 'listening', 5_000);
+  // A second transport and a second call were established; the dead call was
+  // hung up; the transcript survived the drop.
+  assert.equal(transport.prepares.length, 2);
+  assert.equal(backend.startCalls, 2);
+  assert.deepEqual(backend.endedCallIds, ['call-1']);
+  assert.equal(controller.getState().assistantTranscript, 'Before the drop');
+});
+
+test('bounded reconnect attempts end in an explicit retryable error', async () => {
+  const backend = new SequencedBackend();
+  backend.failStartsAfterFirst = true;
+  const transport = new ReconnectableTransport();
+  const controller = new WaveRealtimeController({ backend, transport });
+
+  await controller.start('session-1');
+  transport.emit({ state: 'failed', type: 'connection' });
+
+  await waitFor(() => controller.getState().phase === 'error', 15_000);
+  // 1 initial + 3 bounded attempts, then an explicit failure.
+  assert.equal(backend.startCalls, 4);
+  assert.equal(controller.getState().error?.retryable, true);
+});
+
+test('stopping during a reconnect wins over further attempts', async () => {
+  const backend = new SequencedBackend();
+  backend.failStartsAfterFirst = true;
+  const transport = new ReconnectableTransport();
+  const controller = new WaveRealtimeController({ backend, transport });
+
+  await controller.start('session-1');
+  transport.emit({ state: 'disconnected', type: 'connection' });
+  assert.equal(controller.getState().phase, 'reconnecting');
+  await controller.stop();
+  assert.equal(controller.getState().phase, 'idle');
+  const startsAtStop = backend.startCalls;
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  assert.equal(backend.startCalls, startsAtStop);
+});

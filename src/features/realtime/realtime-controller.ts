@@ -11,9 +11,22 @@ import type {
   RealtimeTransportError,
   RealtimeTransportEvent,
 } from '@/services/realtime/realtime-transport';
+import { calculateBoundedRetryDelay } from '../../services/query/retry-policy.ts';
 
 const MAX_TRANSCRIPT_LENGTH = 24_000;
 const CALL_EXPIRY_LEEWAY_MS = 2_000;
+/**
+ * Connection-loss recovery is a full re-offer (the provider's calls API has
+ * no ICE restart), bounded by the shared jitter policy before the call fails
+ * explicitly.
+ */
+const MAX_RECONNECT_ATTEMPTS = 3;
+/**
+ * ICE frequently recovers a transient drop on its own; the re-offer only
+ * starts when the peer has stayed disconnected this long. A hard failure
+ * skips the grace.
+ */
+const RECONNECT_GRACE_MS = 3_000;
 
 export type WaveRealtimePhase =
   | 'assistant_speaking'
@@ -74,8 +87,11 @@ export class WaveRealtimeController {
   private callId?: string;
   private expiryTimer?: ReturnType<typeof setTimeout>;
   private failingOperation?: number;
+  private lastStart?: { sessionId: string; voiceId?: WaveRealtimeVoiceId };
   private readonly listeners = new Set<(state: WaveRealtimeState) => void>();
   private operation = 0;
+  private reconnecting = false;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
   private state: WaveRealtimeState = INITIAL_STATE;
   private transportSession?: PreparedRealtimeTransport;
   private readonly transport: RealtimeTransport;
@@ -112,47 +128,105 @@ export class WaveRealtimeController {
     }
 
     const operation = ++this.operation;
-    const controller = new AbortController();
-    this.abortController = controller;
+    this.lastStart = { sessionId, ...(voiceId ? { voiceId } : {}) };
     this.replaceState({
       ...INITIAL_STATE,
       phase: 'requesting_permission',
     });
 
     try {
-      const transportSession = await this.transport.prepare({
-        onEvent: (event) => this.handleTransportEvent(operation, event),
-        signal: controller.signal,
-      });
-      if (!this.isCurrent(operation)) {
-        transportSession.close();
-        return;
-      }
-      this.transportSession = transportSession;
-      this.patchState({ phase: 'connecting' });
-
-      const response = await this.backend.startRealtimeCall(
-        sessionId,
-        transportSession.sdpOffer,
-        voiceId,
-        controller.signal,
-      );
-      this.callId = response.call.id;
-      if (!this.isCurrent(operation)) {
-        await this.finishCall(response.call.id);
-        return;
-      }
-      this.scheduleExpiry(response.call.expiresAt, operation);
-      this.patchState({ expiresAt: response.call.expiresAt });
-      await transportSession.connect(
-        response.call.sdpAnswer,
-        controller.signal,
-      );
-      if (!this.isCurrent(operation)) return;
-      this.patchState({ phase: 'listening' });
+      await this.establish(operation, sessionId, voiceId);
     } catch (error) {
       if (!this.isCurrent(operation)) return;
       await this.failAndCleanup(operation, error);
+    }
+  }
+
+  /** One full call setup: transport, SDP exchange, connect, listening. */
+  private async establish(
+    operation: number,
+    sessionId: string,
+    voiceId?: WaveRealtimeVoiceId,
+  ) {
+    const controller = new AbortController();
+    this.abortController = controller;
+    const transportSession = await this.transport.prepare({
+      onEvent: (event) => this.handleTransportEvent(operation, event),
+      signal: controller.signal,
+    });
+    if (!this.isCurrent(operation)) {
+      transportSession.close();
+      return;
+    }
+    this.transportSession = transportSession;
+    this.patchState({ phase: 'connecting' });
+
+    const response = await this.backend.startRealtimeCall(
+      sessionId,
+      transportSession.sdpOffer,
+      voiceId,
+      controller.signal,
+    );
+    this.callId = response.call.id;
+    if (!this.isCurrent(operation)) {
+      await this.finishCall(response.call.id);
+      return;
+    }
+    this.scheduleExpiry(response.call.expiresAt, operation);
+    this.patchState({ expiresAt: response.call.expiresAt });
+    await transportSession.connect(response.call.sdpAnswer, controller.signal);
+    if (!this.isCurrent(operation)) return;
+    this.patchState({ phase: 'listening' });
+  }
+
+  /**
+   * A lost connection re-offers with bounded, jittered attempts before the
+   * call fails explicitly. Recovery is a full re-establish: new transport,
+   * new call, same session and voice; transcripts survive.
+   */
+  private async reconnect(operation: number) {
+    if (this.reconnecting) return;
+    this.reconnecting = true;
+    try {
+      const last = this.lastStart;
+      if (!last) {
+        await this.failAndCleanup(operation, {
+          kind: 'connection',
+          message: 'The Realtime connection failed.',
+          retryable: true,
+        });
+        return;
+      }
+      for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+        // Only the operation counter gates the loop: the abort below kills
+        // the previous attempt's controller, which isCurrent would misread
+        // as this operation being cancelled.
+        if (operation !== this.operation) return;
+        this.patchState({ phase: 'reconnecting' });
+        this.abortController?.abort();
+        this.transportSession?.close();
+        this.transportSession = undefined;
+        const staleCallId = this.callId;
+        this.callId = undefined;
+        if (staleCallId) void this.finishCall(staleCallId);
+        await delay(calculateBoundedRetryDelay(attempt));
+        if (operation !== this.operation) return;
+        try {
+          await this.establish(operation, last.sessionId, last.voiceId);
+          return;
+        } catch {
+          // Next bounded attempt.
+        }
+      }
+      if (operation !== this.operation) return;
+      await this.failAndCleanup(operation, {
+        kind: 'connection',
+        message:
+          'Wave could not re-establish the live call. Start it again when the connection is back.',
+        retryable: true,
+      });
+    } finally {
+      this.reconnecting = false;
     }
   }
 
@@ -171,6 +245,7 @@ export class WaveRealtimeController {
     this.abortController?.abort();
     this.abortController = undefined;
     this.clearExpiryTimer();
+    this.clearReconnectTimer();
     this.transportSession?.close();
     this.transportSession = undefined;
     this.patchState({ phase: 'stopping' });
@@ -204,12 +279,18 @@ export class WaveRealtimeController {
     this.expiryTimer = undefined;
   }
 
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = undefined;
+  }
+
   private async failAndCleanup(operation: number, error: unknown) {
     if (this.failingOperation === operation) return;
     this.failingOperation = operation;
     this.abortController?.abort();
     this.abortController = undefined;
     this.clearExpiryTimer();
+    this.clearReconnectTimer();
     this.transportSession?.close();
     this.transportSession = undefined;
 
@@ -267,15 +348,35 @@ export class WaveRealtimeController {
         return;
       case 'connection':
         if (event.state === 'connected') {
+          // The peer recovered on its own inside the grace window.
+          this.clearReconnectTimer();
           this.patchState({ phase: 'listening' });
         } else if (event.state === 'disconnected') {
           this.patchState({ phase: 'reconnecting' });
+          if (!this.reconnectTimer && !this.reconnecting) {
+            this.reconnectTimer = setTimeout(() => {
+              this.reconnectTimer = undefined;
+              if (
+                this.isCurrent(operation) &&
+                this.state.phase === 'reconnecting'
+              ) {
+                void this.reconnect(operation);
+              }
+            }, RECONNECT_GRACE_MS);
+          }
         } else if (event.state === 'failed') {
-          void this.failAndCleanup(operation, {
-            kind: 'connection',
-            message: 'The Realtime connection failed.',
-            retryable: true,
-          });
+          this.clearReconnectTimer();
+          // An established call gets bounded re-offer attempts; a failure
+          // during initial setup stays an explicit error.
+          if (this.state.phase === 'connecting') {
+            void this.failAndCleanup(operation, {
+              kind: 'connection',
+              message: 'The Realtime connection failed.',
+              retryable: true,
+            });
+          } else {
+            void this.reconnect(operation);
+          }
         }
         return;
       case 'remote_audio_tracks':
@@ -334,6 +435,10 @@ export class WaveRealtimeController {
 
 function activityToPhase(activity: RealtimeActivity): WaveRealtimePhase {
   return activity;
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 function toControllerError(error: unknown, fallbackMessage: string) {

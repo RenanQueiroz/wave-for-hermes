@@ -18,8 +18,11 @@ Keep the product focused:
   administration.
 - Treat all external tool arguments and responses as untrusted data.
 - Never embed long-lived OpenAI or Hermes secrets in client code, app configuration, logs, or the
-  repository. Realtime clients must receive short-lived credentials from a trusted server-side
-  component.
+  repository. The one deliberate exception (stage 4, landed 2026-08-02): the user may supply their
+  own OpenAI API key for Realtime, held only in platform secure storage
+  (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`), validated before saving, removable in Settings, sent only to
+  `api.openai.com` in Authorization headers, and never logged, displayed back, cached, or shipped
+  in a bundle (the production scanner rejects key-shaped literals).
 - Validate every Realtime tool call against an explicit schema before it can reach Hermes.
 - Realtime may turn a natural user request into a clearer self-contained Hermes instruction, but it
   must preserve intent, scope, constraints, identifiers, quoted text, and literal values. It must
@@ -137,11 +140,14 @@ documentation before implementing UI.
 
 ## Realtime and Hermes boundaries
 
-- The Wave Companion is the mobile application's only production backend. Mobile feature and UI
-  code should depend on a `WaveBackendClient` and normalized Wave contracts, never on Hermes
-  protocol types.
-- Standard OpenAI and Hermes API keys must remain in the companion. The mobile app may hold only a
-  revocable device-scoped companion credential and short-lived Realtime connection material.
+- Mobile feature and UI code depends on normalized Wave contracts and typed clients
+  (`WaveChatClient`, `GatewayClient`, `WaveBackendClient`), never on Hermes protocol types.
+- The Hermes API key remains server-side (companion or gateway). On a companion connection the
+  standard OpenAI key also stays in the companion. On a gateway connection, Realtime uses the
+  user-owned OpenAI key from Settings (stage 4): secure storage only, presence-not-value in the
+  query cache, requests only to `api.openai.com`, ask_hermes bound to the initiating conversation
+  through trusted call state with the rules in
+  `src/features/realtime/ask-hermes-orchestrator.ts` enforced client-side.
 - A connected Disconnect action must revoke the calling device through the Companion before
   clearing its local credential and must end that device's admitted text and Realtime work.
   Local-only forgetting is an explicit recovery action for an unreachable or incompatible

@@ -32,6 +32,29 @@ A paired device intentionally has account-level conversation access: it can read
 rename, and delete the same top-level Hermes sessions as another paired device. Pairing is
 therefore equivalent to granting access to that Wave Gateway account, not to one conversation.
 
+### The user-owned OpenAI key (gateway connections, stage 4)
+
+On a direct gateway connection, Realtime live voice runs from the app with an OpenAI API key the
+user supplies in Settings — the one deliberate exception to "the mobile process never holds an
+upstream key", decided in the direct-to-gateway migration (`architecture.md`).
+
+- The key lives only in platform secure storage (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`: never backed
+  up, never migrated to another device). Only its presence enters the query cache or UI; it is
+  never displayed back, logged, or included in errors.
+- It is sent exclusively to `api.openai.com` — as an Authorization header for the SDP exchange,
+  the sideband WebSocket, and the one validation call made before saving. It cannot reach the
+  gateway, the companion, or any Wave surface.
+- The production bundle scanner refuses key-shaped literals (`sk-…`) and the `OPENAI_API_KEY`
+  env-var name in exported bundles, reporting a label rather than the match.
+- ask_hermes tool calls from a keyed Realtime call are validated client-side by the same rules
+  the companion enforced (strict schema, trusted session binding, coalescing, serialization,
+  bounded concurrency, response-safe delivery), then run as ordinary turns on the gateway
+  connection under the gateway's own authentication.
+- Revocation story: removing the key in Settings deletes it from secure storage and downgrades
+  voice mode to the keyless server-side voice; the key itself should also be revoked at OpenAI
+  when a device is lost — which is why Settings recommends a dedicated project-scoped key whose
+  revocation cannot affect anything else the user runs.
+
 ## Threats and controls
 
 ### Credential theft and stale devices

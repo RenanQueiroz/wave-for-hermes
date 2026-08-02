@@ -8,6 +8,18 @@ const FORBIDDEN_BRIDGE_STRINGS = [
   '__WAVE_MOBILE_AGENT_STATE__',
   'Mobile-agent state provider',
   'app-shell',
+  // Nothing in the app reads env files; this name appearing in a bundle
+  // means a key took a wrong turn at build time.
+  'OPENAI_API_KEY',
+] as const;
+
+/**
+ * Secret-shaped literals that must never ship in a bundle. The user-owned
+ * OpenAI key lives only in platform secure storage; any `sk-…` literal in
+ * exported output is a leak regardless of how it got there.
+ */
+const FORBIDDEN_SECRET_PATTERNS = [
+  { label: 'openai-api-key-literal', pattern: /\bsk-[A-Za-z0-9_-]{24,}\b/ },
 ] as const;
 
 export interface ProductionBridgeSmokeReport {
@@ -69,6 +81,11 @@ export async function runProductionBridgeSmoke(
     const contents = await readFile(file);
     for (const forbidden of FORBIDDEN_BRIDGE_STRINGS) {
       if (contents.includes(Buffer.from(forbidden))) found.add(forbidden);
+    }
+    const text = contents.toString('utf8');
+    for (const { label, pattern } of FORBIDDEN_SECRET_PATTERNS) {
+      // Report the label, never the matched value.
+      if (pattern.test(text)) found.add(label);
     }
   }
   if (inspectedFiles.length === 0) {

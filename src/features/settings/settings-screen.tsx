@@ -15,7 +15,12 @@ import {
 import { Platform, ScrollView, Share, View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
-import { OpenAiKeyCard } from '@/features/realtime/openai-key-card';
+import {
+  loadOpenAiKeyState,
+  OPENAI_KEY_STATE_QUERY_KEY,
+  OpenAiKeyCard,
+} from '@/features/realtime/openai-key-card';
+import { RealtimeVoiceCard } from '@/features/realtime/realtime-voice-card';
 import { AppearanceCard } from '@/features/settings/appearance-card';
 import {
   realtimeVoiceCatalogQueryKey,
@@ -72,6 +77,12 @@ function GatewaySettingsScreen({
   deviceName: string;
   onOpenDevelopment: () => void;
 }) {
+  // The voice picker only matters once Realtime is possible on this device.
+  const keyState = useQuery({
+    queryFn: loadOpenAiKeyState,
+    queryKey: OPENAI_KEY_STATE_QUERY_KEY,
+    staleTime: Infinity,
+  });
   return (
     <View className="flex-1 bg-background">
       <ScrollView
@@ -95,6 +106,8 @@ function GatewaySettingsScreen({
         </Card>
 
         <OpenAiKeyCard />
+
+        {keyState.data?.hasKey ? <RealtimeVoiceCard /> : null}
 
         <AppearanceCard />
 

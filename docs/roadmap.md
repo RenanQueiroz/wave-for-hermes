@@ -103,11 +103,27 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    and that Skip and the bare-"stop" stop-word both work. With stages 2 and 3 complete,
    the owner's Pixel now runs fully against the homelab gateway — the first real device
    migrated off the companion.
-4. **Realtime as opt-in with a user-owned key.** The user may supply their own OpenAI API key in
-   settings (platform secure storage, never logged, excluded from backups; recommend a dedicated
-   project-scoped key). Voice mode uses Realtime only when a key is present and the user has not
-   disabled it; otherwise gateway voice. This amends the product contract's server-side-key rule
-   for the user-owned-key case — the decision record is in `architecture.md`.
+4. **Realtime as opt-in with a user-owned key — landed (2026-08-02), verification gates
+   open.** Settings gained a Live voice card: the OpenAI key is validated with one
+   authenticated call, stored in platform secure storage (device-only, excluded from
+   backups), removable, with a "Prefer live voice" toggle and a client-side voice picker
+   (the companion catalog and previews are no longer involved). The app now does the
+   Realtime SDP exchange and sideband directly against OpenAI with that key, and the
+   companion's ask_hermes safety rules were ported as contract clauses enforced
+   client-side — strict schema (a model-supplied session id is invalid by construction),
+   trusted session binding, exact-instruction coalescing, serialization, bounded
+   concurrency, response-safe result delivery — with one named test per rule; ask_hermes
+   executes as ordinary turns on the gateway connection. Realtime transcripts are
+   ephemeral and the call screen says so. Connection loss now re-offers with bounded
+   jittered attempts (after a grace window for ICE self-recovery) before failing
+   explicitly. Mode selection: Realtime iff a key is saved and enabled, else gateway
+   voice. Verified live on the iOS simulator: the owner's real key validated and saved
+   through the UI, and a full Realtime call connected and ended cleanly on that key with
+   no companion involved. The key-hygiene surface extended to the production scanner
+   (key-shaped literals refused) and `security.md` (user-owned-key model + revocation
+   story). Remaining before the stage closes: a spoken ask_hermes round trip and the
+   physical-device audio gates in `webrtc-foundation.md` (owner + hardware), and the
+   key-absent/key-removed fallback pass.
 5. **Retire the companion.** Remove the workspace, contracts that exist only for it, the pairing
    flow, and the deployment documentation once the app runs fully against the gateway.
 
