@@ -219,15 +219,16 @@ function ConnectedWaveDrawerContent({
       </View>
 
       {errorMessage ? (
-        <Alert
-          className="mx-3 mt-3"
-          variant="destructive"
-          testID="drawer-error">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{errorMessage}</Alert.Description>
-          </Alert.Content>
-        </Alert>
+        // Padding lives on the wrapper: the Alert is w-full, so horizontal
+        // margins on it would push it past the drawer edge.
+        <View className="px-3 pt-3">
+          <Alert variant="destructive" testID="drawer-error">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>{errorMessage}</Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </View>
       ) : null}
 
       {/* Recycled: mounting a fresh Menu-bearing row for every item during a

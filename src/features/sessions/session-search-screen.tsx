@@ -113,17 +113,18 @@ function ConnectedSessionSearchScreen({
           testID="session-search-offline-notice"
         />
       ) : sessionsError ? (
-        <Alert
-          className="mx-4 mb-3"
-          variant="destructive"
-          testID="session-search-error">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>
-              Wave could not load Hermes conversations.
-            </Alert.Description>
-          </Alert.Content>
-        </Alert>
+        // Padding lives on the wrapper: the Alert is w-full, so horizontal
+        // margins on it would push it past the screen edge.
+        <View className="px-4 pb-3">
+          <Alert variant="destructive" testID="session-search-error">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>
+                Wave could not load Hermes conversations.
+              </Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </View>
       ) : null}
 
       <LegendList

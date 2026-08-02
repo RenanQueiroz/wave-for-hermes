@@ -352,31 +352,31 @@ function ConnectedChatScreen({
           testID="chat-offline-notice"
         />
       ) : timeline.error ? (
-        <Alert
-          className="mx-4 mt-3"
-          variant="destructive"
-          testID="chat-history-error">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>Conversation unavailable</Alert.Title>
-            <Alert.Description>
-              Wave could not refresh this conversation.
-            </Alert.Description>
-          </Alert.Content>
-        </Alert>
+        // Padding lives on the wrapper: the Alert is w-full, so horizontal
+        // margins on it would push it past the screen edge.
+        <View className="px-4 pt-3">
+          <Alert variant="destructive" testID="chat-history-error">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>Conversation unavailable</Alert.Title>
+              <Alert.Description>
+                Wave could not refresh this conversation.
+              </Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </View>
       ) : null}
 
       {chat.state.error ? (
-        <Alert
-          className="mx-4 mt-3"
-          variant="destructive"
-          testID="chat-turn-error">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>Turn interrupted</Alert.Title>
-            <Alert.Description>{chat.state.error.message}</Alert.Description>
-          </Alert.Content>
-        </Alert>
+        <View className="px-4 pt-3">
+          <Alert variant="destructive" testID="chat-turn-error">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>Turn interrupted</Alert.Title>
+              <Alert.Description>{chat.state.error.message}</Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </View>
       ) : null}
 
       <View className="flex-1">
