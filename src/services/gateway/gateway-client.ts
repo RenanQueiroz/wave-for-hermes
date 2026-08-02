@@ -113,6 +113,15 @@ export class GatewayClient {
   private readonly requestTimeoutMs: number;
   private readonly socketFactory: (url: string) => WebSocket;
   private tokens: GatewayTokens;
+  /**
+   * Pending placeholder id → the real gateway session created for it.
+   *
+   * A new conversation has no gateway session until its first turn, but the
+   * screen already navigated to a route keyed by the placeholder. Remembering
+   * the mapping keeps that route stable while every later call (timeline,
+   * rename, delete, cancel) reaches the real session.
+   */
+  private readonly resolvedSessions = new Map<string, string>();
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -163,6 +172,20 @@ export class GatewayClient {
     input: { before?: string; limit?: number } = {},
     signal?: AbortSignal,
   ): Promise<WaveTimelineResponse> {
+    sessionId = this.resolveSessionId(sessionId);
+    // A conversation the user just started has no gateway session yet (one is
+    // created on first send), so its timeline is empty by definition. Asking
+    // the gateway would 404 and the chat screen would bounce back to the
+    // new-conversation screen in a loop.
+    if (isPendingSessionId(sessionId)) {
+      return {
+        apiVersion: 'v1',
+        entries: [],
+        hasMore: false,
+        limit: Math.min(Math.max(input.limit ?? 100, 1), TIMELINE_PAGE_LIMIT),
+        sessionId,
+      };
+    }
     // The gateway pages by numeric offset from the oldest message, while Wave
     // pages backwards from the newest with an opaque cursor. `before` carries
     // the offset of the oldest entry already held.
@@ -210,6 +233,7 @@ export class GatewayClient {
     input: { title: string },
     signal?: AbortSignal,
   ): Promise<{ apiVersion: 'v1'; session: WaveSessionSummary }> {
+    sessionId = this.resolveSessionId(sessionId);
     await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
       body: { title: input.title },
       method: 'PATCH',
@@ -225,6 +249,7 @@ export class GatewayClient {
     sessionId: string,
     signal?: AbortSignal,
   ): Promise<{ apiVersion: 'v1'; deleted: true; sessionId: string }> {
+    sessionId = this.resolveSessionId(sessionId);
     if (isPendingSessionId(sessionId)) {
       return { apiVersion: 'v1', deleted: true, sessionId };
     }
@@ -273,6 +298,7 @@ export class GatewayClient {
   ): AsyncGenerator<WaveTurnEvent> {
     const text = turnInputToText(input);
     const attachments = turnInputAttachments(input);
+    sessionId = this.resolveSessionId(sessionId);
     const connection = await this.openSocket(signal);
     const { events, rpc, close } = connection;
     try {
@@ -331,6 +357,7 @@ export class GatewayClient {
     apiVersion: 'v1';
     sessionId: string;
   }> {
+    sessionId = this.resolveSessionId(sessionId);
     if (isPendingSessionId(sessionId)) {
       return { activeTurn: null, apiVersion: 'v1', sessionId };
     }
@@ -386,6 +413,11 @@ export class GatewayClient {
 
   // ---- internals ---------------------------------------------------------
 
+  /** Follow a pending placeholder to the real session, when one exists. */
+  private resolveSessionId(sessionId: string): string {
+    return this.resolvedSessions.get(sessionId) ?? sessionId;
+  }
+
   private async resolveLiveSession(
     rpc: GatewayRpc,
     sessionId: string,
@@ -393,12 +425,19 @@ export class GatewayClient {
     if (isPendingSessionId(sessionId)) {
       const created = await rpc.call('session.create', {});
       const live = created.session_id;
+      const stored = created.stored_session_id;
       if (typeof live !== 'string' || !live) {
         throw new WaveBackendError('Hermes could not start a conversation.', {
           kind: 'upstream_unavailable',
           retryable: true,
         });
       }
+      // Later reads address the STORED id (the durable db key); the live id is
+      // only valid for this socket.
+      this.resolvedSessions.set(
+        sessionId,
+        typeof stored === 'string' && stored ? stored : live,
+      );
       return live;
     }
     const resumed = await rpc.call('session.resume', {
