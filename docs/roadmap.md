@@ -121,9 +121,12 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    through the UI, and a full Realtime call connected and ended cleanly on that key with
    no companion involved. The key-hygiene surface extended to the production scanner
    (key-shaped literals refused) and `security.md` (user-owned-key model + revocation
-   story). Remaining before the stage closes: a spoken ask_hermes round trip and the
-   physical-device audio gates in `webrtc-foundation.md` (owner + hardware), and the
-   key-absent/key-removed fallback pass.
+   story). The toggle-off fallback to gateway voice was verified live both ways, and a
+   log sweep spanning two live Realtime calls confirmed the key appears nowhere in device
+   logs. Remaining before the stage closes — and blocking stage 5 — are the human gates:
+   a spoken ask_hermes round trip (an automated host-audio attempt registered microphone
+   level but no model response, so this needs a real voice) and the physical-device audio
+   gates in `webrtc-foundation.md`.
 5. **Retire the companion.** Remove the workspace, contracts that exist only for it, the pairing
    flow, and the deployment documentation once the app runs fully against the gateway.
 
