@@ -3,7 +3,7 @@ import type { WaveTurnEvent, WaveTurnInput } from '@wave/contracts';
 
 import { initialWaveChatState, waveChatReducer } from './chat-state';
 import { calculateBoundedRetryDelay } from '@/services/query/retry-policy';
-import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 const DELTA_FLUSH_MS = 50;

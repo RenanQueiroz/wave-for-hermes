@@ -18,7 +18,7 @@ import {
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
-import { WaveBackendError } from '../../src/services/wave/wave-backend-client.ts';
+import { WaveBackendError } from '../../src/services/wave/wave-backend-error.ts';
 import {
   isCompleteTokenSet,
   mergeRotatedTokens,

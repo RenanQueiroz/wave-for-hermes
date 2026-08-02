@@ -11,7 +11,7 @@ const TEMP_FILE_NAME = `${FILE_NAME}.tmp`;
 
 // The cache directory is inside the app sandbox (OS encryption at rest) and
 // may be reclaimed by the platform — acceptable for a read cache whose source
-// of truth is the companion.
+// of truth is the gateway.
 function createExpoQueryCacheStorage(): WaveQueryCacheStorage {
   const directory = () => new Directory(Paths.cache, DIRECTORY_NAME);
   const file = () => new File(directory(), FILE_NAME);

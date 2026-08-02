@@ -1,158 +1,96 @@
 # Wave architecture
 
-Wave is a native iOS and Android conversation client for Hermes Agent. The mobile app, the trusted
-Wave Companion, and their shared protocol live in this repository and use one npm lockfile, but
-they remain separate runtime boundaries.
+Wave is a native iOS and Android conversation client for Hermes Agent. The mobile app and the
+runtime-neutral Wave protocol schemas live in this repository and use one npm lockfile, but they
+remain separate runtime boundaries.
 
 ## Production topology
 
 ```text
 Wave mobile
   ├─ PanelUI screens and feature controllers
-  ├─ WaveBackendClient
-  └─ device-scoped companion credential
+  ├─ GatewayClient (src/services/gateway)
+  └─ rotating gateway session tokens (platform secure storage)
           │
-          │ private HTTPS: versioned Wave REST/SSE
+          │ private HTTPS: gateway REST + JSON-RPC over WebSocket
           ▼
-Wave Companion
-  ├─ device authentication and account access
-  ├─ Wave contract validation
-  ├─ server-only Hermes adapter
-  └─ OpenAI Realtime call registry, setup, and sideband tools
-          │                         │
-          ▼                         ▼
-    Hermes API Server        OpenAI Realtime API
-      private HTTP/SSE       call setup + sideband WebSocket
+    Hermes gateway (API server, speech endpoints, auth)
 
-Wave mobile ◀════════ direct WebRTC audio ════════▶ OpenAI Realtime API
+Wave mobile ◀════ direct WebRTC audio + sideband (user-owned key) ════▶ OpenAI Realtime API
 ```
 
-The companion is being retired in favour of a direct Hermes gateway connection (see the decision
-below). Stages 2 and 3 of that migration landed the gateway transport, sign-in, conversation
-surfaces, and the gateway's own voice mode, dictation, and message playback, so the app now
-supports two backends: a saved gateway session (username/password
-sign-in, opaque rotating tokens) and, for devices that have not switched, the companion pairing
-described above. Standard OpenAI and Hermes API keys remain server-side on the companion path. The phone stores only a revocable device credential and its small
-connection profile in platform secure storage. The SDP and Wave-owned call state used to establish
-a Realtime connection remain transient; neither the OpenAI API key nor OpenAI's call identifier
-crosses the Wave API boundary.
+The app talks to the user's Hermes gateway directly. Sign-in uses the gateway's password provider
+with the same credentials as the Hermes dashboard; the phone stores only the gateway's rotating
+session tokens in platform secure storage. The Hermes API key never exists on the phone. The only
+OpenAI credential the app can hold is the key the user deliberately enters in Settings for the
+opt-in Realtime voice mode; it lives in platform secure storage and travels only to
+`api.openai.com`.
 
-Homelab owns deployment manifests, private networks, pinned production images, Nginx/Tailscale
-routing, and secrets. This repository owns companion behavior, its container artifact, and the Wave
-API contract.
+Homelab owns the gateway deployment, private networks, routing, and secrets. This repository owns
+the mobile client and its normalized contracts.
 
-The production artifact is defined by `companion/Dockerfile`. Its multi-stage build installs only
-the Companion/contracts workspaces and copies only compiled server-side output plus production
-dependencies into a non-root, digest-pinned Node 24 Alpine runtime. npm, corepack, mobile/build
-dependencies, and their dependency trees are absent from that runtime. Homelab pins the resulting
-source revision and owns the read-only runtime policy, private writable authorization database,
-health check, and ingress. The validated deployment keeps Hermes API Server port `8642` and
-Companion port `8787` unpublished, then exposes the Wave API only below `/wave/` on the existing
-private `svc:hermes` Tailscale HTTPS origin. The LAN Nginx listener has no Wave route.
+## The retired companion
+
+Wave originally shipped with a self-hosted Node.js middle tier (the Wave Companion) because of two
+hard external constraints: Hermes exposed a single server-wide API key with no scoped, revocable
+per-device credential, and OpenAI Realtime requires a trusted server to hold a standard key when
+that key must be hidden from the user.
+
+A review of the upstream `hermes-agent` repository (2026-08-01, desktop client plus
+`hermes_cli/web_server.py` and `tui_gateway`) found the first constraint had fallen and reframed
+the second:
+
+- The Hermes gateway implements first-class per-user authentication (native-app OAuth plus a
+  bundled password provider) and advertises supported flows through `auth_flows` on the public
+  `/api/status`.
+- The gateway runs speech server-side (`/api/audio/transcribe`, `/api/audio/speak`,
+  `/api/audio/speak-stream`) with STT/TTS providers and their keys held in server configuration.
+- Chat transport is `tui_gateway` JSON-RPC over WebSocket (`/api/ws`), with grace-windowed
+  detach/resume rather than the companion's sequence-numbered replay.
+
+**Decision (2026-08-01): retire the companion and connect Wave directly to the Hermes gateway.**
+The owner accepted the trade-offs explicitly: gateway sign-in replaces device pairing; the app
+gains the gateway's native voice mode (server-side STT/TTS) as the default voice path plus
+standalone dictation and message playback; OpenAI Realtime remains as an opt-in mode whose API
+key the user supplies and the app keeps in platform secure storage — the ephemeral-token server
+pattern exists to hide a business-owned key from end users, and in Wave the user owns the key;
+and grace-windowed resume replaces companion turn replay because a client that needs no separate
+deployment is worth that regression.
+
+The migration completed in five stages (recorded in `docs/roadmap.md`). Stage 5 removed the
+`companion/` workspace, the companion transport and credential store, the pairing flow, and the
+companion-only contracts. `npm run verify:boundaries` fails if a companion workspace reappears.
 
 ## Workspace boundaries
 
-| Path                  | Runtime                    | Responsibility                                                                 |
-| --------------------- | -------------------------- | ------------------------------------------------------------------------------ |
-| `src/`                | Expo / React Native        | Native mobile routes, UI, features, and client-side service adapters           |
-| `packages/contracts/` | Runtime-neutral TypeScript | Strict Zod schemas and inferred types for the Wave protocol                    |
-| `companion/`          | Node.js 24                 | Fastify API, authentication, Hermes transport, and OpenAI Realtime integration |
-| `tools/mobile-agent/` | Development tooling        | Repository-local native automation and observability                           |
+| Path                  | Runtime                    | Responsibility                                                       |
+| --------------------- | -------------------------- | -------------------------------------------------------------------- |
+| `src/`                | Expo / React Native        | Native mobile routes, UI, features, and client-side service adapters |
+| `packages/contracts/` | Runtime-neutral TypeScript | Strict Zod schemas and inferred types for normalized Wave data       |
+| `tools/mobile-agent/` | Development tooling        | Repository-local native automation and observability                 |
 
 The repository root remains both the Expo application and npm workspace root. Do not move it into
 an `apps/mobile` directory.
 
-The companion deliberately stays in this monorepo rather than its own repository. Wave features
-routinely change the contract, the server, and the client in one atomic commit; splitting the
-repositories would reintroduce a version-skew window between the shipped app and its only backend,
-plus the contract-pinning machinery that clients of unstable third-party servers need. The
-deployment split already exists where it matters — Homelab owns manifests, networking, pinned
-images, and secrets. If the companion should ever be distributed on its own, publish the container
-image, not a second source tree.
-
-The Companion originally existed because of two hard external constraints: Hermes exposed a
-single server-wide API key with no scoped, revocable per-device credential, and OpenAI Realtime
-requires a trusted server to hold a standard key when that key must be hidden from the user.
-
-A review of the upstream `hermes-agent` repository (2026-08-01, desktop client plus
-`hermes_cli/web_server.py` and `tui_gateway`) found the first constraint has fallen and reframed
-the second:
-
-- The Hermes gateway now implements RFC 8252 native-app OAuth: it brokers PKCE through
-  `/auth/native/{authorize,token,refresh}`, issues short-lived access tokens with refresh
-  tokens, gates any non-loopback deployment behind OAuth or a bundled password provider, and
-  advertises supported flows through `auth_flows` on the public `/api/status`. This is a
-  first-class per-user, revocable credential story — the capability whose absence justified the
-  pairing-code companion.
-- The gateway runs speech server-side: `/api/audio/transcribe`, `/api/audio/speak`, and
-  `/api/audio/speak-stream`, with STT/TTS providers and their keys held in server configuration.
-  The desktop client's voice mode is push-to-talk (client records, gateway transcribes, the
-  transcript runs as a normal turn, gateway speaks the reply) and the client never holds a
-  provider key.
-- Chat transport is `tui_gateway` JSON-RPC over WebSocket (`/api/ws`). On disconnect, sessions
-  detach into a grace-windowed orphan reaper that a prompt `session.resume` cancels — weaker
-  than the companion's run-to-completion turn with sequence-numbered frame replay, and frame
-  replay was not found in the gateway path.
-
-**Decision (2026-08-01): retire the companion and connect Wave directly to the Hermes gateway.**
-The owner accepted the trade-offs explicitly: gateway OAuth replaces device pairing; the app
-gains the gateway's native voice mode (server-side STT/TTS) as the default voice path plus
-standalone dictation and message playback; OpenAI Realtime remains as an opt-in mode whose API
-key the user supplies and the app keeps in platform secure storage — the ephemeral-token
-server pattern exists to hide a business-owned key from end users, and in Wave the user owns
-the key; and grace-windowed resume replaces companion turn replay because a client that needs
-no separate deployment is worth that regression. Open items to verify during the migration:
-a mobile-usable redirect URI for the native PKCE flow (the current flow redirects to a desktop
-loopback listener; a custom scheme needs upstream support or the embedded-webview fallback),
-the exact `session.resume` grace semantics, and gateway RPC parity for session rename, delete,
-search, and attachments.
-
-The companion targets Node.js 24 rather than Bun or Python: the official OpenAI SDK and Fastify
-are first-class on Node LTS, and one language spans the contracts, the client, and the server.
-Hermes's own implementation language is irrelevant — do not import Hermes internals merely to
-share its language. Revisit only if the repository standardizes on another runtime or the
-companion acquires substantial Python-native behavior.
-
 Dependency direction is one-way:
 
 ```text
-mobile UI/features ──> WaveBackendClient ──> @wave/contracts
-Wave Companion ────────────────────────────> @wave/contracts
-Wave Companion ──> server-only Hermes/OpenAI adapters
+mobile UI/features ──> WaveChatClient / GatewayClient ──> @wave/contracts
 ```
 
-The mobile app never imports `@wave/companion`, Fastify, the OpenAI SDK, or Hermes protocol types.
-The companion never imports React, React Native, Expo, PanelUI, or other mobile/UI packages.
-`@wave/contracts` has only Zod as a runtime dependency and has no Node.js, mobile, server, or UI
-dependencies.
+The mobile app never imports Fastify, the OpenAI SDK, or Hermes protocol types. `@wave/contracts`
+has only Zod as a runtime dependency and has no Node.js, mobile, server, or UI dependencies.
 
 Run `npm run verify:boundaries` to check these rules against workspace manifests, source imports,
-the companion production dependency tree, and an existing production mobile export.
+and an existing production mobile export.
 
 ## Current mobile data boundary
 
 The mobile implementation lives under `src/features/connection`, `src/features/sessions`,
-`src/features/chat`, `src/features/realtime`, `src/services/credentials`, `src/services/query`,
-`src/services/realtime`, `src/services/sessions`, and `src/services/wave`:
+`src/features/chat`, `src/features/realtime`, `src/features/voice`, `src/services/gateway`,
+`src/services/query`, `src/services/realtime`, `src/services/sessions`, and `src/services/wave`:
 
-- `WaveBackendClient` is the only mobile production HTTP boundary. It validates request inputs and
-  every JSON response with `@wave/contracts`, preserves an intentional companion path prefix,
-  rejects credentials/query/fragment components in configured URLs, rejects HTTP outside an
-  explicit development exception, refuses redirects, bounds response size, and applies
-  cancellation-aware request timeouts. Its streaming path uses Expo SDK 57's native `expo/fetch`,
-  validates every SSE event, enforces session/turn identity and sequence order, and bounds connect,
-  idle, total, frame, and error-response sizes. Its Realtime start/end methods exchange SDP and
-  Wave-owned call state without exposing provider credentials or provider identifiers.
-- `SecureWaveCredentialStore` persists one versioned connection record through Expo SecureStore's
-  asynchronous APIs with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The record contains the normalized
-  companion URL, public device metadata, and the revocable device credential. UI and
-  development-state summaries omit the credential.
-- `WaveConnectionProvider` owns bootstrap, sign-in or pairing, restore, verification, retry, and
-  local credential cleanup for both backends. Screens do not construct authorization headers or
-  raw protocol messages. A saved gateway session takes precedence over a saved pairing during
-  restore, and conversation screens receive a backend-neutral `WaveChatClient` plus a connection
-  `identity` (id, base URL, kind, label) rather than a companion device record.
-- `src/services/gateway` is the direct Hermes gateway transport: REST for the session list,
+- `src/services/gateway` is the only production backend transport: REST for the session list,
   timeline, rename, delete, and history; one WebSocket per turn carrying JSON-RPC for streaming;
   and normalization of every gateway shape into Wave contracts before it reaches a screen. It
   synthesizes the monotonic sequence numbers and turn identity the chat reducer expects, holds
@@ -166,308 +104,143 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   answered on the socket bound to its live session, and a delete is refused while that channel
   or the gateway's own `session.active_list` reports a running turn — the gateway accepts a
   mid-turn delete and lets the conversation reappear, so Wave enforces the contract itself.
-- `src/features/voice` is the gateway speech layer. `gateway-voice-machine.ts` holds the pure
-  decisions (silence detection, utterance caps, stop words, upload MIME mapping, phase copy) so
-  they are testable without a microphone; `use-dictation.ts` records one utterance into the
-  composer; `use-message-playback.ts` reads one finished assistant message aloud, one player at a
-  time; and `use-gateway-voice.ts` drives the continuous loop — listen, transcribe, run the
-  transcript as an ordinary turn, speak the reply — abandoning any cycle whose generation has been
-  superseded by stop or unmount. Recordings are mono 16 kHz, uploaded as a data URL, and deleted
-  from the device cache immediately afterwards. All three affordances are gated on a cached probe
-  of what the server actually has configured, and disable with honest copy when it has neither
-  provider. The voice route picks the gateway screen whenever the gateway is the active backend
-  and leaves Realtime to companion connections until the user-owned OpenAI key lands.
-- The PanelUI connection route performs the public status check and one-time redemption before
-  saving the credential, then requires an authenticated live compatibility check. A saved
-  credential is rechecked at launch. When that recheck fails for connectivity-shaped reasons only
-  (offline device, timeout, transiently unreachable companion), the connection degrades to an
-  `offline` phase instead of returning to the connect screen: the paired client stays available
-  and cached conversations stay readable, but composing is honest about what cannot work — the
+- The base-URL scheme policy (`src/services/wave/base-url-policy.ts`) requires HTTPS by default,
+  allows HTTP for localhost and Tailscale CGNAT addresses where the transport is already private,
+  and accepts an explicitly typed `http://` URL to a private LAN host as a deliberate opt-in.
+- `WaveConnectionProvider` owns bootstrap, sign-in, restore, verification, retry, and local
+  token cleanup. Screens do not construct authorization headers or raw protocol messages.
+  Conversation screens receive the backend-neutral `WaveChatClient` plus a connection `identity`
+  (id, base URL, kind, label); gateway-specific capabilities (speech, prompts, Realtime
+  execution) are asked for explicitly as `gatewayClient`.
+- When a saved connection's launch recheck fails for connectivity-shaped reasons only (offline
+  device, timeout, transiently unreachable gateway), the connection degrades to an `offline`
+  phase instead of returning to the connect screen: cached conversations stay readable, but the
   chat send, attachment, and voice controls are disabled (drafting stays possible) while the
-  connection is offline or a conversation's timeline cannot refresh, and the voice route itself
-  is connected-only because a Realtime call has nothing to degrade to. The
-  provider re-verifies silently when the app foregrounds, when any Wave read completes over the
-  network, or on explicit retry; authorization and compatibility failures never degrade and still
-  land on the connect screen. Connected disconnect first revokes the current server-side
-  device and aborts its active text and Realtime work before deleting the secure record. When the
-  Gateway is unreachable, local-only forgetting is a separate explicit recovery action.
-- `WaveQueryProvider` owns finite server state for session lists and unified timelines. Connection changes
-  cancel and remove the connection-scoped `wave` cache so one companion/device cannot reuse
-  another's data.
-- `ActiveSessionStore` persists only a versioned, non-secret connection/session identifier pair for
-  current-flow coordination. Connected cold launch deliberately creates a new conversation;
+  connection is offline, and the voice route itself is connected-only because live speech has
+  nothing to degrade to. The provider re-verifies silently when the app foregrounds, when any
+  Wave read completes over the network, or on explicit retry; authorization failures never
+  degrade and land on the connect screen. Disconnect deletes the stored tokens — the gateway's
+  stateless tokens cannot be revoked individually, and the gateway invalidates all outstanding
+  tokens when its token secret rotates.
+- `src/features/voice` is the gateway speech layer. `gateway-voice-machine.ts` holds the pure
+  decisions (adaptive silence detection, utterance caps, stop words, upload MIME mapping, phase
+  copy) so they are testable without a microphone; `use-dictation.ts` records one utterance into
+  the composer; `use-message-playback.ts` reads one finished assistant message aloud, one player
+  at a time; and `use-gateway-voice.ts` drives the continuous loop — listen, transcribe, run the
+  transcript as an ordinary turn, speak the reply — abandoning any cycle whose generation has
+  been superseded by stop or unmount. Recordings are mono 16 kHz, uploaded as a data URL, and
+  deleted from the device cache immediately afterwards. The affordances are gated on a cached
+  probe of what the server actually has configured, and disable with honest copy when it has
+  neither provider.
+- The Realtime mode is keyed by the user-owned OpenAI key. `OpenAiKeyStore` keeps the key in
+  platform secure storage (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`); the Settings card validates a key
+  against `GET /v1/models` before saving and exposes presence — never the value — through the
+  query cache. The voice route selects Realtime iff a key is saved and the user has left
+  **Prefer live voice** on; otherwise it selects gateway voice.
+- `OpenAiRealtimeBackend` performs the SDP exchange directly against
+  `POST /v1/realtime/calls`, attaches the authenticated WebSocket sideband, and wires
+  `ask_hermes` dispatch through `AskHermesOrchestrator`: strict schema validation, trusted
+  binding to the initiating conversation's session, serialization, at most eight
+  active-or-waiting requests, a 128-request per-call cap, exact-instruction coalescing within
+  one initiating user turn, and response-safe delivery that holds completed results while the
+  user is speaking or a model response is active. Validated instructions execute as ordinary
+  turns on the gateway connection, so their side effects land in canonical Hermes history.
+- `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
+  native peer and data channel, remote audio tracks, and cleanup. `WaveRealtimeController` owns
+  call lifecycle, cancellation/expiry, bounded reconnection (grace for ICE self-recovery, then
+  up to three full re-offers with the shared jitter policy), and normalized activity state. The
+  PanelUI voice route renders controller snapshots and never owns raw WebRTC resources or
+  provider protocol messages. Realtime transcripts are ephemeral: they render during the call
+  and are not persisted anywhere.
+- `WaveQueryProvider` owns finite server state for session lists and unified timelines.
+  Connection changes cancel and remove the connection-scoped `wave` cache so one account cannot
+  reuse another's data.
+- `ActiveSessionStore` persists only a versioned, non-secret connection/session identifier pair
+  for current-flow coordination. Connected cold launch deliberately creates a new conversation;
   Hermes remains the durable source for every prior conversation shown in the drawer.
 - `useWaveChat` and its reducer own the single active stream, 50 ms assistant-delta batching,
-  cancellation races, safe error state, and post-stream timeline reconciliation. The reducer keeps
-  the composer busy until stream cleanup and reconciliation have settled, so a newly enabled send
-  cannot race the prior turn. React screens do not parse SSE or construct protocol messages.
-- `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
-  native peer and data channel, remote audio tracks, bounded reconnect timing, and cleanup.
-  `WaveRealtimeController` owns the authenticated Companion call, cancellation/expiry, normalized
-  activity and transcript state, and retryable server-cleanup failures. The PanelUI voice route
-  renders controller snapshots and never owns raw WebRTC resources or provider protocol messages.
-- The Expo Router drawer is the connected app shell around a single native stack: every app screen
-  lives in that stack, so screens get native headers, push transitions, and swipe-back, while the
-  drawer stays a conversation switcher rather than a sibling navigator. Cold launch and
-  **New conversation** create a Hermes session immediately; sticky top actions provide new, title
-  search, and read-only scheduled jobs; paginated account history fills the middle; Settings and
-  Disconnect stay fixed at the bottom. Rename/delete use typed lifecycle mutations, and a deleted
-  current session routes to a new conversation.
-- The PanelUI chat route renders normalized conversation data only. Tool events become
-  bounded `Task` parts with a name, status, and optional raw input/output. Disclosures start
-  collapsed and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs,
-  run IDs, and credentials never enter the mobile render model. Wave avatars align with the
-  bottom of a grouped turn and only its last item keeps the avatar-facing pointer radius. A
-  Realtime Hermes handoff is a nested task between Wave's acknowledgement and final response,
-  rather than a second assistant identity or a duplicate canonical Hermes message.
+  cancellation races, safe error state, and post-stream timeline reconciliation. The reducer
+  keeps the composer busy until stream cleanup and reconciliation have settled, so a newly
+  enabled send cannot race the prior turn. React screens do not parse stream frames or construct
+  protocol messages.
+- The Expo Router drawer is the connected app shell around a single native stack: every app
+  screen lives in that stack, so screens get native headers, push transitions, and swipe-back,
+  while the drawer stays a conversation switcher rather than a sibling navigator. Cold launch
+  and **New conversation** create a Hermes session immediately; sticky top actions provide new
+  and title search; paginated account history fills the middle; Settings and Disconnect stay
+  fixed at the bottom. Rename/delete use typed lifecycle mutations, and a deleted current
+  session routes to a new conversation.
+- The PanelUI chat route renders normalized conversation data only. Tool events become bounded
+  `Task` parts with a name, status, and optional raw input/output. Disclosures start collapsed
+  and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs, run IDs,
+  and credentials never enter the mobile render model. Wave avatars align with the bottom of a
+  grouped turn and only its last item keeps the avatar-facing pointer radius.
   `PanelUIProvider` mounts the keyboard controller's `KeyboardProvider` exactly once at the app
   root — mounting a second one breaks per-frame keyboard animation on Android — and PanelUI's
   `KeyboardAvoider` docks the rounded `InputGroup` composer above the native keyboard, keeping a
-  small gap while the keyboard is open. Opening the attachment sheet dismisses the keyboard first,
-  since the styled sheet draws under the keyboard's own window. The attachment control sits inside the
-  leading edge. The trailing slot shows exactly one of Stop, Send, or the live-wave action; when
-  idle, trimmed text selects Send and empty text selects live voice.
-- Camera/Photos become bounded inline JPEG turn parts. Supported text-based Files are read from the
-  document-picker cache and become bounded inert text-file parts. The mobile client rejects
-  unsupported binary files, and the Companion validates the same strict contract before converting
-  it to Hermes text and `image_url` content.
-
-## Current companion API
-
-The companion lives in `companion/` and provides:
-
-- a separately buildable Node.js 24 TypeScript entrypoint;
-- Fastify with authorization, metadata-only correlated request logging, and credential/cookie
-  redaction;
-- strict server-only configuration validation;
-- graceful `SIGINT` and `SIGTERM` shutdown;
-- a public, non-sensitive `GET /v1/status`;
-- one-time operator-generated pairing codes and revocable device credentials;
-- account-scoped device authorization;
-- live compatibility, paginated session lifecycle, history, attachment-aware streamed-turn,
-  cancellation, normalized read-only scheduled-job, content-free diagnostics, Realtime
-  voice-catalog, and rate-limited bounded voice-sample routes;
-- request-size, rate, active-turn, first-event, idle, and total-time bounds;
-- authenticated, rate-limited Realtime call setup and device-owned call termination;
-- a process-local Realtime registry that enforces one call per device/session, a bounded global
-  maximum, trusted session binding, expiry, and shutdown cleanup;
-- the official server-only OpenAI SDK adapter for unified WebRTC setup and lifecycle requests,
-  with the documented bearer-authenticated `ws` connection for sideband control;
-- strict `ask_hermes` validation, per-call tool serialization, timeout/cancellation, and structured
-  results through the existing Hermes adapter; Hermes execution remains background work relative
-  to live speech, with at most eight active-or-waiting requests per call and exact normalized
-  instructions coalesced onto one Hermes execution;
-- sideband response coordination that holds completed Hermes outputs while the user is speaking or
-  a default-conversation response is active, then appends the results and creates one safe model
-  response;
-- normalized versioned error envelopes for unknown routes and internal failures;
-- the tested Hermes HTTP/SSE adapter under `companion/src/hermes`.
-
-`GET /v1/status` always reports `pairing: true` and `chat: true`; `realtime` is true only when the
-server started with `OPENAI_API_KEY`.
-`hermes.configured: true` means the companion accepted Hermes configuration at startup. An
-authenticated `GET /v1/compatibility` performs the live capability probe. Authenticated
-`GET /v1/diagnostics` is support-oriented and contains only Companion version/uptime, feature
-availability, and normalized Hermes compatibility; it excludes credentials, server addresses,
-device identifiers, and conversation content.
-
-Start the built companion with server-only environment variables:
-
-```bash
-export HERMES_API_URL=https://<private-hermes-api>
-read -s HERMES_API_KEY
-export HERMES_API_KEY
-# Optional: enables Realtime call setup and sideband tools.
-read -s OPENAI_API_KEY
-export OPENAI_API_KEY
-npm run companion:build
-npm run companion:start
-```
-
-Optional variables:
-
-| Variable                                    | Default                        | Meaning                                               |
-| ------------------------------------------- | ------------------------------ | ----------------------------------------------------- |
-| `WAVE_HOST`                                 | `127.0.0.1`                    | Listener address                                      |
-| `WAVE_PORT`                                 | `8787`                         | Listener port                                         |
-| `WAVE_LOG_LEVEL`                            | `info`                         | Fastify/Pino log level                                |
-| `WAVE_DATABASE_PATH`                        | `./data/wave-companion.sqlite` | Persistent device authorization database              |
-| `WAVE_PAIRING_CODE_TTL_SECONDS`             | `600`                          | One-time pairing-code lifetime                        |
-| `WAVE_MAX_ACTIVE_TURNS`                     | `4`                            | Process-wide active turn limit                        |
-| `WAVE_MAX_ACTIVE_REALTIME_CALLS`            | `2`                            | Process-wide active Realtime-call limit               |
-| `WAVE_HERMES_FIRST_EVENT_TIMEOUT_MS`        | `30000`                        | Time allowed to receive the first Hermes event        |
-| `WAVE_HERMES_IDLE_TIMEOUT_MS`               | `60000`                        | Time allowed between Hermes events                    |
-| `WAVE_HERMES_TOTAL_TIMEOUT_MS`              | `600000`                       | Maximum total turn duration                           |
-| `OPENAI_API_KEY`                            | unset                          | Server-only credential; enables Realtime when present |
-| `OPENAI_REALTIME_MODEL`                     | `gpt-realtime-2.1-mini`        | Server-selected cost-efficient Realtime model         |
-| `OPENAI_REALTIME_VOICE`                     | `marin`                        | Server-selected Realtime voice                        |
-| `WAVE_OPENAI_REALTIME_REQUEST_TIMEOUT_MS`   | `15000`                        | Unified setup and hangup request timeout              |
-| `WAVE_REALTIME_SIDEBAND_CONNECT_TIMEOUT_MS` | `10000`                        | Sideband WebSocket connection timeout                 |
-| `WAVE_REALTIME_CALL_TTL_MS`                 | `1800000`                      | Maximum process-local call lifetime                   |
-| `WAVE_REALTIME_TOOL_TIMEOUT_MS`             | `120000`                       | Maximum duration of one `ask_hermes` dispatch         |
-| `HERMES_ALLOW_INSECURE_HTTP`                | `false`                        | Allows an explicit private/local HTTP Hermes URL      |
-
-`HERMES_API_URL` must not contain credentials, a query, or a fragment. HTTP is rejected unless
-`HERMES_ALLOW_INSECURE_HTTP=1` is explicitly set for a trusted private/local path. The externally
-reachable companion remains private-HTTPS-only in production.
-
-For source-watch development, use `npm run companion:dev`. This still requires valid Hermes
-configuration and does not load secrets from mobile `EXPO_PUBLIC_*` variables.
-
-### Device authorization
-
-An operator runs `npm run companion:pair` against the companion's persistent
-`WAVE_DATABASE_PATH`. The command emits a random 80-bit code that expires after ten minutes by
-default. Redeeming the code exactly once creates a random 256-bit device credential. Only SHA-256
-verifiers are stored in SQLite; plaintext credentials are never recoverable from the database.
-
-The storage implementation is behind the `DeviceStore` interface. The current single-process
-implementation uses Node.js 24's built-in `node:sqlite`, strict tables, foreign keys, WAL,
-synchronous durability, and an atomic transaction for code redemption. A newly created database
-directory is owner-only and the database file is mode `0600`. Deployment must mount the database
-on persistent private storage and preserve equivalent permissions for the directory and SQLite
-sidecar files.
-
-`npm run companion:devices` lists device lifecycle metadata, and
-`npm run companion:revoke -- <device-id>` revokes subsequent access. Revocation does not terminate
-an already-running request from a separate operator process; the total turn timeout bounds that
-window.
-
-A valid device credential represents access to the paired Wave Gateway account. Every active
-paired device can page through, read, continue, rename, and delete the same top-level sessions
-returned by Hermes; the Companion does not keep per-device session bindings or copies. Hermes
-remains authoritative for session existence and history. Revoking the device credential removes
-that account access. `DELETE /v1/device` lets an authenticated mobile client revoke only its own
-credential; the in-process Companion also cancels that device's admitted text and Realtime work.
-
-### HTTP and stream policy
-
-Public routes are limited to status and one-time pairing redemption. All other routes require an
-exact bearer device credential. The server exposes no generic upstream proxy and accepts no
-client-selected Hermes model, provider, endpoint, header, run ID, or generic administrative
-operation. The one operational surface is an exact read-only scheduled-job status route whose
-normalizer omits prompts, outputs, and controls.
-
-Request bodies are limited to 6,000,000 bytes so bounded inline images fit without opening an
-upload/filesystem surface. Turn schemas still cap text, attachment count, each image at 4,000,000
-decoded bytes, and each text file at 128,000 characters. The process applies a
-120-request-per-minute client-IP limit
-and a five-attempt-per-minute pairing limit. The in-memory counters are intentionally
-single-instance; multi-replica deployment requires a shared limiter and a coordinated storage
-decision first.
-
-One device can run one turn at a time, one session can have one active turn, and the process-wide
-maximum defaults to four. Wave starts a normalized SSE stream before contacting Hermes, then
-enforces first-event, idle, and total timers. An authenticated cancellation request, timeout, or
-upstream error aborts the Hermes stream. A mobile disconnect only detaches the turn: the Hermes
-run continues under the same timers while the companion buffers its ordered events in a bounded
-in-memory replay buffer, the owning device may reattach with `after=<sequence>` replay during the
-turn and for a bounded window after its terminal event, and the mobile client reattaches
-automatically after transport drops and on chat-screen mount via the active-turn probe — the turn
-itself is never re-dispatched. Events contain only Wave-owned identifiers, assistant text, and
-sanitized tool lifecycle status plus optional bounded tool input/output details. Each detail is capped at 64,000 characters,
-all details share a 512,000-character per-history-response or per-turn budget, and truncation is
-explicit.
-
-Realtime call creation accepts a bounded SDP offer only after resolving the Hermes session for an
-active authenticated device. Wave creates the OpenAI call server-side, attaches the server-only sideband,
-and returns only the SDP answer, an expiry, and an opaque Wave call ID. The registry rejects a
-second call for the same device or Hermes session and defaults to two calls process-wide. It
-reauthorizes the device before every tool dispatch, keeps the server-bound session immutable, never
-accepts a model-controlled session ID, serializes `ask_hermes` calls per live call, bounds
-active-or-waiting Hermes work to
-eight requests, caps each call at 128 total tool requests, and expires all state after 30 minutes
-by default. Barge-in stops the Realtime model's audio response without cancelling the active
-Hermes request. The Realtime session can submit another tool call before earlier tool output is
-available; the Companion accepts it into the same trusted session's bounded queue and executes
-Hermes requests one at a time in arrival order. Completed tool outputs remain buffered while the
-user is speaking or another default-conversation response is active, preventing competing
-`response.create` events. Call state is intentionally process-local. Distinct tool-call IDs
-carrying the same normalized instruction share one in-flight or completed result, preventing a
-Realtime retry from duplicating Hermes work. A multi-replica deployment requires deliberate
-shared-state and routing decisions first.
-
-The Realtime model is the user-facing Wave assistant; Hermes is its server-side execution and
-reasoning layer. Users make requests directly to Wave and never need to name Hermes or ask for a
-handoff. The session prompt gives explicit selection rules: handle lightweight conversation and
-simple computations locally, but automatically call `ask_hermes` for current or external
-information, private context, device or service control, durable work, and substantial reasoning.
-Wave may rewrite the request into a clearer self-contained Hermes instruction, while preserving its
-intent, scope, constraints, identifiers, quoted text, and literal values. It must not broaden the
-action, invent details, or report success before a structured result confirms it. Neutral tool
-preambles and post-result responses avoid exposing implementation terminology unless progress or an
-error makes that context useful.
-
-See [`companion/README.md`](../companion/README.md) for the endpoint table and operator workflow.
+  small gap while the keyboard is open. Opening the attachment sheet dismisses the keyboard
+  first, since the styled sheet draws under the keyboard's own window. The attachment control
+  sits inside the leading edge. The trailing slot shows exactly one of Stop, Send, or the
+  live-wave action; when idle, trimmed text selects Send and empty text selects live voice.
+- Camera/Photos become bounded inline JPEG turn parts. Supported text-based Files are read from
+  the document-picker cache and become bounded inert text-file parts. The mobile client rejects
+  unsupported binary files before dispatch.
 
 ## Shared protocol
 
 `@wave/contracts` currently defines:
 
-- the literal Wave API version (`v1`);
-- strict response metadata;
-- the companion status and feature-availability response;
-- authenticated content-free diagnostics and the strict Realtime voice catalog, including an
-  opaque samples version and the bounded `audio/wav` voice-sample response limit;
-- stable safe error codes and error envelopes;
-- one-time pairing requests and responses;
-- compatibility, paginated session lifecycle, cursor-paginated unified timeline,
-  attachment-aware turn, read-only
-  scheduled-job, and cancellation requests and responses;
-- a strict discriminated union of ordered normalized turn events;
+- the literal Wave API version (`v1`) and strict response metadata;
+- stable safe error codes and the normalized error shape;
+- paginated session, history, cursor-paginated unified timeline, and cancellation responses;
+- attachment-aware turn input parts with strict bounds (four attachments, 4 MB decoded per
+  image, 128,000 characters per text file);
+- a strict discriminated union of ordered normalized turn events, including mid-turn prompt
+  request/resolved events;
 - strict inert tool-detail fields with explicit truncation;
-- bounded SDP call setup/termination contracts that contain only Wave-owned identifiers;
+- the Realtime call result shapes (Wave-owned identifiers only) and the client-side Realtime
+  voice ID list;
 - the strict `ask_hermes({ instruction })` schema and small structured success/error result.
 
 Schemas reject unknown fields unless a future contract explicitly defines forward-compatible
-behavior. Both sides validate untrusted boundary data at runtime. Screens should consume normalized
-domain types through `WaveBackendClient`; they must not construct HTTP, SSE, Hermes, or OpenAI
-protocol messages.
+behavior. The gateway transport validates untrusted boundary data at runtime and normalizes it
+into these shapes; screens consume normalized domain types through `WaveChatClient` and must not
+construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
 
 ## State and UI direction
 
-- Hermes remains the source of truth for its durable sessions, messages, and tool records. The
-  Companion interaction ledger is authoritative only for finalized Wave speech and handoff
-  lifecycle records; it stores no raw audio, partial transcripts, or hidden reasoning.
-- TanStack Query owns finite server state such as status, paginated account sessions, the
-  cursor-paginated unified timeline, read-only scheduled jobs, diagnostics, and the Realtime voice
-  catalog. Retryable finite reads retry at most twice with the shared 500 ms exponential-jitter
-  policy capped at 8 seconds; mutations never retry automatically.
+- Hermes remains the source of truth for its durable sessions, messages, and tool records.
+  Realtime speech is ephemeral; only work delegated through `ask_hermes` lands in history, as
+  ordinary turns.
+- TanStack Query owns finite server state such as paginated account sessions, the unified
+  timeline, and speech capability probes. Retryable finite reads retry at most twice with the
+  shared 500 ms exponential-jitter policy capped at 8 seconds; mutations never retry
+  automatically.
 - The query cache is persisted to one sandboxed cache file so previously viewed sessions and
-  timelines stay readable offline. Only successful session-list and timeline reads dehydrate
-  (never diagnostics, jobs, or Realtime state), entries expire after seven days or a cache-buster
-  bump, and pairing, forgetting, and disconnecting purge the file alongside the in-memory cache.
-  Persist writes go through a sibling temp file renamed into place so an interrupted write can
-  never truncate the document, and a document that fails to parse on restore is deleted rather
-  than left permanently unreadable. A connectivity-shaped refetch failure over cached data
-  renders a quiet offline notice; every other error keeps its explicit surface.
-- Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
-- The connection provider owns only credential bootstrap and compatibility state; it is not a
+  timelines stay readable offline. Only successful session-list and timeline reads dehydrate,
+  entries expire after seven days or a cache-buster bump, and sign-in and sign-out purge the
+  file alongside the in-memory cache. Persist writes go through a sibling temp file renamed into
+  place so an interrupted write can never truncate the document, and a document that fails to
+  parse on restore is deleted rather than left permanently unreadable. A connectivity-shaped
+  refetch failure over cached data renders a quiet offline notice; every other error keeps its
+  explicit surface.
+- Active stream and Realtime lifecycles belong in focused controllers/reducers, not query cache.
+- The connection provider owns only sign-in bootstrap and verification state; it is not a
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
-- Timeline normalization drops empty records, groups entries by stable Wave-owned turn IDs, and
-  suppresses the canonical Hermes range already represented by a correlated Realtime handoff.
-  Direct Hermes work and Realtime handoffs both render under the Wave identity. Tool activity
-  renders as collapsed named status rows with the Wave avatar aligned to the last item. Expanding a
-  row lazily renders bounded raw input and output as copyable plain code, never Markdown.
-- Handoff correlation keeps the terminal Hermes stream event ID and timestamp server-side. Because
-  the pinned history response omits message IDs, the merge falls back to the nearest assistant
-  timestamp inside a five-second window; it never compares user or assistant text.
-- The Companion persists only finalized Realtime user and assistant transcripts. Successful
-  hangup refreshes the unified timeline query before returning to text chat, so casual Wave speech
-  and completed `ask_hermes` work appear immediately without duplicating Hermes's canonical turn.
-- Timeline pagination uses a stable entry cursor rather than an offset. Deleting a Hermes session
-  cascades its Companion interaction records; clearing only Hermes history leaves the Wave handoff
-  record visible with its bounded result.
-- The initial Realtime tool is the strict
-  `ask_hermes({ instruction: string })` operation. A model-controlled session ID is forbidden.
+- Timeline normalization drops empty records and groups entries by stable turn IDs. Tool
+  activity renders as collapsed named status rows with the Wave avatar aligned to the last item.
+  Expanding a row lazily renders bounded raw input and output as copyable plain code, never
+  Markdown.
+- The only Realtime tool is the strict `ask_hermes({ instruction: string })` operation. A
+  model-controlled session ID is forbidden by construction — the schema has no such field, and
+  the executor is bound to the initiating conversation.
 - Wave owns the spoken interaction. The user addresses Wave naturally, and Wave selects and
-  phrases a Hermes handoff when backend work is needed; successful voice responses do not require
-  the user to understand or manage that boundary.
-- Wave does not add an extra approval dialog before that narrow tool. The companion dispatches it
-  automatically only after strict argument validation, active-device authorization, and trusted
-  server-bound session selection;
-  Hermes's own tool safety policy still applies.
+  phrases a Hermes handoff when backend work is needed; successful voice responses do not
+  require the user to understand or manage that boundary.
+- Wave does not add an extra approval dialog before that narrow tool. The orchestrator
+  dispatches it automatically only after strict argument validation, trusted call-state
+  authorization, and rate/concurrency checks; Hermes's own tool safety policy still applies.
 
 ## Verification
 
@@ -486,6 +259,6 @@ npm run mobile:smoke:production
 The root `npm run lint` command includes the workspace ESLint checks and Prettier verification.
 Use `npm run format` to apply the repository's shared formatting configuration.
 
-Runtime-affecting changes also require the relevant iOS and Android flows. Native dependency or app
-configuration changes require clean prebuilds, affected native builds, and Expo Doctor as described
-in `AGENTS.md`.
+Runtime-affecting changes also require the relevant iOS and Android flows. Native dependency or
+app configuration changes require clean prebuilds, affected native builds, and Expo Doctor as
+described in `AGENTS.md`.

@@ -1,15 +1,11 @@
 /**
  * The client surface conversation screens depend on.
  *
- * Both backends implement it: `WaveBackendClient` (companion, being retired)
- * and `GatewayClient` (direct Hermes gateway). Screens depend on this type
- * rather than either implementation, so the migration is a provider-level
- * swap rather than a rewrite of every surface.
- *
- * Companion-only capabilities (Realtime call setup, diagnostics, scheduled
- * jobs, device revocation) are deliberately absent: those screens ask the
- * connection for the companion client explicitly and degrade when it is not
- * the active backend.
+ * `GatewayClient` is its only implementation since the companion retired
+ * (stage 5), but screens still depend on this type rather than the concrete
+ * client: it is the reviewed contract of what conversation surfaces may do,
+ * and gateway-specific capabilities (speech, prompts, Realtime execution)
+ * stay behind an explicit `gatewayClient` ask on the connection.
  */
 import type {
   WaveActiveTurnResponse,
@@ -24,9 +20,8 @@ import type {
 } from '@wave/contracts';
 
 /**
- * One page of conversations. The companion's `apiVersion` envelope field is
- * deliberately not part of it — screens must not depend on a companion-only
- * field that the gateway has no equivalent for.
+ * One page of conversations, without transport envelope fields — screens
+ * must not depend on anything the normalized Wave contract does not carry.
  */
 export interface WaveSessionPage {
   hasMore: boolean;

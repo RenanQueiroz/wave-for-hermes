@@ -5,7 +5,7 @@ import {
   applyDefaultScheme,
   isPrivateLanPlainHttpHost,
   isTrustedPlainHttpHost,
-} from '../../src/services/wave/companion-url-policy.ts';
+} from '../../src/services/wave/base-url-policy.ts';
 
 test('trusts loopback and the Tailscale CGNAT range only', () => {
   assert.equal(isTrustedPlainHttpHost('localhost'), true);

@@ -113,8 +113,6 @@ function inheritedEnvironment(
     APPIUM_MCP_EVIDENCE: 'true',
     APPIUM_MCP_ON_CLIENT_DISCONNECT: 'delete_all',
   };
-  delete env.MOBILE_AGENT_PAIRING_CODE;
-  delete env.MOBILE_AGENT_PAIRING_URL;
   const optionalNames = [
     'ANDROID_HOME',
     'ANDROID_SDK_ROOT',

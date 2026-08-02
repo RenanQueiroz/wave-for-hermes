@@ -10,7 +10,6 @@ import { ObservabilityCollector } from './observability.js';
 import { runAndroidSmoke } from './smoke/android.js';
 import { runIosSmoke } from './smoke/ios.js';
 import { runObservabilitySmoke } from './smoke/observability.js';
-import { runChatSmoke, runPairingSmoke } from './smoke/pairing.js';
 import { runProductionBridgeSmoke } from './smoke/production.js';
 import type { MobilePlatform } from './types.js';
 import {
@@ -134,26 +133,6 @@ async function main(args = process.argv.slice(2)): Promise<number> {
     return report.ok ? 0 : 1;
   }
 
-  if (command === 'smoke-pairing') {
-    const report = await runPairingSmoke(config, {
-      baseUrl: requiredEnvironment('MOBILE_AGENT_PAIRING_URL'),
-      code: requiredEnvironment('MOBILE_AGENT_PAIRING_CODE'),
-      platform: readPlatform(args),
-    });
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-    return report.ok && report.sessionDeleted ? 0 : 1;
-  }
-
-  if (command === 'smoke-chat') {
-    const report = await runChatSmoke(config, {
-      baseUrl: requiredEnvironment('MOBILE_AGENT_PAIRING_URL'),
-      code: requiredEnvironment('MOBILE_AGENT_PAIRING_CODE'),
-      platform: readPlatform(args),
-    });
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-    return report.ok && report.sessionDeleted ? 0 : 1;
-  }
-
   if (command === 'smoke-production') {
     const report = await runProductionBridgeSmoke(config);
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -180,8 +159,6 @@ async function main(args = process.argv.slice(2)): Promise<number> {
       '  smoke-observability [--platform ios|android] [--target-id id]',
       '  smoke-android                      Run the non-destructive Radon Android Appium smoke',
       '  smoke-ios                          Run the non-destructive Radon iOS Appium spike',
-      '  smoke-pairing --platform ios|android  Pair, restart, restore, and locally disconnect',
-      '  smoke-chat --platform ios|android  Pair, stream fixture chat, restore, and disconnect',
       '  smoke-production                   Verify state bridge exclusion in production',
       '  prune-artifacts [--confirm]        Preview/apply action-trace retention',
       '',
@@ -191,8 +168,6 @@ async function main(args = process.argv.slice(2)): Promise<number> {
       '  MOBILE_AGENT_ANDROID_SERIAL        Select one online Android device by ADB serial',
       '  MOBILE_AGENT_METRO_URL             Override Metro base URL',
       '  MOBILE_AGENT_OBSERVABILITY_TARGET_ID Select one Wave Hermes target by ID',
-      '  MOBILE_AGENT_PAIRING_URL           Development fixture URL for smoke-pairing',
-      '  MOBILE_AGENT_PAIRING_CODE          One-time code for smoke-pairing',
       '  MOBILE_AGENT_ARTIFACTS_DIR         Override ignored artifact directory',
       '  MOBILE_AGENT_TRACE_MAX_COUNT       Retain at most this many action traces (default 50)',
       '  MOBILE_AGENT_TRACE_MAX_AGE_DAYS    Retain traces for this many days (default 7)',
@@ -247,12 +222,6 @@ function readOption(args: string[], name: string): string | undefined {
   if (index >= 0 && !value) {
     throw new Error(`${name} requires a value`);
   }
-  return value;
-}
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required.`);
   return value;
 }
 

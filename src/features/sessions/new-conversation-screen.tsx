@@ -33,7 +33,7 @@ export function NewConversationScreen() {
   );
 }
 
-// Starting a conversation needs the companion, so the offline landing points
+// Starting a conversation needs the gateway, so the offline landing points
 // at what still works — reading the conversations cached on this phone — and
 // leaves reconnection to a deliberate retry or the automatic re-verification.
 function OfflineNewConversationScreen({ retry }: { retry(): Promise<void> }) {
@@ -66,7 +66,7 @@ function OfflineNewConversationScreen({ retry }: { retry(): Promise<void> }) {
         <Button
           fullWidth
           variant="outline"
-          accessibilityLabel="Retry connecting to the companion"
+          accessibilityLabel="Retry connecting to the gateway"
           loading={retrying}
           testID="offline-retry-connection-button"
           onPress={() => {

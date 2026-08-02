@@ -7,7 +7,7 @@ import {
   shouldPersistWaveQuery,
   type WaveQueryCacheStorage,
 } from '../../src/services/query/wave-query-persister.ts';
-import { WaveBackendError } from '../../src/services/wave/wave-backend-client.ts';
+import { WaveBackendError } from '../../src/services/wave/wave-backend-error.ts';
 
 function memoryStorage(initial?: string) {
   let value = initial;

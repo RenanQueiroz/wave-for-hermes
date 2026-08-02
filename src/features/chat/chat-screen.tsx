@@ -79,7 +79,7 @@ import {
 } from '@/features/sessions/session-query-keys';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
-import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
@@ -168,8 +168,8 @@ function ConnectedChatScreen({
   const [input, setInput] = useState('');
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
   const attachmentState = useChatAttachments();
-  // Speech runs entirely through the gateway; a companion connection has no
-  // equivalent, so these affordances simply do not appear there.
+  // Speech affordances appear only when the gateway advertises the
+  // capability; a failed probe hides them rather than caching a "no".
   const speech = useQuery({
     enabled: Boolean(gatewayClient),
     queryFn: ({ signal }) =>
@@ -238,7 +238,7 @@ function ConnectedChatScreen({
   const { resume } = chat;
 
   // A turn this device started may still be running server-side after a
-  // backgrounding, a navigation away, or an app restart. Ask the companion
+  // backgrounding, a navigation away, or an app restart. Ask the gateway
   // and reattach to it instead of leaving it invisible; the probe is
   // best-effort and silent when it cannot be answered.
   useEffect(() => {
@@ -347,7 +347,7 @@ function ConnectedChatScreen({
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
     chat.state.status === 'cancelling';
-  // Dispatching a turn or starting voice needs a reachable companion and the
+  // Dispatching a turn or starting voice needs a reachable gateway and the
   // conversation's current state. While either is missing the composer stays
   // readable but cannot send; typing is still allowed so drafts survive.
   const composerBlocked = offline || Boolean(timeline.error);

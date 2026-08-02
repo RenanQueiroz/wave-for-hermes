@@ -1,6 +1,6 @@
 /**
  * Cheap validation for a user-supplied OpenAI key: one authenticated list
- * call, no SDK (the OpenAI SDK stays companion-only per AGENTS.md). The
+ * call, no SDK (AGENTS.md keeps the OpenAI SDK out of the app). The
  * outcome never contains key material.
  */
 

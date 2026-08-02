@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,16 +22,6 @@ const forbiddenMobileDependencies = new Set([
   'fastify',
   'openai',
 ]);
-const forbiddenCompanionDependencies = new Set([
-  '@expo/ui',
-  '@rnrepo/expo-config-plugin',
-  'expo',
-  'panelui-native',
-  'react',
-  'react-native',
-  'react-native-webrtc',
-  'uniwind',
-]);
 const forbiddenMobileImports = [
   /(?:from|import\()\s*['"]@wave\/companion(?:\/|['"])/,
   /(?:from|import\()\s*['"]fastify(?:\/|['"])/,
@@ -46,7 +35,6 @@ const forbiddenMobileStrings = [
 ];
 
 const rootPackage = await readJson('package.json');
-const companionPackage = await readJson('companion/package.json');
 const contractsPackage = await readJson('packages/contracts/package.json');
 const claudeGuide = await readFile(join(projectRoot, 'CLAUDE.md'), 'utf8');
 
@@ -54,6 +42,21 @@ if (claudeGuide !== '@AGENTS.md\n') {
   throw new Error(
     'CLAUDE.md must contain exactly @AGENTS.md followed by a newline.',
   );
+}
+
+// The companion workspace retired in stage 5; its reappearance means an
+// accidental resurrection rather than a deliberate one.
+if (await exists(join(projectRoot, 'companion', 'package.json'))) {
+  throw new Error(
+    'The companion workspace was retired; remove companion/package.json.',
+  );
+}
+for (const workspace of rootPackage.workspaces ?? []) {
+  if (workspace.includes('companion')) {
+    throw new Error(
+      'The root manifest must not list the retired companion workspace.',
+    );
+  }
 }
 
 assertNoKeys(
@@ -103,36 +106,6 @@ for (const file of mobileFiles.filter((candidate) =>
   }
 }
 
-const productionTree = JSON.parse(
-  execFileSync(
-    'npm',
-    [
-      'ls',
-      '--workspace',
-      companionPackage.name,
-      '--omit=dev',
-      '--all',
-      '--json',
-    ],
-    {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  ),
-);
-const companionTree =
-  productionTree.dependencies?.[companionPackage.name]?.dependencies ?? {};
-const companionDependencies = collectDependencyNames(companionTree);
-const companionViolations = [...forbiddenCompanionDependencies].filter((name) =>
-  companionDependencies.has(name),
-);
-if (companionViolations.length > 0) {
-  throw new Error(
-    `Companion production tree contains mobile/UI dependencies: ${companionViolations.join(', ')}.`,
-  );
-}
-
 const productionExport = join(
   projectRoot,
   '.mobile-agent',
@@ -162,7 +135,7 @@ if (await exists(productionExport)) {
 }
 
 console.log(
-  `Workspace boundaries verified across ${mobileFiles.length} mobile files and ${companionDependencies.size} companion production dependencies.`,
+  `Workspace boundaries verified across ${mobileFiles.length} mobile files.`,
 );
 
 function assertNoKeys(dependencies, forbidden, label, allowed = new Set()) {
@@ -174,16 +147,6 @@ function assertNoKeys(dependencies, forbidden, label, allowed = new Set()) {
       `${label} contains forbidden packages: ${violations.join(', ')}.`,
     );
   }
-}
-
-function collectDependencyNames(tree, output = new Set()) {
-  for (const [name, value] of Object.entries(tree)) {
-    output.add(name);
-    if (value && typeof value === 'object' && value.dependencies) {
-      collectDependencyNames(value.dependencies, output);
-    }
-  }
-  return output;
 }
 
 async function exists(path) {

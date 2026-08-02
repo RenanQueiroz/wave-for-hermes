@@ -123,20 +123,29 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    (key-shaped literals refused) and `security.md` (user-owned-key model + revocation
    story). The toggle-off fallback to gateway voice was verified live both ways, and a
    log sweep spanning two live Realtime calls confirmed the key appears nowhere in device
-   logs. Remaining before the stage closes — and blocking stage 5 — are the human gates:
+   logs. Remaining are the human gates:
    a spoken ask_hermes round trip (an automated host-audio attempt registered microphone
    level but no model response, so this needs a real voice) and the physical-device audio
-   gates in `webrtc-foundation.md`.
-5. **Retire the companion.** Remove the workspace, contracts that exist only for it, the pairing
-   flow, and the deployment documentation once the app runs fully against the gateway.
+   gates in `webrtc-foundation.md` — these gate calling Realtime production-ready, listed
+   under production voice behavior below.
+5. **Retire the companion — landed (2026-08-02).** The `companion/` workspace, its Dockerfile
+   and admin/fixture tooling, the mobile companion transport (`WaveBackendClient`, the Wave SSE
+   parser, the paired-device credential store), the pairing flow, the operations/scheduled-jobs
+   surface, the companion voice-preview plumbing, and the companion-only contracts (status,
+   diagnostics, pairing, scheduled jobs, voice catalog, and route request envelopes) are
+   removed. The connection provider, connection screen, settings, drawer, and voice route are
+   gateway-only; `WaveChatClient` remains as the reviewed conversation-surface contract with
+   `GatewayClient` as its one implementation. `verify:boundaries` now fails if a companion
+   workspace reappears, and the docs describe the gateway-only architecture. Gateway sign-out
+   is local token deletion and says so.
 
 Contract and dependency-policy amendments in `AGENTS.md` land stage by stage with the code, not
 in advance, so the guide always describes the repository as it is.
 
 ## Now: production voice behavior
 
-These gates apply to Realtime and run as part of stage 4 of the direct-to-gateway migration
-(Realtime with a user-owned key), where the transport they validate gets its new home.
+These gates apply to the user-keyed Realtime mode (stage 4 of the direct-to-gateway
+migration) and remain open before Realtime is called production-ready.
 
 1. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
    when hardware is available.
@@ -146,10 +155,7 @@ These gates apply to Realtime and run as part of stage 4 of the direct-to-gatewa
    physical devices. Simulator validation covers permission denial and recovery, direct access to
    system settings, established-call background teardown, and a clean subsequent call on both
    platforms.
-4. Implement bounded Realtime reconnection. The controller reports a `reconnecting` phase on ICE
-   disconnection but never restarts ICE or re-offers; attempts should be bounded with the shared
-   exponential-jitter policy before the call fails explicitly.
-5. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
+4. Validate release builds and realistic Wi-Fi, cellular, and private-network transitions.
 
 The detailed evidence and acceptance gates live in
 [`webrtc-foundation.md`](./webrtc-foundation.md).
@@ -197,10 +203,6 @@ The detailed evidence and acceptance gates live in
   Security exempts IP literals and `.local` hosts, so the review may conclude no Info.plist
   exception is needed; Android release builds still need an explicit cleartext-network policy for
   the allowed private ranges.
-- Bound the Companion interaction ledger only if the direct-to-gateway migration stalls: the
-  ledger retires with the companion. Deletion cascades with the parent session today, but a
-  long-lived session's finalized voice transcripts and handoff records grow without an age or
-  size limit.
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.

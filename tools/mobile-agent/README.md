@@ -152,8 +152,6 @@ npm run prune:artifacts
 npm run prune:artifacts -- --confirm
 npm run smoke:android
 npm run smoke:ios
-npm run smoke:pairing -- --platform android
-npm run smoke:chat -- --platform android
 npm run smoke:observability -- --platform android
 npm run smoke:production
 npm run check
@@ -161,49 +159,11 @@ npm run mcp
 ```
 
 `smoke:android` and `smoke:ios` create and remove an Appium session on the currently
-selected Radon device without terminating the running app. They use the pairing screen's
-stable `pair-device-button` identifier for a safe validation-only tap, so the smoke remains
-aligned with the current application shell. `smoke:observability` verifies Hermes logs,
+selected Radon device without terminating the running app. They use the sign-in screen's
+stable `gateway-sign-in-button` identifier for a safe validation-only tap, so the smoke
+remains aligned with the current application shell. `smoke:observability` verifies Hermes logs,
 fetch metadata, the development state provider, and platform-native logs without creating
 an Appium session.
-
-`smoke:pairing` is an explicit stateful development check for the in-memory companion
-fixture. Wave must begin disconnected. The check redeems the supplied one-time code,
-confirms a secret-free development-state summary, terminates and relaunches the app to
-verify SecureStore restoration, then clears the fixture credential locally and deletes
-its owned Appium session. Inputs come from the environment, text/action traces are
-disabled, the MCP child process's diagnostic stream is not forwarded, and the report
-contains neither the pairing code nor the device credential:
-
-```sh
-MOBILE_AGENT_METRO_URL=http://127.0.0.1:<radon-port> \
-MOBILE_AGENT_PAIRING_URL=http://10.0.2.2:8787 \
-MOBILE_AGENT_PAIRING_CODE=XXXX-XXXX-XXXX-XXXX \
-npm run smoke:pairing -- --platform android
-```
-
-Use a fresh fixture/code for each platform because a code can be redeemed only once. See
-[`companion/README.md`](../../companion/README.md) for the fixture's trust boundary.
-
-`smoke:chat` uses the same environment variables and one-time-code rule. Pairing now lands directly
-in a newly created conversation. The smoke cancels a deliberately suspended fixture turn and
-proves the composer is reusable,
-sends a completed fixture message, waits for the assistant text and sanitized tool task, confirms
-raw fixture input/output is absent while collapsed, expands and collapses the disclosure through
-its accessibility actions, verifies the inert raw detail text while open, terminates and relaunches
-Wave, opens the drawer, returns to the original conversation by its development-state session ID,
-verifies canonical history restoration, then disconnects from the drawer. It also
-disables action traces for text and lifecycle operations and deletes the owned Appium session. The
-runner prints secret-free progress, clears and verifies every controlled input before submission,
-waits for the fixture's first cancellation delta before tapping Stop, and uses stable iOS
-accessibility IDs for native text assertions:
-
-```sh
-MOBILE_AGENT_METRO_URL=http://127.0.0.1:<radon-port> \
-MOBILE_AGENT_PAIRING_URL=http://10.0.2.2:8787 \
-MOBILE_AGENT_PAIRING_CODE=XXXX-XXXX-XXXX-XXXX \
-npm run smoke:chat -- --platform android
-```
 
 `reload` sends the React Native inspector's supported `Page.reload` command, prints the
 unified action envelope, and exits after Metro accepts it; the long-running MCP collector

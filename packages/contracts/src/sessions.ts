@@ -10,7 +10,6 @@ import { WaveToolDetailSchema } from './tool-details.ts';
 export const WAVE_MAX_IMAGE_ATTACHMENT_BYTES = 4_000_000;
 export const WAVE_MAX_TEXT_ATTACHMENT_CHARS = 128_000;
 export const WAVE_MAX_TURN_ATTACHMENTS = 4;
-export const WAVE_MAX_REQUEST_BODY_BYTES = 6_000_000;
 const WAVE_MAX_IMAGE_DATA_URL_CHARS = 5_400_128;
 const WaveAttachmentNameSchema = z
   .string()
@@ -21,13 +20,6 @@ const WaveAttachmentNameSchema = z
     (value) => !/[\u0000-\u001f\u007f]/.test(value),
     'Attachment names cannot contain control characters.',
   );
-
-export const WaveCompatibilityResponseSchema =
-  WaveResponseMetadataSchema.extend({
-    compatible: z.boolean(),
-    missingEndpoints: z.array(z.string().trim().min(1).max(100)).max(100),
-    missingFeatures: z.array(z.string().trim().min(1).max(100)).max(100),
-  }).strict();
 
 export const WaveSessionSummarySchema = z
   .object({
@@ -47,25 +39,6 @@ export const WaveSessionListResponseSchema = WaveResponseMetadataSchema.extend({
   offset: z.number().int().nonnegative().max(1_000_000),
   sessions: z.array(WaveSessionSummarySchema).max(200),
 }).strict();
-
-export const WaveListSessionsRequestSchema = z
-  .object({
-    limit: z.number().int().min(1).max(200).default(50),
-    offset: z.number().int().nonnegative().max(1_000_000).default(0),
-  })
-  .strict();
-
-export const WaveCreateSessionRequestSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200).optional(),
-  })
-  .strict();
-
-export const WaveUpdateSessionRequestSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200),
-  })
-  .strict();
 
 export const WaveSessionResponseSchema = WaveResponseMetadataSchema.extend({
   session: WaveSessionSummarySchema,
@@ -179,22 +152,10 @@ export const WaveTurnInputSchema = z.union([
     }),
 ]);
 
-export const WaveStartTurnRequestSchema = z
-  .object({
-    input: WaveTurnInputSchema,
-  })
-  .strict();
-
 export const WaveCancelTurnResponseSchema = WaveResponseMetadataSchema.extend({
   status: z.literal('cancellation_requested'),
   turnId: WaveIdentifierSchema,
 }).strict();
-
-export const WaveResumeTurnStreamRequestSchema = z
-  .object({
-    after: z.coerce.number().int().min(-1).max(1_000_000),
-  })
-  .strict();
 
 export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
   activeTurn: z
@@ -210,26 +171,14 @@ export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
 export type WaveActiveTurnResponse = z.infer<
   typeof WaveActiveTurnResponseSchema
 >;
-export type WaveCompatibilityResponse = z.infer<
-  typeof WaveCompatibilityResponseSchema
->;
 export type WaveCancelTurnResponse = z.infer<
   typeof WaveCancelTurnResponseSchema
->;
-export type WaveResumeTurnStreamRequest = z.infer<
-  typeof WaveResumeTurnStreamRequestSchema
 >;
 export type WaveConversationMessage = z.infer<
   typeof WaveConversationMessageSchema
 >;
-export type WaveCreateSessionRequest = z.infer<
-  typeof WaveCreateSessionRequestSchema
->;
 export type WaveDeleteSessionResponse = z.infer<
   typeof WaveDeleteSessionResponseSchema
->;
-export type WaveListSessionsRequest = z.infer<
-  typeof WaveListSessionsRequestSchema
 >;
 export type WaveSessionHistoryResponse = z.infer<
   typeof WaveSessionHistoryResponseSchema
@@ -239,9 +188,5 @@ export type WaveSessionListResponse = z.infer<
 >;
 export type WaveSessionResponse = z.infer<typeof WaveSessionResponseSchema>;
 export type WaveSessionSummary = z.infer<typeof WaveSessionSummarySchema>;
-export type WaveStartTurnRequest = z.infer<typeof WaveStartTurnRequestSchema>;
 export type WaveTurnInput = z.infer<typeof WaveTurnInputSchema>;
 export type WaveTurnInputPart = z.infer<typeof WaveTurnInputPartSchema>;
-export type WaveUpdateSessionRequest = z.infer<
-  typeof WaveUpdateSessionRequestSchema
->;

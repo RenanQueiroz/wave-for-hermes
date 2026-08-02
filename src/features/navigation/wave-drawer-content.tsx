@@ -5,7 +5,6 @@ import type { DrawerContentComponentProps } from 'expo-router/drawer';
 import {
   Alert,
   Button,
-  CalendarIcon,
   Dialog,
   EllipsisIcon,
   Input,
@@ -36,7 +35,7 @@ import {
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
-import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
@@ -62,7 +61,6 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
       connectionId={connection.state.identity.id}
       deviceName={connection.state.identity.label}
       disconnect={connection.disconnect}
-      scheduledJobsAvailable={Boolean(connection.companionClient)}
     />
   );
 }
@@ -74,14 +72,12 @@ function ConnectedWaveDrawerContent({
   deviceName,
   disconnect,
   navigation,
-  scheduledJobsAvailable,
 }: DrawerContentComponentProps & {
   baseUrl: string;
   client: WaveChatClient;
   connectionId: string;
   deviceName: string;
   disconnect(): Promise<boolean>;
-  scheduledJobsAvailable: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
@@ -142,9 +138,7 @@ function ConnectedWaveDrawerContent({
     },
   });
 
-  const navigate = (
-    pathname: '/new' | '/search' | '/operations/jobs' | '/settings',
-  ) => {
+  const navigate = (pathname: '/new' | '/search' | '/settings') => {
     navigation.closeDrawer();
     // Every app screen lives in the one native stack, so drawer entries push
     // (or return to) stack routes rather than switching drawer siblings.
@@ -211,18 +205,6 @@ function ConnectedWaveDrawerContent({
           testID="drawer-search-conversations"
           onPress={() => navigate('/search')}
         />
-        {scheduledJobsAvailable ? (
-          // Scheduled-job status is read through the companion's normalized
-          // contract; a gateway connection has no equivalent surface yet, so
-          // the entry degrades by not appearing rather than bouncing to a
-          // redirect.
-          <DrawerAction
-            icon={<CalendarIcon size={19} />}
-            label="Scheduled jobs"
-            testID="drawer-scheduled-jobs"
-            onPress={() => navigate('/operations/jobs')}
-          />
-        ) : null}
       </View>
 
       {errorMessage ? (

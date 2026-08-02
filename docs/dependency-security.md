@@ -1,10 +1,13 @@
 # Dependency and container security review
 
-This is the current point-in-time review for Wave's Expo application, developer tooling, shared
-contracts, and Companion runtime. Re-run it before the first signed release and whenever the Expo
-SDK, Companion production dependencies, or runtime base-image digest changes.
+This is the current point-in-time review for Wave's Expo application, developer tooling, and
+shared contracts. Re-run it before the first signed release and whenever the Expo SDK or
+production dependencies change.
 
-Reviewed: 2026-07-31
+Reviewed: 2026-07-31. The Companion image review below is retained as the historical record of
+that review; the companion workspace and its container were removed in stage 5 of the
+direct-to-gateway migration (2026-08-02), so the image, its base-image pins, and its scoped
+audit are no longer part of the release process.
 
 ## JavaScript dependency graph
 
@@ -22,24 +25,22 @@ The moderate production-labeled findings roll up through Expo's CLI/config packa
 `@expo/config-plugins -> xcode@3.0.1 -> uuid@7.0.3`. The
 [uuid advisory](https://github.com/advisories/GHSA-w5hq-g745-h8pq) affects caller-supplied output
 buffers in `v3()`, `v5()`, and `v6()`; it explicitly excludes `v4()`. The pinned `xcode` package
-calls only `uuid.v4()` without a caller buffer, and this build-time graph is absent from both native
-production bundles and the Companion runtime. Forcing `uuid@11.1.1` would cross the major range
+calls only `uuid.v4()` without a caller buffer, and this build-time graph is absent from native
+production bundles. Forcing `uuid@11.1.1` would cross the major range
 supported by Expo's pinned `xcode` package, so Wave will take Expo's supported transitive update
 instead of adding an unvalidated override.
 
-The production audit scoped to `@wave/companion` and `@wave/contracts` reports zero findings:
+The production audit scoped to `@wave/contracts` reports zero findings:
 
 ```bash
-npm audit --omit=dev \
-  --workspace @wave/companion \
-  --workspace @wave/contracts
+npm audit --omit=dev --workspace @wave/contracts
 ```
 
 `npx expo install --check`, both native production export scans, and the normal repository gates
 remain required. Do not use `npm audit fix --force`: its proposed Expo 46 and splash-screen 55
 changes are incompatible with the SDK 57 source-of-truth graph.
 
-## Companion image
+## Companion image (historical — removed in stage 5)
 
 The prior digest-pinned Debian slim runtime measured 91,033,033 bytes. A checksum-verified Trivy
 0.70.0 scan found 22 high/critical Debian findings without available Debian fixes plus five
@@ -62,5 +63,4 @@ must be repeated after either pin changes.
 - Take Expo's supported `xcode`/`uuid` update when it enters the SDK 57 line or during a deliberate
   SDK upgrade.
 - Recheck npm advisory metadata for the fixed `brace-expansion` 1.x backport.
-- Repeat the scoped production audit and checksum-verified image scan immediately before signed
-  store builds.
+- Repeat the scoped production audit immediately before signed store builds.

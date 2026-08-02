@@ -1,16 +1,16 @@
 /**
- * Realtime call setup directly against OpenAI with the user-owned key —
- * the stage-4 replacement for the companion's call routes. Implements the
- * same `RealtimeBackend` surface the controller already consumes: one SDP
- * exchange to start (`POST /v1/realtime/calls`, exactly the call the
- * companion made server-side), a hangup to end, and the ask_hermes sideband
- * wired to the gateway connection through the ported safety rules.
+ * Realtime call setup directly against OpenAI with the user-owned key.
+ * Implements the `RealtimeBackend` surface the controller consumes: one SDP
+ * exchange to start (`POST /v1/realtime/calls`), a hangup to end, and the
+ * ask_hermes sideband wired to the gateway connection through the trusted
+ * dispatch rules in `AskHermesOrchestrator`.
  *
  * The key travels only in Authorization headers toward api.openai.com and is
  * never logged or included in errors.
  */
 import {
   WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH,
+  type WaveAskHermesToolResult,
   type WaveEndRealtimeCallResponse,
   type WaveRealtimeVoiceId,
   type WaveStartRealtimeCallResponse,
@@ -23,7 +23,6 @@ import {
 } from '@/features/realtime/ask-hermes-orchestrator';
 import { OpenAiRealtimeSideband } from './openai-realtime-sideband';
 import type { RealtimeBackend } from '@/features/realtime/realtime-controller';
-import type { WaveAskHermesToolResult } from '@wave/contracts';
 
 const OPENAI_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 const OPENAI_SIDEBAND_URL = 'wss://api.openai.com/v1/realtime';
@@ -33,7 +32,6 @@ const SIDEBAND_CONNECT_TIMEOUT_MS = 15_000;
 const MAX_SDP_ANSWER_CHARS = 48_000;
 /**
  * Client-side cap on a call's lifetime; the controller auto-stops at expiry.
- * The companion enforced the same bound server-side.
  */
 const CALL_LIFETIME_MS = 30 * 60_000;
 

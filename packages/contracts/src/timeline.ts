@@ -8,7 +8,6 @@ import {
 import { WaveAskHermesToolResultSchema } from './realtime.ts';
 import { WaveConversationMessageSchema } from './sessions.ts';
 
-export const WAVE_TIMELINE_DEFAULT_LIMIT = 100;
 export const WAVE_TIMELINE_MAX_LIMIT = 200;
 
 export const WaveTimelineMessageEntrySchema = z
@@ -69,18 +68,6 @@ export const WaveTimelineEntrySchema = z.discriminatedUnion('type', [
   WaveTimelineHandoffEntrySchema,
 ]);
 
-export const WaveTimelineRequestSchema = z
-  .object({
-    before: WaveIdentifierSchema.optional(),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(WAVE_TIMELINE_MAX_LIMIT)
-      .default(WAVE_TIMELINE_DEFAULT_LIMIT),
-  })
-  .strict();
-
 export const WaveTimelineResponseSchema = WaveResponseMetadataSchema.extend({
   entries: z.array(WaveTimelineEntrySchema).max(WAVE_TIMELINE_MAX_LIMIT),
   hasMore: z.boolean(),
@@ -96,5 +83,4 @@ export type WaveTimelineHandoffEntry = z.infer<
 export type WaveTimelineMessageEntry = z.infer<
   typeof WaveTimelineMessageEntrySchema
 >;
-export type WaveTimelineRequest = z.infer<typeof WaveTimelineRequestSchema>;
 export type WaveTimelineResponse = z.infer<typeof WaveTimelineResponseSchema>;

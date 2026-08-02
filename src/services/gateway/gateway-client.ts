@@ -42,8 +42,8 @@ import {
   applyDefaultScheme,
   isPrivateLanPlainHttpHost,
   isTrustedPlainHttpHost,
-} from '../wave/companion-url-policy.ts';
-import { WaveBackendError } from '../wave/wave-backend-client.ts';
+} from '../wave/base-url-policy.ts';
+import { WaveBackendError } from '../wave/wave-backend-error.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const TURN_IDLE_TIMEOUT_MS = 120_000;

@@ -1,10 +1,8 @@
 /**
- * Voice selection for user-keyed Realtime (stage 4). The list is the
- * client-side contract enum — no companion catalog, no server round trip.
- * Previews are deliberately dropped: the companion minted sample clips
- * server-side, and re-creating that would cost a Realtime call per listen
- * on the user's key. The saved preference reuses the existing per-device
- * store, so nothing companion-side changes until stage 5 removes it.
+ * Voice selection for user-keyed Realtime. The list is the client-side
+ * contract enum — no server catalog, no round trip. Previews are
+ * deliberately absent: minting a sample clip would cost a Realtime call per
+ * listen on the user's key. The saved preference is a per-device store.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {

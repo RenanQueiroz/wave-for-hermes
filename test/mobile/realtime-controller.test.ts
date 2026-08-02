@@ -186,7 +186,7 @@ test('keeps failed cleanup explicit and retries it only after another stop reque
   assert.equal(controller.getState().phase, 'idle');
 });
 
-test('a transport failure closes native resources and the companion call', async () => {
+test('a transport failure closes native resources and the backend call', async () => {
   const backend = new FakeRealtimeBackend();
   const transport = new FakeRealtimeTransport();
   const controller = new WaveRealtimeController({

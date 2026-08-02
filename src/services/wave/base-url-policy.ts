@@ -1,5 +1,5 @@
 /**
- * Scheme policy for the Wave Companion base URL.
+ * Scheme policy for the Hermes gateway base URL.
  *
  * Plain HTTP splits into two trust tiers:
  *

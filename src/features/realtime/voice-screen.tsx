@@ -31,36 +31,6 @@ import { openAiKeyStore } from '@/services/realtime/openai-key-store';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
 import type { WaveTimelineResponse } from '@wave/contracts';
 
-interface VoiceScreenProps {
-  sessionId: string;
-}
-
-export function VoiceScreen({ sessionId }: VoiceScreenProps) {
-  const { companionClient, state: connection } = useWaveConnection();
-
-  // Connected only: the voice screen auto-starts a Realtime call on focus,
-  // which has nothing to offer while the backend is unreachable. Chat
-  // degrades to cached reading; voice does not degrade.
-  if (connection.phase !== 'connected' || !companionClient || !sessionId) {
-    return <Redirect href={sessionId ? '/' : '/new'} />;
-  }
-  return (
-    <ConnectedVoiceScreen
-      backend={companionClient}
-      baseUrl={connection.identity.baseUrl}
-      connectionId={connection.identity.id}
-      loadTimeline={(before, signal) =>
-        companionClient.getSessionTimeline(
-          sessionId,
-          { ...(before ? { before } : {}), limit: 100 },
-          signal,
-        )
-      }
-      sessionId={sessionId}
-    />
-  );
-}
-
 /**
  * Realtime on a gateway connection with the user-owned OpenAI key (stage 4).
  * The key is read from secure storage into memory only; the backend binds

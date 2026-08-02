@@ -10,10 +10,9 @@ reasoning layer; never require the user to address them as separate entities.
 Keep the product focused:
 
 - Build conversation and live-voice experiences.
-- Let the paired user browse, search, rename, delete, and continue every top-level conversation
-  exposed by their Hermes server.
-- Focused read-only operational status, such as scheduled-job state, may be shown through an
-  explicit normalized Wave contract. Do not add generic proxying or operational mutations.
+- Let the signed-in user browse, search, rename, delete, and continue every top-level
+  conversation exposed by their Hermes server.
+- Do not add generic proxying, operational status surfaces, or operational mutations.
 - Do not add Hermes configuration, provider/model management, skill administration, or server
   administration.
 - Treat all external tool arguments and responses as untrusted data.
@@ -31,12 +30,10 @@ Keep the product focused:
 
 If a requested change conflicts with this product contract, stop and raise the conflict.
 
-A direct-to-gateway migration is decided (2026-08-01, recorded in `docs/architecture.md` and
-staged in `docs/roadmap.md`): the companion will be retired, gateway OAuth replaces pairing,
-Hermes's server-side voice becomes the default voice mode, and Realtime becomes an opt-in mode
-whose OpenAI key the user supplies and the app holds in platform secure storage. Until a stage
-lands, the contract above still governs the code as it exists; amend the affected clauses in the
-same change that lands each stage.
+The direct-to-gateway migration (decided 2026-08-01, recorded in `docs/architecture.md` and
+staged in `docs/roadmap.md`) is complete: the app talks to the Hermes gateway directly, gateway
+sign-in replaced pairing, Hermes's server-side voice is the default voice mode, Realtime is an
+opt-in mode keyed by the user's own OpenAI key, and the Wave Companion is retired (stage 5).
 
 ## Expo 57 is the source of truth
 
@@ -56,29 +53,27 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 
 - Use Node.js 24 LTS and npm. The repository root remains the Expo application and npm workspace
   root.
-- The Wave Companion belongs in `companion/`; runtime-neutral Wave protocol schemas belong in
-  `packages/contracts/`. Do not move the Expo app into another workspace.
+- Runtime-neutral Wave protocol schemas belong in `packages/contracts/`. Do not move the Expo app
+  into another workspace.
 - Keep `packages/contracts` free of Node.js, React Native, Expo, OpenAI SDK, Fastify, and UI
-  dependencies so both the companion and Metro can consume it.
-- Use the official OpenAI JavaScript SDK only in the companion. Do not import it into the React
-  Native application.
-- Keep server-only configuration, entrypoints, and Hermes/OpenAI protocol adapters under
-  `companion/`. Never use `EXPO_PUBLIC_*` for companion credentials.
-- Keep the Companion build stages on a digest-pinned official Node 24 image and its runtime stage
-  on the reviewed digest-pinned official Node 24 Alpine image. The runtime needs Node only; do not
-  restore npm, npx, corepack, or their dependency trees.
+  dependencies (zod is its only runtime dependency) so Metro and node tests can both consume it.
+- Do not import the official OpenAI JavaScript SDK into the React Native application; Realtime
+  uses `expo/fetch` and the platform WebSocket directly.
+- The Wave Companion is retired (stage 5). Do not recreate a `companion/` workspace, server-side
+  Wave backend, or `EXPO_PUBLIC_*` credential plumbing; `npm run verify:boundaries` fails if the
+  companion workspace reappears.
 - Run `npm run verify:boundaries` after changing workspace manifests, shared contracts, backend
   imports, or production bundling.
-- Homelab owns deployment manifests, private networking, pinned production images, Nginx routing,
-  and secrets. This repository owns the companion implementation and its API contract.
+- Homelab owns the Hermes gateway deployment, private networking, routing, and secrets. This
+  repository owns the mobile client only.
 
 ## Dependency policy
 
 - Do not add: the Vercel `ai` SDK or `@ai-sdk/*`, Axios or another HTTP client, a second
   SSE/EventSource implementation, Redux/Zustand/MobX/XState, AsyncStorage, LiveKit, or Expo Router
   `+api.ts` server routes. State lives in TanStack Query plus focused controllers/reducers, and
-  streaming stays on `expo/fetch` with the Wave SSE parser for the companion transport, and on
-  the platform WebSocket with the gateway's JSON-RPC framing for the direct gateway transport.
+  streaming stays on the platform WebSocket with the gateway's JSON-RPC framing, normalized
+  behind `src/services/gateway`.
 - Add analytics or crash reporting only after consent and retention are deliberately designed.
 - Install optional PanelUI peer dependencies only when an adopted component needs them.
 - PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
@@ -141,49 +136,37 @@ documentation before implementing UI.
 ## Realtime and Hermes boundaries
 
 - Mobile feature and UI code depends on normalized Wave contracts and typed clients
-  (`WaveChatClient`, `GatewayClient`, `WaveBackendClient`), never on Hermes protocol types.
-- The Hermes API key remains server-side (companion or gateway). On a companion connection the
-  standard OpenAI key also stays in the companion. On a gateway connection, Realtime uses the
-  user-owned OpenAI key from Settings (stage 4): secure storage only, presence-not-value in the
-  query cache, requests only to `api.openai.com`, ask_hermes bound to the initiating conversation
-  through trusted call state with the rules in
+  (`WaveChatClient`, `GatewayClient`), never on Hermes protocol types. Gateway protocol shapes
+  stop at `src/services/gateway`: normalize them into Wave contracts there.
+- The Hermes API key lives server-side with the gateway and never reaches the app. Realtime uses
+  the user-owned OpenAI key from Settings (stage 4): secure storage only, presence-not-value in
+  the query cache, requests only to `api.openai.com`, ask_hermes bound to the initiating
+  conversation through trusted call state with the rules in
   `src/features/realtime/ask-hermes-orchestrator.ts` enforced client-side.
-- A connected Disconnect action must revoke the calling device through the Companion before
-  clearing its local credential and must end that device's admitted text and Realtime work.
-  Local-only forgetting is an explicit recovery action for an unreachable or incompatible
-  Gateway; never present it as confirmed server revocation.
+- Gateway session tokens are opaque device-only values, rotated from every response and never
+  logged. The gateway cannot revoke them, so Disconnect is local deletion of the stored tokens;
+  present it that way, and note that the gateway invalidates outstanding tokens when its token
+  secret rotates.
 - Keep transport, authentication, and tool schemas behind typed boundaries; screens should not
   construct raw protocol messages.
-- Raw tool input/output shown to the paired user must cross only as bounded Wave-owned detail
-  fields with explicit truncation. Never expose Hermes/OpenAI call IDs or run IDs, render tool
-  details as Markdown, or execute content-derived behavior.
-- Use TanStack Query for finite companion state and a focused controller/reducer for active
-  streams. Mobile screens consume normalized state and never parse SSE directly.
+- Raw tool input/output shown to the user must cross only as bounded Wave-owned detail fields
+  with explicit truncation. Never expose Hermes/OpenAI call IDs or run IDs, render tool details
+  as Markdown, or execute content-derived behavior.
+- Use TanStack Query for finite backend state and a focused controller/reducer for active
+  streams. Mobile screens consume normalized state and never parse raw stream frames directly.
 - Finite retryable reads may retry at most twice with the shared bounded exponential-jitter policy.
   Mutations and active streams must not retry automatically after an ambiguous failure.
   Reattaching to an already-dispatched turn stream by turn ID and sequence is a read of the same
   execution, not a mutation retry; the turn submission itself is never re-sent automatically.
-- Use Expo SDK 57's `expo/fetch` for response streaming over HTTP. Keep stream framing, ordering,
-  timeout, cancellation, and size limits in `WaveBackendClient` and its service helpers, and the
-  equivalent concerns for the gateway in `src/services/gateway`.
-- Hermes HTTP, SSE, capability, and error normalization belongs in the companion's server-only
-  adapter under `companion/src/hermes`; do not import it into mobile feature or UI code.
-- Two production transports coexist only for the direct-to-gateway migration: the companion
-  client and `src/services/gateway`. Conversation screens depend on the backend-neutral
-  `WaveChatClient` and the connection's `identity`, never on a concrete client; surfaces needing
-  companion-only capabilities ask for `companionClient` and degrade when it is absent. Collapse
-  back to one transport when the companion is removed.
-- Gateway protocol shapes stop at `src/services/gateway`: normalize them into Wave contracts
-  there. Gateway session tokens are opaque device-only values, rotated from every response and
-  never logged; the gateway cannot revoke them, so sign-out is local deletion.
+- Keep stream framing, ordering, timeout, cancellation, and size limits inside
+  `src/services/gateway`; HTTP reads use Expo SDK 57's `expo/fetch`.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
 - Wave does not add a separate user-approval prompt before `ask_hermes`. Dispatch it automatically
-  only after strict schema validation, active-device authorization, trusted session binding, and
-  rate/concurrency checks;
+  only after strict schema validation, trusted session binding, and rate/concurrency checks;
   Hermes's own tool safety policy remains authoritative.
-- Bind the active Hermes session to trusted companion call state. Do not accept a model-controlled
-  Hermes session ID in `ask_hermes` arguments.
+- Bind the active Hermes session to trusted call state owned by the app. Do not accept a
+  model-controlled Hermes session ID in `ask_hermes` arguments.
 - Treat Hermes work as background work relative to the live voice conversation. Barge-in interrupts
   Realtime playback, not the active Hermes run. Serialize and bound additional `ask_hermes` calls
   for the trusted session, and deliver completed results only when no user speech or default
@@ -192,25 +175,24 @@ documentation before implementing UI.
   Distinct tool-call IDs for that instruction must share one Hermes execution and each receive the
   same structured result; model retries must not duplicate work, while a later user turn may
   deliberately repeat the request.
-- Persist only finalized live-voice user/Wave transcripts and normalized handoff lifecycle data in
-  the Companion interaction ledger. Store no raw audio, partial transcripts, provider identifiers,
-  or hidden reasoning. Hermes remains canonical for its own turns.
-- Build mobile conversation history from the paginated unified timeline, not by joining text in the
-  client. Correlate handoffs to canonical Hermes messages through server-internal stable metadata,
-  and refresh that timeline before returning from live voice.
+- Realtime transcripts are ephemeral: store no raw audio, no partial or final transcripts, no
+  provider identifiers, and no hidden reasoning. Work Wave hands to Hermes through `ask_hermes`
+  lands as ordinary turns in the bound session, and Hermes remains canonical for its own turns.
+- Build mobile conversation history from the paginated unified timeline, not by joining text in
+  the client, and refresh that timeline before returning from live voice.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Hermes can pause a running turn to ask the user something. Render approval and clarify
   prompts inline in the turn they belong to, answer them on the socket bound to that turn's
   live session, and clear the prompt as soon as anything proves it settled — including an
   answer from another client or a server-side expiry. Never collect secrets or passwords on
   the phone: decline `secret`/`sudo` requests with copy that says why.
-- Device credentials authorize the paired user to the Wave Gateway account. They do not create
-  per-device copies or allowlists of Hermes sessions. Session IDs must still be validated and
-  resolved by Hermes, and active turn/call conflicts must be enforced before destructive changes.
-- Keep conversation listing paginated. Rename and delete through typed Wave lifecycle routes;
-  deleting a session with an active turn or Realtime call must fail explicitly — and where a
-  backend does not enforce that itself, the client does, using the backend's own liveness
-  signal rather than local state alone.
+- Gateway sign-in authorizes the user's Hermes account; it does not create per-device copies or
+  allowlists of Hermes sessions. Session IDs must still be validated and resolved by Hermes, and
+  active turn/call conflicts must be enforced before destructive changes.
+- Keep conversation listing paginated. Rename and delete through the typed client; deleting a
+  session with an active turn or Realtime call must fail explicitly — and where the backend does
+  not enforce that itself, the client does, using the backend's own liveness signal rather than
+  local state alone.
 - Turn attachments use strict Wave parts. Mobile may send up to four bounded inline images or
   bounded text-file contents with a non-empty message. Reject unsupported binary documents before
   dispatch and never expose a generic Hermes upload or filesystem endpoint.
@@ -247,9 +229,9 @@ documentation before implementing UI.
 - WebRTC owns the live-call audio session for full-duplex capture and playback. Never start an
   `expo-audio` recorder — for metering or anything else — while a Realtime call can be active, and
   add real input levels for a call only through data WebRTC itself exposes safely. `expo-audio`
-  owns the microphone for the modes WebRTC is not in: gateway voice mode, composer dictation, and
-  the user-invoked Settings voice previews. Those and a Realtime call are mutually exclusive; do
-  not create a surface where both can hold the audio session at once.
+  owns the microphone for the modes WebRTC is not in: gateway voice mode and composer dictation.
+  Those and a Realtime call are mutually exclusive; do not create a surface where both can hold
+  the audio session at once.
 - Gateway voice mode is deliberately half-duplex. `expo-audio` exposes no speaker-routing override,
   so an open recorder forces iOS playback to the earpiece: close the recorder before speaking and
   offer an explicit interrupt control rather than acoustic barge-in.
@@ -278,10 +260,9 @@ npx expo install --check
 npm run mobile:smoke:production
 ```
 
-Dependency review must separate mobile build tooling from shipped app code and the selected
-Companion workspaces. Do not run an incompatible `npm audit fix --force` through Expo's
-SDK-aligned graph. Re-run the scoped production audit and checksum-verified container scan before a
-signed release or after changing the runtime base-image pin.
+Dependency review must separate mobile build tooling from shipped app code. Do not run an
+incompatible `npm audit fix --force` through Expo's SDK-aligned graph. Re-run the scoped
+production audit before a signed release.
 
 For runtime work, also exercise the affected flow on every changed native platform. The mobile
 automation tooling is documented in `tools/mobile-agent/README.md`; keep its server, CLI, and MCP

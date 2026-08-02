@@ -10,7 +10,7 @@ import {
   type ToolTextResult,
 } from '../mcp/client.js';
 
-const SAFE_CONTROL_ID = 'pair-device-button';
+const SAFE_CONTROL_ID = 'gateway-sign-in-button';
 
 export interface AndroidSmokeReport {
   ok: boolean;

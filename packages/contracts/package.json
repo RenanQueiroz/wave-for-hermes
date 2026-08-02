@@ -1,7 +1,7 @@
 {
   "name": "@wave/contracts",
   "version": "0.1.0",
-  "description": "Runtime-neutral protocol contracts shared by Wave mobile and the Wave Companion",
+  "description": "Runtime-neutral normalized protocol contracts for the Wave mobile client",
   "private": true,
   "type": "module",
   "exports": {

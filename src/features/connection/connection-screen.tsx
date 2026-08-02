@@ -1,4 +1,3 @@
-import * as Device from 'expo-device';
 import { Redirect } from 'expo-router';
 import {
   Alert,
@@ -6,22 +5,15 @@ import {
   Card,
   Input,
   LockIcon,
-  ShareNodesIcon,
   Typography,
 } from 'panelui-native';
-import { useMemo, useState } from 'react';
-import { Share, View } from 'react-native';
+import { useState } from 'react';
+import { View } from 'react-native';
 
-import {
-  COMPANION_SETUP_PROMPT,
-  COMPANION_SETUP_PROMPT_SHARE_TITLE,
-} from './companion-setup-prompt';
 import { useWaveConnection } from './connection-provider';
 import { KeyboardAwareScrollView } from '@/components/keyboard-aware-scroll-view';
 
-const PAIRING_CODE_LENGTH = 16;
-type ConnectionField =
-  'baseUrl' | 'deviceName' | 'pairingCode' | 'password' | 'username';
+type ConnectionField = 'baseUrl' | 'password' | 'username';
 
 interface FieldValidationError {
   field: ConnectionField;
@@ -29,29 +21,20 @@ interface FieldValidationError {
 }
 
 export function ConnectionScreen() {
-  const { forget, pair, retry, signIn, state } = useWaveConnection();
-  // Signing in to a Hermes gateway is the primary path; pairing with a Wave
-  // Companion is kept for devices that have not migrated (see the
-  // direct-to-gateway migration in docs/roadmap.md).
-  const [mode, setMode] = useState<'gateway' | 'companion'>('gateway');
+  const { forget, retry, signIn, state } = useWaveConnection();
   const [baseUrl, setBaseUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [deviceName, setDeviceName] = useState(
-    () => Device.deviceName ?? Device.modelName ?? 'Wave mobile',
-  );
-  const [pairingCode, setPairingCode] = useState('');
   const [validationError, setValidationError] =
     useState<FieldValidationError>();
-  const code = useMemo(() => pairingCode.replace(/-/g, ''), [pairingCode]);
 
   if (state.phase === 'connected') {
     return <Redirect href="/new" />;
   }
 
   const savedConnectionError =
-    state.phase === 'error' && state.summary ? state : undefined;
-  const pairing = state.phase === 'pairing';
+    state.phase === 'error' && state.identity ? state : undefined;
+  const signingIn = state.phase === 'signing-in';
 
   const submitSignIn = () => {
     const trimmedUrl = baseUrl.trim();
@@ -86,41 +69,9 @@ export function ConnectionScreen() {
     });
   };
 
-  const submit = () => {
-    const trimmedUrl = baseUrl.trim();
-    const trimmedName = deviceName.trim();
-    if (!trimmedUrl) {
-      setValidationError({
-        field: 'baseUrl',
-        message: 'Enter the private URL for your Wave Companion.',
-      });
-      return;
-    }
-    if (!trimmedName) {
-      setValidationError({
-        field: 'deviceName',
-        message: 'Name this device so you can revoke it later.',
-      });
-      return;
-    }
-    if (code.length !== PAIRING_CODE_LENGTH) {
-      setValidationError({
-        field: 'pairingCode',
-        message: 'Enter the complete 16-character pairing code.',
-      });
-      return;
-    }
-    setValidationError(undefined);
-    void pair({
-      baseUrl: trimmedUrl,
-      code,
-      deviceName: trimmedName,
-    });
-  };
-
   return (
     // Keyboard-aware: scrolls the focused field clear of the keyboard, which
-    // matters for the lower fields of both sign-in forms.
+    // matters for the lower fields of the sign-in form.
     <KeyboardAwareScrollView
       bottomOffset={24}
       className="flex-1 bg-background"
@@ -140,7 +91,7 @@ export function ConnectionScreen() {
           <Card.Header>
             <Card.Title>Saved connection needs attention</Card.Title>
             <Card.Description selectable>
-              {savedConnectionError.summary?.baseUrl}
+              {savedConnectionError.identity?.baseUrl}
             </Card.Description>
           </Card.Header>
           <Card.Content className="gap-4">
@@ -149,9 +100,9 @@ export function ConnectionScreen() {
               destructive={!savedConnectionError.error.retryable}
             />
             <Typography.Paragraph muted type="body-sm">
-              If the Gateway cannot be reached, forgetting removes this
-              credential from the phone only. Revoke the device from the Gateway
-              operator tools if it may still be active.
+              Signing out removes this device&apos;s session tokens from the
+              phone. The gateway invalidates them the next time its token secret
+              rotates.
             </Typography.Paragraph>
           </Card.Content>
           <Card.Footer className="flex-col">
@@ -167,14 +118,14 @@ export function ConnectionScreen() {
             <Button
               fullWidth
               variant="outline"
-              accessibilityLabel="Forget saved Wave device locally"
+              accessibilityLabel="Sign out of the saved gateway"
               testID="connection-disconnect-button"
               onPress={() => void forget()}>
-              Forget this device locally
+              Sign out on this device
             </Button>
           </Card.Footer>
         </Card>
-      ) : mode === 'gateway' ? (
+      ) : (
         <Card>
           <Card.Header>
             <Card.Title>Sign in to Hermes</Card.Title>
@@ -193,7 +144,7 @@ export function ConnectionScreen() {
               autoCapitalize="none"
               autoComplete="url"
               autoCorrect={false}
-              disabled={pairing}
+              disabled={signingIn}
               errorMessage={
                 validationError?.field === 'baseUrl'
                   ? validationError.message
@@ -217,7 +168,7 @@ export function ConnectionScreen() {
               autoCapitalize="none"
               autoComplete="username"
               autoCorrect={false}
-              disabled={pairing}
+              disabled={signingIn}
               errorMessage={
                 validationError?.field === 'username'
                   ? validationError.message
@@ -245,7 +196,7 @@ export function ConnectionScreen() {
               autoCapitalize="none"
               autoComplete="current-password"
               autoCorrect={false}
-              disabled={pairing}
+              disabled={signingIn}
               errorMessage={
                 validationError?.field === 'password'
                   ? validationError.message
@@ -270,134 +221,11 @@ export function ConnectionScreen() {
             <Button
               fullWidth
               accessibilityLabel="Sign in to Hermes"
-              loading={pairing}
+              loading={signingIn}
               startContent={<LockIcon size={18} />}
               testID="gateway-sign-in-button"
               onPress={submitSignIn}>
-              {pairing ? 'Signing in…' : 'Sign in'}
-            </Button>
-            <Button
-              fullWidth
-              variant="ghost"
-              accessibilityLabel="Pair with a Wave Companion instead"
-              disabled={pairing}
-              testID="use-companion-pairing-button"
-              onPress={() => {
-                setValidationError(undefined);
-                setMode('companion');
-              }}>
-              Use a Wave Companion instead
-            </Button>
-          </Card.Footer>
-        </Card>
-      ) : (
-        <Card>
-          <Card.Header>
-            <Card.Title>Connect a device</Card.Title>
-            <Card.Description>
-              Generate a one-time code on the companion, then enter it here.
-            </Card.Description>
-          </Card.Header>
-          <Card.Content className="gap-4">
-            {state.phase === 'error' ? (
-              <ConnectionAlert
-                message={state.error.message}
-                destructive={!state.error.retryable}
-              />
-            ) : null}
-            <Input
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect={false}
-              disabled={pairing}
-              errorMessage={
-                validationError?.field === 'baseUrl'
-                  ? validationError.message
-                  : undefined
-              }
-              keyboardType="url"
-              label="Companion URL"
-              placeholder="https://wave.example.internal"
-              testID="companion-url-input"
-              value={baseUrl}
-              variant="filled"
-              onChangeText={(value) => {
-                setBaseUrl(value);
-                clearFieldError(validationError, 'baseUrl', setValidationError);
-              }}
-            />
-            <Input
-              autoCorrect={false}
-              disabled={pairing}
-              errorMessage={
-                validationError?.field === 'deviceName'
-                  ? validationError.message
-                  : undefined
-              }
-              label="Device name"
-              testID="device-name-input"
-              value={deviceName}
-              variant="filled"
-              onChangeText={(value) => {
-                setDeviceName(value);
-                clearFieldError(
-                  validationError,
-                  'deviceName',
-                  setValidationError,
-                );
-              }}
-            />
-            <Input
-              autoCapitalize="characters"
-              autoComplete="one-time-code"
-              autoCorrect={false}
-              disabled={pairing}
-              errorMessage={
-                validationError?.field === 'pairingCode'
-                  ? validationError.message
-                  : undefined
-              }
-              // Uppercasing happens in formatPairingCode, so the
-              // suggestion-free visible-password class costs nothing here.
-              keyboardType="visible-password"
-              label="Pairing code"
-              maxLength={19}
-              placeholder="XXXX-XXXX-XXXX-XXXX"
-              testID="pairing-code-input"
-              value={pairingCode}
-              variant="filled"
-              onChangeText={(value) => {
-                setPairingCode(formatPairingCode(value));
-                clearFieldError(
-                  validationError,
-                  'pairingCode',
-                  setValidationError,
-                );
-              }}
-              onSubmitEditing={submit}
-            />
-          </Card.Content>
-          <Card.Footer className="flex-col">
-            <Button
-              fullWidth
-              accessibilityLabel="Pair this device with Wave Companion"
-              loading={pairing}
-              startContent={<LockIcon size={18} />}
-              testID="pair-device-button"
-              onPress={submit}>
-              {pairing ? 'Pairing…' : 'Pair device'}
-            </Button>
-            <Button
-              fullWidth
-              variant="ghost"
-              accessibilityLabel="Sign in to a Hermes gateway instead"
-              disabled={pairing}
-              testID="use-gateway-sign-in-button"
-              onPress={() => {
-                setValidationError(undefined);
-                setMode('gateway');
-              }}>
-              Sign in to Hermes instead
+              {signingIn ? 'Signing in…' : 'Sign in'}
             </Button>
           </Card.Footer>
         </Card>
@@ -406,35 +234,14 @@ export function ConnectionScreen() {
       <Alert variant="info">
         <Alert.Indicator />
         <Alert.Content>
-          <Alert.Title>Upstream keys stay on the companion</Alert.Title>
+          <Alert.Title>Credentials stay on this phone</Alert.Title>
           <Alert.Description>
-            Wave stores only this device&apos;s revocable credential in the
-            platform secure store.
+            Wave keeps only rotating gateway session tokens in the platform
+            secure store. Your password is sent to the gateway once and never
+            saved.
           </Alert.Description>
         </Alert.Content>
       </Alert>
-
-      <View className="gap-2">
-        <Button
-          fullWidth
-          variant="outline"
-          accessibilityLabel="Share the companion setup prompt"
-          startContent={<ShareNodesIcon size={18} />}
-          testID="share-setup-prompt-button"
-          onPress={() =>
-            void Share.share({
-              message: COMPANION_SETUP_PROMPT,
-              title: COMPANION_SETUP_PROMPT_SHARE_TITLE,
-            })
-          }>
-          Share setup prompt
-        </Button>
-        <Typography.Paragraph type="body-xs" muted align="center">
-          No companion yet? Send this prompt to the coding agent on the machine
-          that runs Hermes and it will set everything up, then reply with the
-          URL and pairing code to enter here.
-        </Typography.Paragraph>
-      </View>
 
       <Typography.Paragraph type="body-xs" muted align="center">
         A bare address defaults to HTTPS. Plain HTTP is allowed for localhost
@@ -467,14 +274,6 @@ function ConnectionAlert({
       </Alert.Content>
     </Alert>
   );
-}
-
-function formatPairingCode(value: string) {
-  const normalized = value
-    .toUpperCase()
-    .replace(/[^A-Z2-9]/g, '')
-    .slice(0, PAIRING_CODE_LENGTH);
-  return normalized.match(/.{1,4}/g)?.join('-') ?? normalized;
 }
 
 function clearFieldError(

@@ -10,7 +10,7 @@ import {
   WAVE_QUERY_CACHE_BUSTER,
   WAVE_QUERY_CACHE_MAX_AGE_MS,
 } from '@/services/query/wave-query-persister';
-import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-error';
 
 export function WaveQueryProvider({ children }: PropsWithChildren) {
   const [client] = useState(

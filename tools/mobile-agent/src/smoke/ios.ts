@@ -11,7 +11,7 @@ import {
 } from '../mcp/client.js';
 import { ensureSimulatorWda } from '../wda.js';
 
-const SAFE_CONTROL_ID = 'pair-device-button';
+const SAFE_CONTROL_ID = 'gateway-sign-in-button';
 
 export interface IosSmokeReport {
   ok: boolean;

@@ -7,7 +7,7 @@ import { useWaveConnection } from './connection-provider';
 export function ConnectionGate() {
   const { state } = useWaveConnection();
 
-  if (state.phase === 'loading' || state.phase === 'pairing') {
+  if (state.phase === 'loading' || state.phase === 'signing-in') {
     return (
       <View
         className="flex-1 items-center justify-center bg-background"
@@ -17,7 +17,7 @@ export function ConnectionGate() {
       </View>
     );
   }
-  // Offline still enters the app: a saved pairing with cached conversations
+  // Offline still enters the app: a saved sign-in with cached conversations
   // must stay readable when only the network is missing.
   return (
     <Redirect

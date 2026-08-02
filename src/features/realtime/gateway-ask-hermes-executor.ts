@@ -1,7 +1,7 @@
 /**
  * Executes a validated ask_hermes instruction as an ordinary turn on the
- * user's gateway connection — the stage-4 replacement for the companion's
- * server-side execution. The turn lands in the bound Hermes session like any
+ * user's gateway connection — the stage-4 replacement for the retired
+ * companion's server-side execution. The turn lands in the bound Hermes session like any
  * other, so its side effects are visible in chat history afterward; only the
  * Realtime speech around it stays ephemeral.
  */
@@ -11,7 +11,7 @@ import {
 } from '@wave/contracts';
 
 import type { GatewayClient } from '@/services/gateway/gateway-client';
-import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-error';
 
 export function createGatewayAskHermesExecutor({
   client,

@@ -6,10 +6,7 @@ import {
   loadOpenAiKeyState,
   OPENAI_KEY_STATE_QUERY_KEY,
 } from '@/features/realtime/openai-key-card';
-import {
-  KeyedRealtimeVoiceScreen,
-  VoiceScreen,
-} from '@/features/realtime/voice-screen';
+import { KeyedRealtimeVoiceScreen } from '@/features/realtime/voice-screen';
 import { GatewayVoiceScreen } from '@/features/voice/gateway-voice-screen';
 
 export default function VoiceRoute() {
@@ -30,24 +27,23 @@ export default function VoiceRoute() {
   // backend, so an unreachable one goes back rather than opening a microphone
   // with nowhere to send it.
   if (!value) return <Redirect href="/new" />;
-  if (gatewayClient) {
-    if (state.phase !== 'connected') return <Redirect href="/" />;
-    if (keyState.isPending) return null;
-    // Mode selection (stage 4): Realtime iff a key is saved and the user has
-    // not turned it off; the keyless server-side voice is the default.
-    if (keyState.data?.hasKey && keyState.data.realtimeEnabled) {
-      return (
-        <KeyedRealtimeVoiceScreen client={gatewayClient} sessionId={value} />
-      );
-    }
+  if (!gatewayClient || state.phase !== 'connected') {
+    return <Redirect href="/" />;
+  }
+  if (keyState.isPending) return null;
+  // Mode selection (stage 4): Realtime iff a key is saved and the user has
+  // not turned it off; the keyless server-side voice is the default.
+  if (keyState.data?.hasKey && keyState.data.realtimeEnabled) {
     return (
-      <GatewayVoiceScreen
-        baseUrl={state.identity.baseUrl}
-        client={gatewayClient}
-        connectionId={state.identity.id}
-        sessionId={value}
-      />
+      <KeyedRealtimeVoiceScreen client={gatewayClient} sessionId={value} />
     );
   }
-  return <VoiceScreen sessionId={value} />;
+  return (
+    <GatewayVoiceScreen
+      baseUrl={state.identity.baseUrl}
+      client={gatewayClient}
+      connectionId={state.identity.id}
+      sessionId={value}
+    />
+  );
 }

@@ -8,102 +8,34 @@ import {
   WAVE_MAX_IMAGE_ATTACHMENT_BYTES,
   WAVE_API_VERSION,
   WaveAssistantDeltaEventSchema,
-  WaveCreateSessionRequestSchema,
-  WaveDeviceCredentialSchema,
-  WaveDiagnosticsResponseSchema,
-  WaveErrorResponseSchema,
-  WaveEventEnvelopeSchema,
   WaveAskHermesArgumentsSchema,
   WaveAskHermesToolResultSchema,
   WaveEndRealtimeCallResponseSchema,
-  WaveRedeemPairingRequestSchema,
-  WaveRevokeCurrentDeviceResponseSchema,
-  WaveRealtimeVoiceListResponseSchema,
-  WaveStartRealtimeCallRequestSchema,
-  WaveStartRealtimeCallResponseSchema,
+  WaveErrorSchema,
   WaveSessionHistoryResponseSchema,
-  WaveScheduledJobListResponseSchema,
-  WaveStartTurnRequestSchema,
+  WaveStartRealtimeCallResponseSchema,
   WaveToolDetailSchema,
   WaveTurnEventSchema,
-  WaveStatusResponseSchema,
+  WaveTurnInputSchema,
   WaveTimelineResponseSchema,
 } from '../src/index.ts';
 
-test('accepts a strict versioned companion status response', () => {
-  const result = WaveStatusResponseSchema.parse({
-    apiVersion: WAVE_API_VERSION,
-    features: {
-      chat: false,
-      pairing: false,
-      realtime: false,
-    },
-    hermes: {
-      configured: true,
-    },
-    serverTime: '2026-07-29T23:59:00.000Z',
-    service: 'wave-companion',
-    serviceVersion: '0.1.0',
-    status: 'ok',
-  });
-
-  assert.equal(result.apiVersion, 'v1');
-  assert.equal(result.hermes.configured, true);
-});
-
-test('accepts only content-free redacted diagnostics', () => {
-  const diagnostics = WaveDiagnosticsResponseSchema.parse({
-    apiVersion: WAVE_API_VERSION,
-    companion: {
-      serviceVersion: '0.1.0',
-      uptimeSeconds: 42,
-    },
-    features: {
-      chat: true,
-      pairing: true,
-      realtime: true,
-    },
-    generatedAt: '2026-07-31T12:00:00.000Z',
-    hermes: {
-      status: 'compatible',
-    },
-  });
-
-  assert.equal(diagnostics.hermes.status, 'compatible');
+test('rejects malformed normalized errors', () => {
   assert.equal(
-    WaveDiagnosticsResponseSchema.safeParse({
-      ...diagnostics,
-      conversationContent: 'must not cross',
+    WaveErrorSchema.safeParse({
+      code: 'unknown',
+      message: '',
+      retryable: 'sometimes',
     }).success,
     false,
   );
   assert.equal(
-    WaveDiagnosticsResponseSchema.safeParse({
-      ...diagnostics,
-      hermes: {
-        missingFeatures: ['session_chat'],
-        status: 'incompatible',
-      },
-    }).success,
-    false,
-  );
-});
-
-test('accepts only a current-device revocation acknowledgement', () => {
-  const response = WaveRevokeCurrentDeviceResponseSchema.parse({
-    apiVersion: WAVE_API_VERSION,
-    deviceId: 'device-1',
-    requestId: 'request-1',
-    revoked: true,
-  });
-
-  assert.equal(response.revoked, true);
-  assert.equal(
-    WaveRevokeCurrentDeviceResponseSchema.safeParse({
-      ...response,
-      credential: `wave_device_${'a'.repeat(43)}`,
-    }).success,
-    false,
+    WaveErrorSchema.parse({
+      code: 'upstream_unavailable',
+      message: 'Hermes is unreachable.',
+      retryable: true,
+    }).retryable,
+    true,
   );
 });
 
@@ -146,87 +78,7 @@ test('accepts only bounded Wave-owned unified timeline entries', () => {
   );
 });
 
-test('rejects unknown status fields and malformed errors', () => {
-  assert.equal(
-    WaveStatusResponseSchema.safeParse({
-      apiVersion: WAVE_API_VERSION,
-      features: {
-        chat: false,
-        pairing: false,
-        realtime: false,
-      },
-      hermes: {
-        configured: true,
-      },
-      secret: 'must not cross the boundary',
-      serverTime: '2026-07-29T23:59:00.000Z',
-      service: 'wave-companion',
-      serviceVersion: '0.1.0',
-      status: 'ok',
-    }).success,
-    false,
-  );
-
-  assert.equal(
-    WaveErrorResponseSchema.safeParse({
-      apiVersion: WAVE_API_VERSION,
-      error: {
-        code: 'unknown',
-        message: '',
-        retryable: 'sometimes',
-      },
-    }).success,
-    false,
-  );
-});
-
-test('requires ordered, versioned event metadata', () => {
-  const event = WaveEventEnvelopeSchema.parse({
-    apiVersion: WAVE_API_VERSION,
-    eventId: 'event-1',
-    sequence: 0,
-    timestamp: '2026-07-29T23:59:00.000Z',
-    type: 'conversation.started',
-  });
-
-  assert.equal(event.sequence, 0);
-});
-
-test('accepts only strict pairing and device credential values', () => {
-  assert.equal(
-    WaveRedeemPairingRequestSchema.parse({
-      code: 'ABCD-EFGH-JKLM-NPQR',
-      deviceName: 'Renan iPhone',
-    }).deviceName,
-    'Renan iPhone',
-  );
-  assert.equal(
-    WaveDeviceCredentialSchema.safeParse(`wave_device_${'a'.repeat(43)}`)
-      .success,
-    true,
-  );
-  assert.equal(
-    WaveRedeemPairingRequestSchema.safeParse({
-      code: 'ABCD-EFGH-JKLM-NPQR',
-      deviceName: 'Renan iPhone',
-      requestedRole: 'administrator',
-    }).success,
-    false,
-  );
-  assert.equal(
-    WaveDeviceCredentialSchema.safeParse('ordinary-api-key').success,
-    false,
-  );
-});
-
-test('bounds session inputs and strips no unknown fields', () => {
-  assert.deepEqual(WaveCreateSessionRequestSchema.parse({}), {});
-  assert.equal(
-    WaveCreateSessionRequestSchema.safeParse({
-      model: 'model-controlled-by-mobile',
-    }).success,
-    false,
-  );
+test('history messages carry no provider identifiers', () => {
   assert.equal(
     WaveSessionHistoryResponseSchema.safeParse({
       apiVersion: WAVE_API_VERSION,
@@ -243,82 +95,61 @@ test('bounds session inputs and strips no unknown fields', () => {
   );
 });
 
-test('accepts bounded attachment turns and normalized read-only jobs', () => {
-  const input = WaveStartTurnRequestSchema.parse({
-    input: [
-      { text: 'Review these', type: 'text' },
+test('accepts bounded attachment turns', () => {
+  const input = WaveTurnInputSchema.parse([
+    { text: 'Review these', type: 'text' },
+    {
+      dataUrl: 'data:image/jpeg;base64,aGVsbG8=',
+      mimeType: 'image/jpeg',
+      name: 'photo.jpg',
+      type: 'image',
+    },
+    {
+      mimeType: 'text/markdown',
+      name: 'notes.md',
+      text: '# Notes',
+      type: 'text_file',
+    },
+  ]);
+  assert.equal(Array.isArray(input), true);
+  // Attachments without a message are rejected.
+  assert.equal(
+    WaveTurnInputSchema.safeParse([
       {
         dataUrl: 'data:image/jpeg;base64,aGVsbG8=',
-        mimeType: 'image/jpeg',
+        mimeType: 'image/png',
         name: 'photo.jpg',
         type: 'image',
       },
+    ]).success,
+    false,
+  );
+  // A mismatched MIME type is rejected.
+  assert.equal(
+    WaveTurnInputSchema.safeParse([
+      { text: 'Review', type: 'text' },
       {
-        mimeType: 'text/markdown',
-        name: 'notes.md',
-        text: '# Notes',
-        type: 'text_file',
+        dataUrl: 'data:image/jpeg;base64,A',
+        mimeType: 'image/jpeg',
+        name: 'invalid.jpg',
+        type: 'image',
       },
-    ],
-  });
-  assert.equal(Array.isArray(input.input), true);
-  assert.equal(
-    WaveStartTurnRequestSchema.safeParse({
-      input: [
-        {
-          dataUrl: 'data:image/jpeg;base64,aGVsbG8=',
-          mimeType: 'image/png',
-          name: 'photo.jpg',
-          type: 'image',
-        },
-      ],
-    }).success,
+    ]).success,
     false,
   );
+  // An oversized image is rejected.
   assert.equal(
-    WaveStartTurnRequestSchema.safeParse({
-      input: [
-        { text: 'Review', type: 'text' },
-        {
-          dataUrl: 'data:image/jpeg;base64,A',
-          mimeType: 'image/jpeg',
-          name: 'invalid.jpg',
-          type: 'image',
-        },
-      ],
-    }).success,
-    false,
-  );
-  assert.equal(
-    WaveStartTurnRequestSchema.safeParse({
-      input: [
-        { text: 'Review', type: 'text' },
-        {
-          dataUrl: `data:image/jpeg;base64,${'a'.repeat(
-            Math.ceil((WAVE_MAX_IMAGE_ATTACHMENT_BYTES * 4) / 3) + 4,
-          )}`,
-          mimeType: 'image/jpeg',
-          name: 'large.jpg',
-          type: 'image',
-        },
-      ],
-    }).success,
-    false,
-  );
-  assert.equal(
-    WaveScheduledJobListResponseSchema.safeParse({
-      apiVersion: WAVE_API_VERSION,
-      jobs: [
-        {
-          enabled: true,
-          id: 'job-1',
-          name: 'Morning briefing',
-          prompt: 'must not cross',
-          schedule: 'Every day at 9:00 AM',
-          state: 'scheduled',
-        },
-      ],
-    }).success,
+    WaveTurnInputSchema.safeParse([
+      { text: 'Review', type: 'text' },
+      {
+        dataUrl: `data:image/jpeg;base64,${'a'.repeat(
+          Math.ceil((WAVE_MAX_IMAGE_ATTACHMENT_BYTES * 4) / 3) + 4,
+        )}`,
+        mimeType: 'image/jpeg',
+        name: 'large.jpg',
+        type: 'image',
+      },
+    ]).success,
     false,
   );
 });
@@ -410,14 +241,7 @@ test('validates each normalized turn event variant strictly', () => {
   );
 });
 
-test('validates bounded Realtime SDP call setup without exposing provider identifiers', () => {
-  const request = WaveStartRealtimeCallRequestSchema.parse({
-    sdpOffer: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n',
-    voiceId: 'cedar',
-  });
-  assert.equal(request.sdpOffer.startsWith('v=0'), true);
-  assert.equal(request.voiceId, 'cedar');
-
+test('validates bounded Realtime call results without exposing provider identifiers', () => {
   const response = WaveStartRealtimeCallResponseSchema.parse({
     apiVersion: WAVE_API_VERSION,
     call: {
@@ -438,36 +262,15 @@ test('validates bounded Realtime SDP call setup without exposing provider identi
     false,
   );
   assert.equal(
-    WaveStartRealtimeCallRequestSchema.safeParse({
-      sdpOffer: 'not-sdp',
+    WaveStartRealtimeCallResponseSchema.safeParse({
+      ...response,
+      call: {
+        ...response.call,
+        sdpAnswer: 'not-sdp',
+      },
     }).success,
     false,
   );
-  assert.equal(
-    WaveStartRealtimeCallRequestSchema.safeParse({
-      sdpOffer: 'v=0\r\nvalid',
-      voiceId: 'model-controlled-custom-voice',
-    }).success,
-    false,
-  );
-  const voices = WaveRealtimeVoiceListResponseSchema.parse({
-    apiVersion: WAVE_API_VERSION,
-    defaultVoiceId: 'marin',
-    voices: [
-      {
-        description: 'Natural and expressive for a polished voice experience.',
-        id: 'marin',
-        label: 'Marin',
-      },
-      {
-        description: 'Clear and grounded with a steady presence.',
-        id: 'cedar',
-        label: 'Cedar',
-      },
-    ],
-  });
-  assert.equal(voices.defaultVoiceId, 'marin');
-  assert.equal(voices.voices[1]?.id, 'cedar');
   assert.equal(
     WaveEndRealtimeCallResponseSchema.parse({
       apiVersion: WAVE_API_VERSION,

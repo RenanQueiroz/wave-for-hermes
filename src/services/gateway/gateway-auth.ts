@@ -13,7 +13,7 @@ import {
   parseGatewaySetCookies,
   type GatewayTokens,
 } from './gateway-tokens.ts';
-import { WaveBackendError } from '../wave/wave-backend-client.ts';
+import { WaveBackendError } from '../wave/wave-backend-error.ts';
 
 export interface GatewayAuthProvider {
   displayName: string;
