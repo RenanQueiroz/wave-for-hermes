@@ -11,6 +11,9 @@
  *   which never route beyond the local network but cross it unencrypted.
  *   These are accepted only when the user types `http://` explicitly; bare
  *   hosts still default to https so cleartext is a deliberate choice.
+ *   `.local` resolution is the platform resolver's job: iOS and current
+ *   Android resolve mDNS names (validated on Android 17); a device that
+ *   cannot resolve one falls back to the LAN IP.
  *
  * Every other host must use HTTPS outside local development.
  */
@@ -31,8 +34,7 @@ export function isTrustedPlainHttpHost(hostname: string): boolean {
  * literals (10/8, 172.16/12, 192.168/16) and mDNS `.local` names, whose
  * resolution is link-local by construction. Traffic to them is cleartext on
  * the LAN, so these hosts never receive a default scheme — they are valid
- * only with an explicitly typed `http://`. Android's system resolver does
- * not consult mDNS, so `.local` names work on iOS only.
+ * only with an explicitly typed `http://`.
  */
 export function isPrivateLanPlainHttpHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, '');

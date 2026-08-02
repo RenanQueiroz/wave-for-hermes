@@ -266,7 +266,8 @@ export function ConnectionScreen() {
         and Tailscale (100.64.0.0/10) addresses, where the transport is already
         private. Typing http:// explicitly also allows a private LAN address —
         192.168.x.x or a Mac&apos;s name.local — but that traffic crosses your
-        network unencrypted, and .local names resolve on iOS only.
+        network unencrypted. If a name.local address does not resolve on this
+        device, use the LAN IP instead.
         {__DEV__
           ? ' Development builds also accept an explicit HTTP URL for trusted local testing.'
           : ''}

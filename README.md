@@ -255,8 +255,9 @@ address defaults to HTTPS — or to HTTP for localhost and Tailscale CGNAT (`100
 addresses, where the transport is already private. All builds also accept an explicitly typed
 `http://` URL to a private LAN host — an RFC 1918 address like `192.168.1.50` or an mDNS name
 like `renans-mac-mini.local` — for connecting directly on a trusted home network; that traffic
-crosses the LAN unencrypted, so the explicit scheme is the deliberate opt-in, and `.local` names
-resolve on iOS only (use the LAN IP on Android). Note that on the same network a tailnet
+crosses the LAN unencrypted, so the explicit scheme is the deliberate opt-in. `.local` names
+resolve on iOS and current Android; fall back to the LAN IP on a device that cannot resolve
+them. Note that on the same network a tailnet
 connection is already a direct WireGuard path between the devices, so the Tailscale address stays
 the recommended default. Development builds additionally allow an explicit HTTP URL to any host
 for trusted local testing. Pairing checks the public companion status, redeems the code exactly

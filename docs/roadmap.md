@@ -35,13 +35,19 @@ The detailed evidence and acceptance gates live in
   with the drawer's cached chats, offline notices, and a fully readable cached conversation;
   re-verification against a companion that no longer recognized the device hard-gated back to the
   connect screen; and after the hung companion resumed, the app promoted itself to connected
-  without user action and started a fresh conversation.
+  without user action and started a fresh conversation. Repeated on a physical Pixel 8 Pro
+  (Android 17, 2026-08-01): cold starts against the real tailnet companion with Tailscale down
+  and against a dead LAN fixture both degraded to the offline screen with the cached 130-entry
+  conversation fully readable, and a connected Disconnect against the unreachable Gateway failed
+  closed to the saved-connection screen instead of pretending to revoke.
+- Direct-LAN connectivity validated on the physical Pixel over Wi-Fi (2026-08-01): pairing, the
+  compatibility check, and a streamed chat turn all ran through an explicitly typed
+  `http://<mac>.local:8798` mDNS URL resolved by Android itself.
 - Remaining: repeat on physical devices over real radio (background/lock mid-turn, airplane-mode
   transitions), observe the live mid-stream reattach UI (the fixture's 30-second stream ended
-  before slow automation could reopen the screen), verify purge-on-disconnect, and validate
-  direct-LAN pairing on a physical device — explicit `http://` to a private address and to a
-  `.local` name on iOS, including the iOS local-network permission prompt from a client built
-  after the `app.json` usage-description addition.
+  before slow automation could reopen the screen), verify purge-on-disconnect, and repeat the
+  LAN validation on physical iOS — including the local-network permission prompt from a client
+  built after the `app.json` usage-description addition.
 
 ## Next: release hardening and focused operations
 

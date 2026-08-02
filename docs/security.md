@@ -167,9 +167,11 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   credential plus conversation content are readable by hosts on the same network (accepted
   2026-08-01 for trusted home networks; mDNS names are unauthenticated, the same trust level as
   a LAN IP). Bare hosts outside the Tailscale/loopback tier always default to HTTPS. Reaching
-  LAN hosts requires iOS's local-network permission, declared in `app.json`; Android's system
-  resolver does not resolve `.local` names, so Android uses the LAN IP. Homelab exposes `/wave/`
-  only through private Tailscale HTTPS and Nginx; Companion and Hermes ports remain unpublished.
+  LAN hosts requires iOS's local-network permission, declared in `app.json`. `.local` resolution
+  is the platform resolver's job — iOS and current Android resolve mDNS names (validated on a
+  Pixel 8 Pro on Android 17); a device that cannot falls back to the LAN IP. Homelab exposes
+  `/wave/` only through private Tailscale HTTPS and Nginx; Companion and Hermes ports remain
+  unpublished.
 - CORS is disabled because Wave supports native iOS and Android only.
 - The Companion container runs non-root with a read-only root filesystem, dropped capabilities,
   a digest-pinned Node 24 Alpine runtime, no runtime package manager, and one dedicated writable
