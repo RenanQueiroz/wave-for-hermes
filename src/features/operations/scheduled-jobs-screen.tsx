@@ -10,15 +10,17 @@ export function ScheduledJobsScreen() {
   if (
     (connection.state.phase !== 'connected' &&
       connection.state.phase !== 'offline') ||
-    !connection.client
+    !connection.companionClient
   ) {
+    // Scheduled jobs are a companion capability; a gateway connection has no
+    // equivalent normalized contract yet, so the drawer entry leads nowhere.
     return <Redirect href="/" />;
   }
   return (
     <ConnectedScheduledJobsScreen
-      baseUrl={connection.state.summary.baseUrl}
-      client={connection.client}
-      connectionId={connection.state.summary.device.id}
+      baseUrl={connection.state.identity.baseUrl}
+      client={connection.companionClient}
+      connectionId={connection.state.identity.id}
     />
   );
 }
@@ -29,7 +31,7 @@ function ConnectedScheduledJobsScreen({
   connectionId,
 }: {
   baseUrl: string;
-  client: NonNullable<ReturnType<typeof useWaveConnection>['client']>;
+  client: NonNullable<ReturnType<typeof useWaveConnection>['companionClient']>;
   connectionId: string;
 }) {
   const jobs = useQuery({

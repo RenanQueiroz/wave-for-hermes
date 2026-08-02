@@ -65,10 +65,8 @@ import {
 } from '@/features/sessions/session-query-keys';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
-import {
-  WaveBackendError,
-  type WaveBackendClient,
-} from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 interface ChatScreenProps {
   sessionId: string;
@@ -124,9 +122,9 @@ export function ChatScreen({ sessionId }: ChatScreenProps) {
   }
   return (
     <ConnectedChatScreen
-      baseUrl={connection.summary.baseUrl}
+      baseUrl={connection.identity.baseUrl}
       client={client}
-      connectionId={connection.summary.device.id}
+      connectionId={connection.identity.id}
       offline={connection.phase === 'offline'}
       sessionId={sessionId}
     />
@@ -141,7 +139,7 @@ function ConnectedChatScreen({
   sessionId,
 }: {
   baseUrl: string;
-  client: WaveBackendClient;
+  client: WaveChatClient;
   connectionId: string;
   offline: boolean;
   sessionId: string;

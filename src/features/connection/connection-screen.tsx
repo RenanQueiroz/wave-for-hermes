@@ -19,7 +19,8 @@ import {
 import { useWaveConnection } from './connection-provider';
 
 const PAIRING_CODE_LENGTH = 16;
-type ConnectionField = 'baseUrl' | 'deviceName' | 'pairingCode';
+type ConnectionField =
+  'baseUrl' | 'deviceName' | 'pairingCode' | 'password' | 'username';
 
 interface FieldValidationError {
   field: ConnectionField;
@@ -27,8 +28,14 @@ interface FieldValidationError {
 }
 
 export function ConnectionScreen() {
-  const { forget, pair, retry, state } = useWaveConnection();
+  const { forget, pair, retry, signIn, state } = useWaveConnection();
+  // Signing in to a Hermes gateway is the primary path; pairing with a Wave
+  // Companion is kept for devices that have not migrated (see the
+  // direct-to-gateway migration in docs/roadmap.md).
+  const [mode, setMode] = useState<'gateway' | 'companion'>('gateway');
   const [baseUrl, setBaseUrl] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [deviceName, setDeviceName] = useState(
     () => Device.deviceName ?? Device.modelName ?? 'Wave mobile',
   );
@@ -44,6 +51,39 @@ export function ConnectionScreen() {
   const savedConnectionError =
     state.phase === 'error' && state.summary ? state : undefined;
   const pairing = state.phase === 'pairing';
+
+  const submitSignIn = () => {
+    const trimmedUrl = baseUrl.trim();
+    const trimmedUsername = username.trim();
+    if (!trimmedUrl) {
+      setValidationError({
+        field: 'baseUrl',
+        message: 'Enter the URL of your Hermes gateway.',
+      });
+      return;
+    }
+    if (!trimmedUsername) {
+      setValidationError({
+        field: 'username',
+        message: 'Enter your Hermes username.',
+      });
+      return;
+    }
+    if (!password) {
+      setValidationError({
+        field: 'password',
+        message: 'Enter your Hermes password.',
+      });
+      return;
+    }
+    setValidationError(undefined);
+    void signIn({
+      baseUrl: trimmedUrl,
+      password,
+      provider: 'basic',
+      username: trimmedUsername,
+    });
+  };
 
   const submit = () => {
     const trimmedUrl = baseUrl.trim();
@@ -131,6 +171,114 @@ export function ConnectionScreen() {
             </Button>
           </Card.Footer>
         </Card>
+      ) : mode === 'gateway' ? (
+        <Card>
+          <Card.Header>
+            <Card.Title>Sign in to Hermes</Card.Title>
+            <Card.Description>
+              Use the same username and password as the Hermes dashboard.
+            </Card.Description>
+          </Card.Header>
+          <Card.Content className="gap-4">
+            {state.phase === 'error' ? (
+              <ConnectionAlert
+                message={state.error.message}
+                destructive={!state.error.retryable}
+              />
+            ) : null}
+            <Input
+              autoCapitalize="none"
+              autoComplete="url"
+              autoCorrect={false}
+              disabled={pairing}
+              errorMessage={
+                validationError?.field === 'baseUrl'
+                  ? validationError.message
+                  : undefined
+              }
+              label="Hermes gateway URL"
+              placeholder="https://hermes.example.internal"
+              testID="gateway-url-input"
+              value={baseUrl}
+              variant="filled"
+              onChangeText={(value) => {
+                setBaseUrl(value);
+                clearFieldError(validationError, 'baseUrl', setValidationError);
+              }}
+            />
+            <Input
+              autoCapitalize="none"
+              autoComplete="username"
+              autoCorrect={false}
+              disabled={pairing}
+              errorMessage={
+                validationError?.field === 'username'
+                  ? validationError.message
+                  : undefined
+              }
+              label="Username"
+              testID="gateway-username-input"
+              value={username}
+              variant="filled"
+              onChangeText={(value) => {
+                setUsername(value);
+                clearFieldError(
+                  validationError,
+                  'username',
+                  setValidationError,
+                );
+              }}
+            />
+            <Input
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="current-password"
+              autoCorrect={false}
+              disabled={pairing}
+              errorMessage={
+                validationError?.field === 'password'
+                  ? validationError.message
+                  : undefined
+              }
+              label="Password"
+              testID="gateway-password-input"
+              value={password}
+              variant="filled"
+              onChangeText={(value) => {
+                setPassword(value);
+                clearFieldError(
+                  validationError,
+                  'password',
+                  setValidationError,
+                );
+              }}
+              onSubmitEditing={submitSignIn}
+            />
+          </Card.Content>
+          <Card.Footer className="flex-col">
+            <Button
+              fullWidth
+              accessibilityLabel="Sign in to Hermes"
+              loading={pairing}
+              startContent={<LockIcon size={18} />}
+              testID="gateway-sign-in-button"
+              onPress={submitSignIn}>
+              {pairing ? 'Signing in…' : 'Sign in'}
+            </Button>
+            <Button
+              fullWidth
+              variant="ghost"
+              accessibilityLabel="Pair with a Wave Companion instead"
+              disabled={pairing}
+              testID="use-companion-pairing-button"
+              onPress={() => {
+                setValidationError(undefined);
+                setMode('companion');
+              }}>
+              Use a Wave Companion instead
+            </Button>
+          </Card.Footer>
+        </Card>
       ) : (
         <Card>
           <Card.Header>
@@ -214,7 +362,7 @@ export function ConnectionScreen() {
               onSubmitEditing={submit}
             />
           </Card.Content>
-          <Card.Footer>
+          <Card.Footer className="flex-col">
             <Button
               fullWidth
               accessibilityLabel="Pair this device with Wave Companion"
@@ -223,6 +371,18 @@ export function ConnectionScreen() {
               testID="pair-device-button"
               onPress={submit}>
               {pairing ? 'Pairing…' : 'Pair device'}
+            </Button>
+            <Button
+              fullWidth
+              variant="ghost"
+              accessibilityLabel="Sign in to a Hermes gateway instead"
+              disabled={pairing}
+              testID="use-gateway-sign-in-button"
+              onPress={() => {
+                setValidationError(undefined);
+                setMode('gateway');
+              }}>
+              Sign in to Hermes instead
             </Button>
           </Card.Footer>
         </Card>

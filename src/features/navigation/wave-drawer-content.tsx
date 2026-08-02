@@ -36,10 +36,8 @@ import {
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
-import {
-  WaveBackendError,
-  type WaveBackendClient,
-} from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
   const connection = useWaveConnection();
@@ -59,10 +57,10 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
   return (
     <ConnectedWaveDrawerContent
       {...props}
-      baseUrl={connection.state.summary.baseUrl}
+      baseUrl={connection.state.identity.baseUrl}
       client={connection.client}
-      connectionId={connection.state.summary.device.id}
-      deviceName={connection.state.summary.device.name}
+      connectionId={connection.state.identity.id}
+      deviceName={connection.state.identity.label}
       disconnect={connection.disconnect}
     />
   );
@@ -77,7 +75,7 @@ function ConnectedWaveDrawerContent({
   navigation,
 }: DrawerContentComponentProps & {
   baseUrl: string;
-  client: WaveBackendClient;
+  client: WaveChatClient;
   connectionId: string;
   deviceName: string;
   disconnect(): Promise<boolean>;

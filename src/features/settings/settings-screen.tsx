@@ -34,17 +34,19 @@ export function SettingsScreen() {
   if (
     (connection.state.phase !== 'connected' &&
       connection.state.phase !== 'offline') ||
-    !connection.client
+    !connection.companionClient
   ) {
+    // Diagnostics and the Realtime voice catalog are companion capabilities.
+    // On a gateway connection this screen has nothing of its own to show yet.
     return <Redirect href="/" />;
   }
 
   return (
     <ConnectedSettingsScreen
-      baseUrl={connection.state.summary.baseUrl}
-      client={connection.client}
-      connectionId={connection.state.summary.device.id}
-      deviceName={connection.state.summary.device.name}
+      baseUrl={connection.state.identity.baseUrl}
+      client={connection.companionClient}
+      connectionId={connection.state.identity.id}
+      deviceName={connection.state.identity.label}
       onOpenDevelopment={() => router.push('/development')}
     />
   );
@@ -58,7 +60,7 @@ function ConnectedSettingsScreen({
   onOpenDevelopment,
 }: {
   baseUrl: string;
-  client: NonNullable<ReturnType<typeof useWaveConnection>['client']>;
+  client: NonNullable<ReturnType<typeof useWaveConnection>['companionClient']>;
   connectionId: string;
   deviceName: string;
   onOpenDevelopment: () => void;

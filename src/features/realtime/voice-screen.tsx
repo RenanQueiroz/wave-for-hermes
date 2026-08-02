@@ -30,19 +30,21 @@ interface VoiceScreenProps {
 }
 
 export function VoiceScreen({ sessionId }: VoiceScreenProps) {
-  const { client, state: connection } = useWaveConnection();
+  const { companionClient, state: connection } = useWaveConnection();
 
-  // Connected only: the voice screen auto-starts a Realtime call on focus,
-  // which has nothing to offer while the companion is unreachable. Chat
-  // degrades to cached reading; voice does not degrade.
-  if (connection.phase !== 'connected' || !client || !sessionId) {
+  // Connected only, companion only: the voice screen auto-starts a Realtime
+  // call on focus, which has nothing to offer while the backend is
+  // unreachable — and Realtime setup is a companion capability until the
+  // user-owned-key path lands. Chat degrades to cached reading; voice does
+  // not degrade.
+  if (connection.phase !== 'connected' || !companionClient || !sessionId) {
     return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (
     <ConnectedVoiceScreen
-      baseUrl={connection.summary.baseUrl}
-      client={client}
-      connectionId={connection.summary.device.id}
+      baseUrl={connection.identity.baseUrl}
+      client={companionClient}
+      connectionId={connection.identity.id}
       sessionId={sessionId}
     />
   );

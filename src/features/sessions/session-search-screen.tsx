@@ -31,9 +31,9 @@ export function SessionSearchScreen() {
   }
   return (
     <ConnectedSessionSearchScreen
-      baseUrl={connection.state.summary.baseUrl}
+      baseUrl={connection.state.identity.baseUrl}
       client={connection.client}
-      connectionId={connection.state.summary.device.id}
+      connectionId={connection.state.identity.id}
     />
   );
 }

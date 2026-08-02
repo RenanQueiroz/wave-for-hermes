@@ -26,9 +26,9 @@ export function NewConversationScreen() {
   }
   return (
     <ConnectedNewConversationScreen
-      baseUrl={state.summary.baseUrl}
+      baseUrl={state.identity.baseUrl}
       client={client}
-      connectionId={state.summary.device.id}
+      connectionId={state.identity.id}
     />
   );
 }

@@ -22,8 +22,21 @@ import {
   WaveCredentialStoreError,
 } from '@/services/credentials/connection-record';
 import { SecureWaveCredentialStore } from '@/services/credentials/secure-credential-store';
+import { fetch as expoFetch } from 'expo/fetch';
+
+import { signInWithPassword } from '@/services/gateway/gateway-auth';
+import {
+  GatewayClient,
+  normalizeGatewayBaseUrl,
+} from '@/services/gateway/gateway-client';
+import {
+  createGatewayConnectionRecord,
+  type GatewayConnectionRecord,
+} from '@/services/gateway/gateway-connection-record';
+import { SecureGatewayConnectionStore } from '@/services/gateway/secure-gateway-store';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { waveQueryPersister } from '@/services/query/wave-query-cache';
+import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 import {
   ActiveSessionStore,
   ActiveSessionStoreError,
@@ -40,10 +53,36 @@ export interface PairWaveDeviceInput {
   deviceName: string;
 }
 
+export interface GatewaySignInInput {
+  baseUrl: string;
+  password: string;
+  provider: string;
+  username: string;
+}
+
 interface ConnectionError {
   kind: string;
   message: string;
   retryable: boolean;
+}
+
+/**
+ * Which backend the active connection speaks. The companion is being retired
+ * (see `docs/roadmap.md`); both are supported until it is removed so an
+ * existing paired device keeps working across the migration.
+ */
+export type WaveConnectionKind = 'companion' | 'gateway';
+
+/**
+ * The non-secret identity of a connection, whichever backend it uses. The
+ * companion identifies a device; the gateway identifies a signed-in user.
+ */
+export interface WaveConnectionIdentity {
+  /** Stable key for connection-scoped caches and stores. */
+  id: string;
+  baseUrl: string;
+  kind: WaveConnectionKind;
+  label: string;
 }
 
 export type WaveConnectionState =
@@ -51,30 +90,41 @@ export type WaveConnectionState =
   | { phase: 'disconnected' }
   | { phase: 'pairing' }
   | {
-      compatibility: WaveCompatibilityResponse;
+      compatibility?: WaveCompatibilityResponse;
+      identity: WaveConnectionIdentity;
       phase: 'connected';
-      summary: WaveConnectionSummary;
+      summary?: WaveConnectionSummary;
     }
-  // A saved pairing whose companion is unreachable for connectivity-shaped
+  // A saved connection whose backend is unreachable for connectivity-shaped
   // reasons only. The app degrades to reading cached data with the stored
   // client; authorization and compatibility failures never land here.
   | {
       error: ConnectionError;
+      identity: WaveConnectionIdentity;
       phase: 'offline';
-      summary: WaveConnectionSummary;
+      summary?: WaveConnectionSummary;
     }
   | {
       error: ConnectionError;
+      identity?: WaveConnectionIdentity;
       phase: 'error';
       summary?: WaveConnectionSummary;
     };
 
 interface WaveConnectionContextValue {
-  client?: WaveBackendClient;
+  /** Conversation surfaces: whichever backend is active. */
+  client?: WaveChatClient;
+  /**
+   * Companion-only capabilities (Realtime setup, diagnostics, scheduled jobs,
+   * device revocation). Absent on a gateway connection; those screens degrade
+   * rather than pretending the capability exists.
+   */
+  companionClient?: WaveBackendClient;
   disconnect(): Promise<boolean>;
   forget(): Promise<boolean>;
   pair(input: PairWaveDeviceInput): Promise<void>;
   retry(): Promise<void>;
+  signIn(input: GatewaySignInInput): Promise<void>;
   state: WaveConnectionState;
 }
 
@@ -89,13 +139,73 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     () => new SecureWaveCredentialStore({ allowInsecureHttp }),
     [allowInsecureHttp],
   );
+  const gatewayStore = useMemo(
+    () => new SecureGatewayConnectionStore({ allowInsecureHttp }),
+    [allowInsecureHttp],
+  );
   const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const [state, setState] = useState<WaveConnectionState>({
     phase: 'loading',
   });
   const [client, setClient] = useState<WaveBackendClient | undefined>();
+  const [gatewayClient, setGatewayClient] = useState<
+    GatewayClient | undefined
+  >();
   const recordRef = useRef<WaveConnectionRecord | undefined>(undefined);
+  const gatewayRecordRef = useRef<GatewayConnectionRecord | undefined>(
+    undefined,
+  );
   const operationRef = useRef(0);
+
+  const buildGatewayClient = useCallback(
+    (record: GatewayConnectionRecord) =>
+      new GatewayClient({
+        allowInsecureHttp,
+        baseUrl: record.baseUrl,
+        // The gateway rotates tokens on refresh; persist every rotation or
+        // the stored pair ages out and silently signs the user out.
+        onTokensRotated: (tokens) => {
+          const next = { ...record, tokens };
+          gatewayRecordRef.current = next;
+          void gatewayStore.save(next).catch(() => undefined);
+        },
+        tokens: record.tokens,
+      }),
+    [allowInsecureHttp, gatewayStore],
+  );
+
+  const verifyGateway = useCallback(
+    async (record: GatewayConnectionRecord, operation: number) => {
+      const nextClient = buildGatewayClient(record);
+      setGatewayClient(nextClient);
+      setClient(undefined);
+      gatewayRecordRef.current = record;
+      recordRef.current = undefined;
+      const identity: WaveConnectionIdentity = {
+        baseUrl: record.baseUrl,
+        id: `gateway:${record.userId || record.provider}`,
+        kind: 'gateway',
+        label: record.userId || record.provider,
+      };
+      try {
+        await nextClient.getIdentity();
+        if (operation !== operationRef.current) return;
+        setState({ identity, phase: 'connected' });
+      } catch (error) {
+        if (operation !== operationRef.current) return;
+        if (isOfflineLikeWaveError(error)) {
+          setState({
+            error: toConnectionError(error),
+            identity,
+            phase: 'offline',
+          });
+          return;
+        }
+        setState({ error: toConnectionError(error), identity, phase: 'error' });
+      }
+    },
+    [buildGatewayClient],
+  );
 
   const verify = useCallback(
     async (record: WaveConnectionRecord, operation: number) => {
@@ -105,7 +215,15 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         credential: record.credential,
       });
       setClient(client);
+      setGatewayClient(undefined);
       recordRef.current = record;
+      gatewayRecordRef.current = undefined;
+      const identity: WaveConnectionIdentity = {
+        baseUrl: record.baseUrl,
+        id: record.device.id,
+        kind: 'companion',
+        label: record.device.name,
+      };
       try {
         const compatibility = await client.getCompatibility();
         if (operation !== operationRef.current) return;
@@ -118,6 +236,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
                 'This Hermes server is not compatible with the current Wave Companion.',
               retryable: false,
             },
+            identity,
             phase: 'error',
             summary,
           });
@@ -125,6 +244,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         }
         setState({
           compatibility,
+          identity,
           phase: 'connected',
           summary,
         });
@@ -134,6 +254,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         if (isOfflineLikeWaveError(error)) {
           setState({
             error: toConnectionError(error),
+            identity,
             phase: 'offline',
             summary,
           });
@@ -141,6 +262,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         }
         setState({
           error: toConnectionError(error),
+          identity,
           phase: 'error',
           summary,
         });
@@ -153,57 +275,78 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
   // user keeps reading cached data while the outcome decides the next phase.
   const reverifyingRef = useRef(false);
   const reverifyOffline = useCallback(async () => {
+    const gatewayRecord = gatewayRecordRef.current;
     const record = recordRef.current;
-    if (!record || reverifyingRef.current) return;
+    if ((!record && !gatewayRecord) || reverifyingRef.current) return;
     reverifyingRef.current = true;
     try {
-      await verify(record, ++operationRef.current);
+      const operation = ++operationRef.current;
+      if (gatewayRecord) {
+        await verifyGateway(gatewayRecord, operation);
+      } else if (record) {
+        await verify(record, operation);
+      }
     } finally {
       reverifyingRef.current = false;
     }
-  }, [verify]);
+  }, [verify, verifyGateway]);
 
-  const initialize = useCallback(async () => {
-    const operation = ++operationRef.current;
-    try {
+  /**
+   * Restore whichever connection is saved. A gateway session wins when both
+   * exist: it is the newer path, and pairing is only kept for devices that
+   * have not migrated yet.
+   */
+  const restore = useCallback(
+    async (operation: number) => {
+      const gatewayRecord = await gatewayStore.load().catch(() => undefined);
+      if (operation !== operationRef.current) return;
+      if (gatewayRecord) {
+        await verifyGateway(gatewayRecord, operation);
+        return;
+      }
       const record = await store.load();
       if (operation !== operationRef.current) return;
       if (!record) {
         setClient(undefined);
+        setGatewayClient(undefined);
         recordRef.current = undefined;
+        gatewayRecordRef.current = undefined;
         setState({ phase: 'disconnected' });
         return;
       }
       await verify(record, operation);
+    },
+    [gatewayStore, store, verify, verifyGateway],
+  );
+
+  const initialize = useCallback(async () => {
+    const operation = ++operationRef.current;
+    try {
+      await restore(operation);
     } catch (error) {
       if (operation !== operationRef.current) return;
       setClient(undefined);
+      setGatewayClient(undefined);
       recordRef.current = undefined;
+      gatewayRecordRef.current = undefined;
       setState({
         error: toConnectionError(error),
         phase: 'error',
       });
     }
-  }, [store, verify]);
+  }, [restore]);
 
   useEffect(() => {
     const operation = ++operationRef.current;
 
-    void store.load().then(
-      (record) => {
-        if (operation !== operationRef.current) return;
-        if (!record) {
-          setClient(undefined);
-          recordRef.current = undefined;
-          setState({ phase: 'disconnected' });
-          return;
-        }
-        void verify(record, operation);
-      },
+    void restore(operation).then(
+      () => undefined,
       (error: unknown) => {
         if (operation !== operationRef.current) return;
         setClient(undefined);
+        setGatewayClient(undefined);
         recordRef.current = undefined;
+        gatewayRecordRef.current = undefined;
         setState({
           error: toConnectionError(error),
           phase: 'error',
@@ -216,7 +359,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         operationRef.current += 1;
       }
     };
-  }, [store, verify]);
+  }, [restore]);
 
   useEffect(() => {
     if (state.phase !== 'offline') return;
@@ -289,20 +432,80 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     [activeSessionStore, allowInsecureHttp, queryClient, store, verify],
   );
 
+  /**
+   * Sign in to a Hermes gateway directly. Replaces pairing for gateway
+   * connections; the cached reads of any previous connection are purged so a
+   * new identity never inherits another's conversations.
+   */
+  const signIn = useCallback(
+    async (input: GatewaySignInInput) => {
+      const operation = ++operationRef.current;
+      await queryClient.cancelQueries({ queryKey: ['wave'] });
+      queryClient.removeQueries({ queryKey: ['wave'] });
+      await waveQueryPersister.removeClient();
+      setState({ phase: 'pairing' });
+      try {
+        const baseUrl = normalizeGatewayBaseUrl(input.baseUrl, {
+          allowInsecureHttp,
+        });
+        const tokens = await signInWithPassword(
+          {
+            baseUrl,
+            password: input.password,
+            provider: input.provider,
+            username: input.username,
+          },
+          expoFetch as unknown as typeof globalThis.fetch,
+        );
+        const record = createGatewayConnectionRecord(
+          {
+            baseUrl,
+            provider: tokens.provider,
+            tokens,
+            userId: input.username,
+          },
+          { allowInsecureHttp },
+        );
+        await activeSessionStore.clear();
+        await store.clear().catch(() => undefined);
+        await gatewayStore.save(record);
+        if (operation !== operationRef.current) return;
+        await verifyGateway(record, operation);
+      } catch (error) {
+        if (operation !== operationRef.current) return;
+        setState({
+          error: toConnectionError(error),
+          phase: 'error',
+        });
+      }
+    },
+    [
+      activeSessionStore,
+      allowInsecureHttp,
+      gatewayStore,
+      queryClient,
+      store,
+      verifyGateway,
+    ],
+  );
+
   const clearLocalConnection = useCallback(
     async (operation: number) => {
       await queryClient.cancelQueries({ queryKey: ['wave'] });
       queryClient.removeQueries({ queryKey: ['wave'] });
       await waveQueryPersister.removeClient();
       await activeSessionStore.clear();
-      await store.clear();
+      await store.clear().catch(() => undefined);
+      await gatewayStore.clear().catch(() => undefined);
       if (operation !== operationRef.current) return false;
       setClient(undefined);
+      setGatewayClient(undefined);
       recordRef.current = undefined;
+      gatewayRecordRef.current = undefined;
       setState({ phase: 'disconnected' });
       return true;
     },
-    [activeSessionStore, queryClient, store],
+    [activeSessionStore, gatewayStore, queryClient, store],
   );
 
   const disconnect = useCallback(async () => {
@@ -310,6 +513,13 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     const currentRecord = recordRef.current;
     setState({ phase: 'loading' });
     try {
+      // A gateway session cannot be revoked server-side: its tokens are
+      // stateless and signed, so `/auth/logout` does not invalidate them
+      // (verified in the stage 1 spike). Deleting them locally is the whole
+      // sign-out; the tokens expire on their own schedule.
+      if (gatewayRecordRef.current) {
+        return await clearLocalConnection(operation);
+      }
       if (currentRecord) {
         const revocationClient = createMobileWaveBackendClient({
           allowInsecureHttp,
@@ -362,7 +572,8 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
 
   const retry = useCallback(async () => {
     const record = recordRef.current;
-    if (!record) {
+    const gatewayRecord = gatewayRecordRef.current;
+    if (!record && !gatewayRecord) {
       setState({ phase: 'loading' });
       await initialize();
       return;
@@ -374,8 +585,12 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     }
     const operation = ++operationRef.current;
     setState({ phase: 'loading' });
-    await verify(record, operation);
-  }, [initialize, reverifyOffline, state.phase, verify]);
+    if (gatewayRecord) {
+      await verifyGateway(gatewayRecord, operation);
+    } else if (record) {
+      await verify(record, operation);
+    }
+  }, [initialize, reverifyOffline, state.phase, verify, verifyGateway]);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -386,7 +601,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         ...(state.phase === 'connected' ||
         state.phase === 'offline' ||
         state.phase === 'error'
-          ? { summary: state.summary }
+          ? { kind: state.identity?.kind, summary: state.summary }
           : {}),
         ...(state.phase === 'offline' || state.phase === 'error'
           ? {
@@ -400,19 +615,20 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     });
   }, [state]);
 
-  const value = useMemo<WaveConnectionContextValue>(
-    () => ({
-      ...((state.phase === 'connected' || state.phase === 'offline') && client
-        ? { client }
-        : {}),
+  const value = useMemo<WaveConnectionContextValue>(() => {
+    const usable = state.phase === 'connected' || state.phase === 'offline';
+    const activeClient: WaveChatClient | undefined = gatewayClient ?? client;
+    return {
+      ...(usable && activeClient ? { client: activeClient } : {}),
+      ...(usable && client ? { companionClient: client } : {}),
       disconnect,
       forget,
       pair,
       retry,
+      signIn,
       state,
-    }),
-    [client, disconnect, forget, pair, retry, state],
-  );
+    };
+  }, [client, disconnect, forget, gatewayClient, pair, retry, signIn, state]);
 
   return (
     <WaveConnectionContext.Provider value={value}>
