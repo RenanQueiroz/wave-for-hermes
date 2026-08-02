@@ -21,9 +21,15 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    tokens (expiry or server secret rotation only), and the agent can raise mid-turn approval
    prompts the app must render. Confirmed gaps have documented client-side workarounds; Wave
    does not submit issues or changes upstream.
-2. **Migrate text chat and session lifecycle.** Replace the companion transport in
-   `WaveBackendClient` with the gateway client behind the same normalized contracts; replace
-   pairing with gateway sign-in; rely on resume-plus-history-refetch for turn continuity.
+2. **Migrate text chat and session lifecycle — landed (2026-08-02).** `src/services/gateway`
+   speaks the gateway's REST and JSON-RPC protocols and normalizes them into the existing Wave
+   contracts; the connect screen leads with username/password sign-in; conversation screens
+   depend on a backend-neutral client and connection identity; both backends reach the same
+   offline degradation. Verified on the iOS simulator against a live gateway: sign in, start a
+   conversation, stream a reply, and see it listed with its title and preview. Companion pairing
+   still works for devices that have not switched. Remaining before stage 5: Android e2e,
+   attachments and cancel against the gateway, mid-turn approval prompts (`approval.respond`),
+   and search scope.
 3. **Adopt gateway voice.** Hermes native voice mode (record → `/api/audio/transcribe` →
    normal turn → `/api/audio/speak-stream`) becomes the default voice mode, plus standalone
    dictation into the composer (STT) and per-message playback (TTS). Degrade clearly when the

@@ -155,6 +155,12 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   reading that local cache with the stored device credential; it grants no new authority. An
   unauthorized or incompatible recheck never degrades — it still returns the device to the
   connect screen.
+- Gateway sessions (the direct-to-gateway path) hold an access/refresh token pair in platform
+  secure storage, device-only, never logged, and rotated whenever the gateway refreshes them.
+  The gateway's tokens are stateless and signed: signing out deletes them locally but cannot
+  revoke them server-side, so their real lifetime is their expiry (12 hours access, 30 days
+  refresh) or a rotation of the gateway's signing secret. Wave says so in the disconnect flow
+  rather than implying a server-side revocation it cannot perform.
 
 ### Transport and deployment
 

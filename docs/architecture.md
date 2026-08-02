@@ -27,8 +27,11 @@ Wave Companion
 Wave mobile ◀════════ direct WebRTC audio ════════▶ OpenAI Realtime API
 ```
 
-The companion is the mobile application's only production backend. Standard OpenAI and Hermes API
-keys remain server-side. The phone stores only a revocable device credential and its small
+The companion is being retired in favour of a direct Hermes gateway connection (see the decision
+below). Stage 2 of that migration landed the gateway transport, sign-in, and conversation
+surfaces, so the app now supports two backends: a saved gateway session (username/password
+sign-in, opaque rotating tokens) and, for devices that have not switched, the companion pairing
+described above. Standard OpenAI and Hermes API keys remain server-side on the companion path. The phone stores only a revocable device credential and its small
 connection profile in platform secure storage. The SDP and Wave-owned call state used to establish
 a Realtime connection remain transient; neither the OpenAI API key nor OpenAI's call identifier
 crosses the Wave API boundary.
@@ -143,9 +146,18 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   asynchronous APIs with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The record contains the normalized
   companion URL, public device metadata, and the revocable device credential. UI and
   development-state summaries omit the credential.
-- `WaveConnectionProvider` owns bootstrap, pairing, restore, compatibility verification, retry,
-  authenticated self-revocation, and local credential cleanup. Screens do not construct
-  authorization headers or raw protocol messages.
+- `WaveConnectionProvider` owns bootstrap, sign-in or pairing, restore, verification, retry, and
+  local credential cleanup for both backends. Screens do not construct authorization headers or
+  raw protocol messages. A saved gateway session takes precedence over a saved pairing during
+  restore, and conversation screens receive a backend-neutral `WaveChatClient` plus a connection
+  `identity` (id, base URL, kind, label) rather than a companion device record.
+- `src/services/gateway` is the direct Hermes gateway transport: REST for the session list,
+  timeline, rename, delete, and history; one WebSocket per turn carrying JSON-RPC for streaming;
+  and normalization of every gateway shape into Wave contracts before it reaches a screen. It
+  synthesizes the monotonic sequence numbers and turn identity the chat reducer expects, holds
+  session tokens as opaque device-only values, and persists the rotated pair the gateway returns
+  on any refresh. A conversation the user just started is routed by a local placeholder id until
+  its first turn creates the real session; the client maps the two so the route stays stable.
 - The PanelUI connection route performs the public status check and one-time redemption before
   saving the credential, then requires an authenticated live compatibility check. A saved
   credential is rechecked at launch. When that recheck fails for connectivity-shaped reasons only

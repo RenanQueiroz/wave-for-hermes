@@ -74,7 +74,8 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - Do not add: the Vercel `ai` SDK or `@ai-sdk/*`, Axios or another HTTP client, a second
   SSE/EventSource implementation, Redux/Zustand/MobX/XState, AsyncStorage, LiveKit, or Expo Router
   `+api.ts` server routes. State lives in TanStack Query plus focused controllers/reducers, and
-  streaming stays on `expo/fetch` with the Wave SSE parser.
+  streaming stays on `expo/fetch` with the Wave SSE parser for the companion transport, and on
+  the platform WebSocket with the gateway's JSON-RPC framing for the direct gateway transport.
 - Add analytics or crash reporting only after consent and retention are deliberately designed.
 - Install optional PanelUI peer dependencies only when an adopted component needs them.
 - PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
@@ -148,11 +149,19 @@ documentation before implementing UI.
   Mutations and active streams must not retry automatically after an ambiguous failure.
   Reattaching to an already-dispatched turn stream by turn ID and sequence is a read of the same
   execution, not a mutation retry; the turn submission itself is never re-sent automatically.
-- Use Expo SDK 57's `expo/fetch` for response streaming. Keep stream framing, ordering, timeout,
-  cancellation, and size limits in `WaveBackendClient` and its service helpers.
+- Use Expo SDK 57's `expo/fetch` for response streaming over HTTP. Keep stream framing, ordering,
+  timeout, cancellation, and size limits in `WaveBackendClient` and its service helpers, and the
+  equivalent concerns for the gateway in `src/services/gateway`.
 - Hermes HTTP, SSE, capability, and error normalization belongs in the companion's server-only
   adapter under `companion/src/hermes`; do not import it into mobile feature or UI code.
-- Do not retain a second production Hermes transport in the mobile bundle after the adapter moves.
+- Two production transports coexist only for the direct-to-gateway migration: the companion
+  client and `src/services/gateway`. Conversation screens depend on the backend-neutral
+  `WaveChatClient` and the connection's `identity`, never on a concrete client; surfaces needing
+  companion-only capabilities ask for `companionClient` and degrade when it is absent. Collapse
+  back to one transport when the companion is removed.
+- Gateway protocol shapes stop at `src/services/gateway`: normalize them into Wave contracts
+  there. Gateway session tokens are opaque device-only values, rotated from every response and
+  never logged; the gateway cannot revoke them, so sign-out is local deletion.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
 - Wave does not add a separate user-approval prompt before `ask_hermes`. Dispatch it automatically
