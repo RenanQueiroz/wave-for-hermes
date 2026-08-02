@@ -87,6 +87,16 @@ const KEYBOARD_GAP = 12;
 // disabled dim is both subtler and suppressed by its press animation.
 const BLOCKED_COMPOSER_BUTTON_STYLE = { opacity: 0.4 } as const;
 
+// The avatar-facing pointer corner of the final assistant item. Expressed
+// through RN's directional prop instead of the `rounded-es-*` classes the
+// Message variant uses: RN Android resolves the CSS logical `es`/`se`
+// corners to the diagonally opposite corner (BorderRadiusStyle.resolve reads
+// the tokens inline-axis-first), so `rounded-es-md` squares the top-right on
+// Android while iOS correctly squares the bottom-left. borderBottomStartRadius
+// resolves correctly on both platforms and still flips for RTL. 6 mirrors the
+// theme's `md` radius.
+const ASSISTANT_POINTER_CORNER_STYLE = { borderBottomStartRadius: 6 } as const;
+
 const EMPTY_STATE_TITLES = [
   'Ask me anything',
   'How can I help?',
@@ -712,15 +722,24 @@ const ChatTurn = memo(
           {message.parts.map((part, index) => {
             const isLastPart = index === message.parts.length - 1;
             if (part.type === 'text') {
+              // User bubbles keep the variant's `rounded-ee-*` classes (that
+              // corner resolves correctly everywhere); assistant bubbles
+              // override the broken `es` class away and draw the pointer via
+              // ASSISTANT_POINTER_CORNER_STYLE on the final item only.
               return (
                 <Message.Bubble
                   key={`${message.id}-text-${index}`}
                   className={
-                    isLastPart
-                      ? undefined
-                      : isUser
-                        ? 'rounded-ee-2xl'
-                        : 'rounded-es-2xl'
+                    isUser
+                      ? isLastPart
+                        ? undefined
+                        : 'rounded-ee-2xl'
+                      : 'rounded-2xl'
+                  }
+                  style={
+                    !isUser && isLastPart
+                      ? ASSISTANT_POINTER_CORNER_STYLE
+                      : undefined
                   }>
                   <Message.BubbleContent>{part.text}</Message.BubbleContent>
                 </Message.Bubble>
@@ -740,7 +759,9 @@ const ChatTurn = memo(
             );
           })}
           {isStreaming && message.parts.length === 0 ? (
-            <Message.Bubble>
+            <Message.Bubble
+              className="rounded-2xl"
+              style={ASSISTANT_POINTER_CORNER_STYLE}>
               <Shimmer textClassName="text-base">Wave is thinking…</Shimmer>
             </Message.Bubble>
           ) : null}
@@ -786,9 +807,9 @@ function ChatToolStep({
       className={[
         'rounded-xl bg-muted px-3 py-2',
         open ? 'gap-2' : 'gap-0',
-        isLast ? 'rounded-es-md' : '',
         status === 'error' ? 'border border-destructive/30' : '',
       ].join(' ')}
+      style={isLast ? ASSISTANT_POINTER_CORNER_STYLE : undefined}
       defaultOpen={false}
       open={open}
       status={status}

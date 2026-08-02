@@ -97,6 +97,12 @@ documentation before implementing UI.
   animation, so a disabled control never visually dims through classes or its own style — put
   the dim on a wrapper `View`. Icon typings can also declare more than the runtime entry exports
   (`RotateCwIcon`); a green typecheck does not prove an icon exists at runtime.
+- React Native's Android renderer resolves the CSS logical corner classes `rounded-es-*` and
+  `rounded-se-*` to the diagonally opposite corner (validated on RN 0.86:
+  `BorderRadiusStyle.resolve` reads the tokens inline-axis-first; iOS is correct, and
+  `rounded-ss-*`/`rounded-ee-*` are correct on both). For a mixed corner, use RN's directional
+  style props (`borderBottomStartRadius`) instead — they resolve correctly everywhere and stay
+  RTL-aware.
 - Restart Metro with a cleared cache after changes to Metro, global CSS, themes, or PanelUI/Uniwind
   dependencies.
 

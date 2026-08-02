@@ -48,6 +48,11 @@ The detailed evidence and acceptance gates live in
   before slow automation could reopen the screen), verify purge-on-disconnect, and repeat the
   LAN validation on physical iOS — including the local-network permission prompt from a client
   built after the `app.json` usage-description addition.
+- Investigate offline-cache durability: after heavy development-session churn (repeated JS
+  reloads and unauthorized refetches against restarted fixtures), both test devices later
+  cold-started offline with an empty persisted cache even though conversations had previously
+  been cached and read offline on the same pairing. Reproduce deliberately and determine what
+  emptied the persisted file before trusting the cache for long-lived pairings.
 
 ## Next: release hardening and focused operations
 
