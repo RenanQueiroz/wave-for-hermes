@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import {
   Alert,
@@ -13,11 +14,13 @@ import { View } from 'react-native';
 import { LegendList } from '@/components/legend-list';
 import { OfflineNotice } from '@/components/offline-notice';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { mergeSessionSearchResults } from '@/features/sessions/merge-session-search';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
+import type { GatewayClient } from '@/services/gateway/gateway-client';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 
 export function SessionSearchScreen() {
@@ -34,6 +37,7 @@ export function SessionSearchScreen() {
       baseUrl={connection.state.identity.baseUrl}
       client={connection.client}
       connectionId={connection.state.identity.id}
+      gatewayClient={connection.gatewayClient}
     />
   );
 }
@@ -42,10 +46,12 @@ function ConnectedSessionSearchScreen({
   baseUrl,
   client,
   connectionId,
+  gatewayClient,
 }: {
   baseUrl: string;
   client: NonNullable<ReturnType<typeof useWaveConnection>['client']>;
   connectionId: string;
+  gatewayClient?: GatewayClient;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -68,16 +74,40 @@ function ConnectedSessionSearchScreen({
     [sessionPages],
   );
   const normalizedSearch = search.trim().toLocaleLowerCase();
+  // Titles are matched locally because the gateway does not index them
+  // (verified live on 0.19.0); the server search covers message content, which
+  // the client cannot see. Debounced so typing does not spam the gateway.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(normalizedSearch), 250);
+    return () => clearTimeout(timer);
+  }, [normalizedSearch]);
+  const contentSearch = useQuery({
+    enabled: Boolean(gatewayClient) && debouncedSearch.length > 1,
+    queryFn: ({ signal }) =>
+      gatewayClient?.searchSessions(debouncedSearch, { limit: 30 }, signal) ?? {
+        results: [],
+      },
+    queryKey: [
+      'wave',
+      connectionId,
+      baseUrl,
+      'session-search',
+      debouncedSearch,
+    ],
+    staleTime: 30_000,
+  });
   const matches = useMemo(
     () =>
-      normalizedSearch
-        ? sessions.filter((session) =>
-            (session.title ?? 'Untitled chat')
-              .toLocaleLowerCase()
-              .includes(normalizedSearch),
-          )
-        : sessions,
-    [normalizedSearch, sessions],
+      mergeSessionSearchResults({
+        contentMatches:
+          debouncedSearch === normalizedSearch
+            ? (contentSearch.data?.results ?? [])
+            : [],
+        normalizedQuery: normalizedSearch,
+        sessions,
+      }),
+    [contentSearch.data, debouncedSearch, normalizedSearch, sessions],
   );
 
   useEffect(() => {
@@ -95,8 +125,10 @@ function ConnectedSessionSearchScreen({
           </InputGroup.Prefix>
           <InputGroup.Input
             autoFocus
-            accessibilityLabel="Search conversation titles"
-            placeholder="Search titles"
+            accessibilityLabel="Search conversations"
+            placeholder={
+              gatewayClient ? 'Search titles and messages' : 'Search titles'
+            }
             returnKeyType="search"
             testID="session-search-input"
             value={search}
@@ -135,7 +167,7 @@ function ConnectedSessionSearchScreen({
         data={matches}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
-        keyExtractor={(session) => session.id}
+        keyExtractor={(match) => match.session.id}
         ListEmptyComponent={
           isPending || isFetchingNextPage ? (
             <View className="items-center py-12">
@@ -144,7 +176,9 @@ function ConnectedSessionSearchScreen({
           ) : (
             <Typography.Paragraph muted className="px-3 py-10 text-center">
               {normalizedSearch
-                ? 'No conversation title matches your search.'
+                ? gatewayClient
+                  ? 'No conversation title or message matches your search.'
+                  : 'No conversation title matches your search.'
                 : 'No previous conversations.'}
             </Typography.Paragraph>
           )
@@ -156,22 +190,26 @@ function ConnectedSessionSearchScreen({
         }}
         renderItem={({ item }) => (
           <Item
-            accessibilityLabel={`Open conversation ${item.title ?? 'Untitled chat'}`}
-            testID={`search-session-${item.id}`}
+            accessibilityLabel={`Open conversation ${item.session.title ?? 'Untitled chat'}`}
+            testID={`search-session-${item.session.id}`}
             onPress={() => {
-              void activeSessionStore.save(connectionId, item.id).then(() =>
-                router.replace({
-                  pathname: '/conversation/[sessionId]',
-                  params: { sessionId: item.id },
-                }),
-              );
+              void activeSessionStore
+                .save(connectionId, item.session.id)
+                .then(() =>
+                  router.replace({
+                    pathname: '/conversation/[sessionId]',
+                    params: { sessionId: item.session.id },
+                  }),
+                );
             }}>
             <Item.Content>
               <Item.Title numberOfLines={1}>
-                {item.title ?? 'Untitled chat'}
+                {item.session.title ?? 'Untitled chat'}
               </Item.Title>
               <Item.Description numberOfLines={2}>
-                {item.preview ?? 'Hermes conversation'}
+                {item.matchedOn === 'content'
+                  ? `Message match: ${item.snippet ?? 'found in this conversation'}`
+                  : (item.session.preview ?? 'Hermes conversation')}
               </Item.Description>
             </Item.Content>
           </Item>

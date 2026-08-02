@@ -62,6 +62,7 @@ const MAX_SPEAK_CHARS = 4_000;
 // hosted provider routinely takes tens of seconds where a REST read takes
 // milliseconds.
 const AUDIO_REQUEST_TIMEOUT_MS = 90_000;
+const MAX_SEARCH_SNIPPET_CHARS = 300;
 
 export interface GatewayTokenSink {
   (tokens: GatewayTokens): void;
@@ -197,6 +198,51 @@ export class GatewayClient {
     );
     const sessions = normalizeSessionRows(body);
     return { hasMore: sessions.length >= limit, limit, offset, sessions };
+  }
+
+  /**
+   * Full-text search across message CONTENT and session ids.
+   *
+   * Verified live on 0.19.0: titles are NOT indexed — renaming a session and
+   * searching its new title returns nothing — so a title search stays a
+   * client-side filter over the loaded session list and this covers what that
+   * cannot see. Results carry a highlighted snippet using `>>>term<<<`
+   * markers, which are normalized away here.
+   */
+  async searchSessions(
+    query: string,
+    input: { limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<{ results: { sessionId: string; snippet?: string }[] }> {
+    const trimmed = query.trim();
+    if (!trimmed) return { results: [] };
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 100);
+    const body = await this.request(
+      `/api/sessions/search?q=${encodeURIComponent(trimmed)}&limit=${limit}`,
+      { signal },
+    );
+    const rows = (body as { results?: unknown } | null)?.results;
+    if (!Array.isArray(rows)) return { results: [] };
+    const seen = new Set<string>();
+    const results: { sessionId: string; snippet?: string }[] = [];
+    for (const row of rows) {
+      if (typeof row !== 'object' || row === null) continue;
+      const record = row as { session_id?: unknown; snippet?: unknown };
+      const sessionId =
+        typeof record.session_id === 'string' ? record.session_id.trim() : '';
+      if (!sessionId || seen.has(sessionId)) continue;
+      seen.add(sessionId);
+      const snippet =
+        typeof record.snippet === 'string'
+          ? record.snippet
+              .replace(/>>>|<<</g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, MAX_SEARCH_SNIPPET_CHARS)
+          : '';
+      results.push({ sessionId, ...(snippet ? { snippet } : {}) });
+    }
+    return { results };
   }
 
   async getSessionTimeline(
