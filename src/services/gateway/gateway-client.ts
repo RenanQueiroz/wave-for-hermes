@@ -49,6 +49,10 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const TURN_IDLE_TIMEOUT_MS = 120_000;
 const WS_CONNECT_TIMEOUT_MS = 20_000;
 const TIMELINE_PAGE_LIMIT = 200;
+// `/messages` returns rows oldest-first and `limit` keeps the OLDEST rows
+// (verified live on 0.19.0), so an uncapped limit is how "from this offset to
+// the end" is expressed. The offset bounds the actual payload.
+const FETCH_TO_END_LIMIT = 100_000;
 // The gateway caps transcription uploads at 25 MiB; base64 inflates by 4/3, so
 // refuse locally rather than spending the upload to earn a 413.
 const MAX_AUDIO_DATA_URL_CHARS = Math.floor((25 * 1024 * 1024 * 4) / 3);
@@ -133,6 +137,13 @@ export class GatewayClient {
    * rename, delete, cancel) reaches the real session.
    */
   private readonly resolvedSessions = new Map<string, string>();
+  /**
+   * Stored session id → the live transport sid from this client's last
+   * `session.create`/`session.resume`. `session.interrupt` only accepts live
+   * sids (the stored id earns a 4001, verified live on 0.19.0), so cancelling
+   * a turn needs the sid the turn was started under.
+   */
+  private readonly liveSessions = new Map<string, string>();
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -197,31 +208,101 @@ export class GatewayClient {
         sessionId,
       };
     }
-    // The gateway pages by numeric offset from the oldest message, while Wave
+    // The gateway pages by numeric offset from the OLDEST message, while Wave
     // pages backwards from the newest with an opaque cursor. `before` carries
-    // the offset of the oldest entry already held.
+    // the offset (in raw gateway rows) of the oldest row already held.
     const limit = Math.min(
       Math.max(input.limit ?? 100, 1),
       TIMELINE_PAGE_LIMIT,
     );
     const before = Number.parseInt(input.before ?? '', 10);
-    const end = Number.isFinite(before) ? before : undefined;
-    const all = await this.request(
-      `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=500`,
-      { signal },
+
+    if (Number.isFinite(before)) {
+      // Later pages: the cursor fully determines the window.
+      const upper = Math.max(before, 0);
+      const lower = Math.max(upper - limit, 0);
+      const rows = await this.fetchMessageRows(
+        sessionId,
+        upper - lower,
+        lower,
+        signal,
+      );
+      return {
+        apiVersion: 'v1',
+        entries: normalizeTimelineEntries({ messages: rows }, lower),
+        hasMore: lower > 0,
+        limit,
+        ...(lower > 0 ? { nextCursor: String(lower) } : {}),
+        sessionId,
+      };
+    }
+
+    // First page: the newest rows live at the END of the ascending history,
+    // so start from the session's reported row count. The uncapped limit and
+    // the client-side tail slice keep this correct even when that count has
+    // drifted from the true total.
+    const count = await this.fetchMessageCount(sessionId, signal);
+    let offset = Math.max(count - limit, 0);
+    let rows = await this.fetchMessageRows(
+      sessionId,
+      FETCH_TO_END_LIMIT,
+      offset,
+      signal,
     );
-    const entries = normalizeTimelineEntries(all);
-    const upper = end ?? entries.length;
-    const lower = Math.max(upper - limit, 0);
-    const page = entries.slice(lower, upper);
+    if (rows.length === 0 && offset > 0) {
+      // The reported count overshot the stored rows; take history from the top.
+      offset = 0;
+      rows = await this.fetchMessageRows(
+        sessionId,
+        FETCH_TO_END_LIMIT,
+        0,
+        signal,
+      );
+    }
+    const drop = Math.max(rows.length - limit, 0);
+    const lower = offset + drop;
     return {
       apiVersion: 'v1',
-      entries: page,
+      entries: normalizeTimelineEntries({ messages: rows.slice(drop) }, lower),
       hasMore: lower > 0,
       limit,
       ...(lower > 0 ? { nextCursor: String(lower) } : {}),
       sessionId,
     };
+  }
+
+  private async fetchMessageRows(
+    sessionId: string,
+    limit: number,
+    offset: number,
+    signal?: AbortSignal,
+  ): Promise<unknown[]> {
+    if (limit <= 0) return [];
+    const body = await this.request(
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}`,
+      { signal },
+    );
+    const rows = (body as { messages?: unknown } | null)?.messages;
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  /** The session's row count from its detail row; 0 when unavailable. */
+  private async fetchMessageCount(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<number> {
+    try {
+      const body = await this.request(
+        `/api/sessions/${encodeURIComponent(sessionId)}`,
+        { signal },
+      );
+      const count = (body as { message_count?: unknown } | null)?.message_count;
+      return typeof count === 'number' && Number.isFinite(count) && count > 0
+        ? Math.floor(count)
+        : 0;
+    } catch {
+      return 0;
+    }
   }
 
   async createSession(
@@ -500,9 +581,23 @@ export class GatewayClient {
     status: 'cancellation_requested';
     turnId: string;
   }> {
+    sessionId = this.resolveSessionId(sessionId);
+    if (isPendingSessionId(sessionId)) {
+      // No gateway session exists yet, so there is nothing to interrupt; the
+      // caller's local abort ends the streaming request.
+      return { apiVersion: 'v1', status: 'cancellation_requested', turnId };
+    }
+    // `session.interrupt` accepts only live transport sids — the stored id
+    // earns a 4001 "session not found" (verified live on 0.19.0). Interrupt
+    // through the sid this client learned when it started or resumed the
+    // turn; without one the stored id still goes out and the resulting
+    // not_found tells the caller to fall back to its local abort.
+    const liveSessionId = this.liveSessions.get(sessionId) ?? sessionId;
     const connection = await this.openSocket(signal);
     try {
-      await connection.rpc.call('session.interrupt', { session_id: sessionId });
+      await connection.rpc.call('session.interrupt', {
+        session_id: liveSessionId,
+      });
       return {
         apiVersion: 'v1',
         status: 'cancellation_requested',
@@ -537,18 +632,21 @@ export class GatewayClient {
         });
       }
       // Later reads address the STORED id (the durable db key); the live id is
-      // only valid for this socket.
-      this.resolvedSessions.set(
-        sessionId,
-        typeof stored === 'string' && stored ? stored : live,
-      );
+      // only valid on the transport, where interrupt needs it.
+      const storedId = typeof stored === 'string' && stored ? stored : live;
+      this.resolvedSessions.set(sessionId, storedId);
+      this.liveSessions.set(storedId, live);
       return live;
     }
     const resumed = await rpc.call('session.resume', {
       session_id: sessionId,
     });
     const live = resumed.session_id;
-    return typeof live === 'string' && live ? live : sessionId;
+    if (typeof live === 'string' && live) {
+      this.liveSessions.set(sessionId, live);
+      return live;
+    }
+    return sessionId;
   }
 
   private async *pump(
@@ -557,12 +655,14 @@ export class GatewayClient {
     signal?: AbortSignal,
   ): AsyncGenerator<WaveTurnEvent> {
     while (true) {
+      const frame = await events.next(signal);
+      // The abort check comes after the wait: an abort that arrives mid-wait
+      // must read as the user's cancellation, never as a dropped stream.
       if (signal?.aborted) {
         throw new WaveBackendError('Wave cancelled this turn.', {
           kind: 'cancelled',
         });
       }
-      const frame = await events.next(signal);
       if (frame === undefined) {
         yield* translator.finish({ interrupted: false });
         return;
@@ -816,12 +916,20 @@ export function isPendingSessionId(sessionId: string): boolean {
   return sessionId.startsWith(PENDING_SESSION_PREFIX);
 }
 
-/** Async queue bridging socket callbacks to the turn generator. */
-class TurnEventQueue {
+/**
+ * Async queue bridging socket callbacks to the turn generator. Exported for
+ * tests; production use stays inside this module.
+ */
+export class TurnEventQueue {
   private readonly buffer: (GatewayTurnFrame | typeof TURN_STREAM_FAILED)[] =
     [];
   private closed = false;
   private waiter?: () => void;
+  private readonly idleTimeoutMs: number;
+
+  constructor(idleTimeoutMs: number = TURN_IDLE_TIMEOUT_MS) {
+    this.idleTimeoutMs = idleTimeoutMs;
+  }
 
   push(frame: GatewayTurnFrame): void {
     this.buffer.push(frame);
@@ -844,13 +952,19 @@ class TurnEventQueue {
     while (this.buffer.length === 0 && !this.closed) {
       if (signal?.aborted) return undefined;
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, TURN_IDLE_TIMEOUT_MS);
-        this.waiter = () => {
-          clearTimeout(timer);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const done = () => {
+          if (timer) clearTimeout(timer);
+          signal?.removeEventListener('abort', done);
+          if (this.waiter === done) this.waiter = undefined;
           resolve();
         };
-        signal?.addEventListener('abort', () => this.wake(), { once: true });
+        timer = setTimeout(done, this.idleTimeoutMs);
+        this.waiter = done;
+        signal?.addEventListener('abort', done, { once: true });
       });
+      // An abort is a caller decision, not a stream failure.
+      if (signal?.aborted) return undefined;
       if (this.buffer.length === 0 && !this.closed) {
         // Idle timeout: treat as a dropped stream so the caller reconciles.
         return TURN_STREAM_FAILED;

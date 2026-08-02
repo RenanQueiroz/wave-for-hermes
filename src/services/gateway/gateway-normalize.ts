@@ -168,10 +168,14 @@ export function normalizeMessageRow(
 /**
  * Gateway message rows → Wave timeline entries. The gateway has no handoff
  * concept (that was the companion's ledger), so every entry is a message.
- * Entry ids must be stable: the timeline uses them as list keys and as the
- * pagination cursor.
+ * Entry ids must be stable: the timeline uses them as list keys, so when a
+ * row carries no id the fallback uses the row's absolute offset in the full
+ * history (`indexBase` + position) rather than its position within one page.
  */
-export function normalizeTimelineEntries(value: unknown): WaveTimelineEntry[] {
+export function normalizeTimelineEntries(
+  value: unknown,
+  indexBase = 0,
+): WaveTimelineEntry[] {
   const rows = Array.isArray((value as { messages?: unknown })?.messages)
     ? ((value as { messages: unknown[] }).messages as GatewayMessageRow[])
     : [];
@@ -183,7 +187,7 @@ export function normalizeTimelineEntries(value: unknown): WaveTimelineEntry[] {
     const id =
       typeof rawId === 'number' || typeof rawId === 'string'
         ? `msg-${String(rawId)}`
-        : `msg-index-${index}`;
+        : `msg-index-${indexBase + index}`;
     entries.push({
       id,
       message,

@@ -35,6 +35,12 @@ import type { GatewayClient } from '@/services/gateway/gateway-client';
 const SAMPLE_INTERVAL_MS = 250;
 
 /**
+ * Playback backstop for a player that reports neither completion nor failure.
+ * MAX_SPEAK_CHARS of synthesized speech tops out well under this.
+ */
+const MAX_PLAYBACK_WAIT_MS = 6 * 60_000;
+
+/**
  * Speech, not music: mono at 16 kHz is what transcription providers want, and
  * it keeps a minute of audio small enough to upload as a data URL.
  */
@@ -114,7 +120,14 @@ export function useGatewayVoice({
     }
   }, []);
 
-  /** Abandon whatever the loop is doing and release every audio resource. */
+  /**
+   * Abandon whatever the loop is doing and release every audio resource.
+   *
+   * On unmount, `useAudioRecorder`'s own cleanup has already released the
+   * native shared object, and ANY access to a released object throws — so
+   * every recorder touch is guarded and teardown can never reject out of a
+   * fire-and-forget call.
+   */
   const teardown = useCallback(async () => {
     generationRef.current += 1;
     turnAbortRef.current?.abort();
@@ -123,9 +136,13 @@ export function useGatewayVoice({
     try {
       await recorder.stop();
     } catch {
-      // Not recording.
+      // Not recording, or the recorder was already released.
     }
-    deleteRecording(recorder.uri);
+    try {
+      deleteRecording(recorder.uri);
+    } catch {
+      // Released recorder: the OS reclaims the cached file.
+    }
     await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
   }, [recorder, releasePlayer]);
 
@@ -270,12 +287,18 @@ export function useGatewayVoice({
       let finished = false;
       player.addListener('playbackStatusUpdate', (status) => {
         if (status.didJustFinish) finished = true;
+        // A player that cannot decode or route the audio never reaches
+        // didJustFinish; without this the loop would sit in "speaking"
+        // until the wait cap.
+        if (status.playbackState === 'failed') finished = true;
       });
       player.play();
+      const deadline = Date.now() + MAX_PLAYBACK_WAIT_MS;
       while (
         !finished &&
         !skipSpeakingRef.current &&
-        generationRef.current === generation
+        generationRef.current === generation &&
+        Date.now() < deadline
       ) {
         await delay(100);
       }

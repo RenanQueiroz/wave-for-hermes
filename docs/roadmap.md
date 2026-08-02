@@ -30,7 +30,12 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    still works for devices that have not switched. Also verified on a physical Pixel 8 Pro
    (2026-08-02): sign-in, a streamed turn, the drawer listing conversations created on the other
    device (cross-device visibility through the shared Hermes store), and offline cold start
-   degrading to cached reading. Remaining before stage 5: attachments and cancel against the
+   degrading to cached reading. A stages 1-3 review (2026-08-02) then live-verified the
+   protocol assumptions that had only been inferred, fixing three real defects: turn cancel
+   now interrupts through the live transport sid (the stored id silently fails with a 4001),
+   the timeline pages from the NEWEST end (`/messages?limit=` keeps the oldest rows, so long
+   conversations hid their newest messages), and a user Stop is reported as a cancellation
+   rather than "Wave lost the connection". Remaining before stage 5: attachments against the
    gateway, mid-turn approval prompts (`approval.respond`), and search scope.
 3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
    runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →

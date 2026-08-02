@@ -15,7 +15,7 @@ import {
   useAudioRecorder,
 } from 'expo-audio';
 import { File } from 'expo-file-system';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { mimeTypeForRecording } from '@/features/voice/gateway-voice-machine';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
@@ -32,6 +32,18 @@ export function useDictation({ client }: { client?: GatewayClient }) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [state, setState] = useState<DictationState>({ status: 'idle' });
   const activeRef = useRef(false);
+
+  // Unmounting mid-dictation: the recorder hook releases its own native
+  // object (touching it here would throw "shared object already released"),
+  // so this cleanup only makes sure the audio session does not stay
+  // record-capable — an open record session keeps the OS microphone claimed.
+  useEffect(() => {
+    return () => {
+      if (!activeRef.current) return;
+      activeRef.current = false;
+      void setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+    };
+  }, []);
 
   const start = useCallback(async () => {
     if (activeRef.current || !client) return;

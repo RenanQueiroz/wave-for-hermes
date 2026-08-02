@@ -15,6 +15,7 @@ import {
 import {
   GatewayClient,
   isPendingSessionId,
+  TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
 import {
@@ -348,8 +349,187 @@ test('a new conversation keeps its route while its real session is created', asy
   await client.updateSession(created.session.id, { title: 'Renamed' });
   await client.deleteSession(created.session.id);
   assert.deepEqual(requests, [
+    // First timeline page: the detail row supplies the count, then the rows.
+    'GET /api/sessions/20260802_000000_abcdef',
     'GET /api/sessions/20260802_000000_abcdef/messages',
     'PATCH /api/sessions/20260802_000000_abcdef',
     'DELETE /api/sessions/20260802_000000_abcdef',
   ]);
+});
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { 'content-type': 'application/json' },
+    status: 200,
+  });
+}
+
+function timelineFixtureClient(rowCount: number, reportedCount: number) {
+  const rows = Array.from({ length: rowCount }, (_, index) => ({
+    content: `message ${index + 1}`,
+    id: index + 1,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+  }));
+  const requests: string[] = [];
+  const fetchImpl = (async (url: string | URL) => {
+    const parsed = new URL(String(url));
+    requests.push(`${parsed.pathname}${parsed.search}`);
+    if (parsed.pathname === '/api/sessions/s1') {
+      return jsonResponse({ id: 's1', message_count: reportedCount });
+    }
+    const limit = Number(parsed.searchParams.get('limit') ?? '500');
+    const offset = Number(parsed.searchParams.get('offset') ?? '0');
+    const page = rows.slice(offset, offset + limit);
+    return jsonResponse({
+      messages: page,
+      pagination: { limit, offset, returned: page.length },
+    });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+  return { client, requests };
+}
+
+test('pages the timeline from the newest end', async () => {
+  // Regression: `/messages?limit=N` keeps the OLDEST N rows (verified live on
+  // 0.19.0), so a naive capped fetch hides the newest messages of a long
+  // conversation. The first page must hold the newest rows and the cursor
+  // must walk backwards to the oldest.
+  const { client } = timelineFixtureClient(7, 7);
+
+  const first = await client.getSessionTimeline('s1', { limit: 3 });
+  assert.deepEqual(
+    first.entries.map((entry) => entry.id),
+    ['msg-5', 'msg-6', 'msg-7'],
+  );
+  assert.equal(first.hasMore, true);
+  assert.equal(first.nextCursor, '4');
+
+  const second = await client.getSessionTimeline('s1', {
+    before: first.nextCursor,
+    limit: 3,
+  });
+  assert.deepEqual(
+    second.entries.map((entry) => entry.id),
+    ['msg-2', 'msg-3', 'msg-4'],
+  );
+  assert.equal(second.hasMore, true);
+  assert.equal(second.nextCursor, '1');
+
+  const third = await client.getSessionTimeline('s1', {
+    before: second.nextCursor,
+    limit: 3,
+  });
+  assert.deepEqual(
+    third.entries.map((entry) => entry.id),
+    ['msg-1'],
+  );
+  assert.equal(third.hasMore, false);
+  assert.equal(third.nextCursor, undefined);
+});
+
+test('recovers when the reported message count overshoots the rows', async () => {
+  const { client, requests } = timelineFixtureClient(2, 50);
+  const page = await client.getSessionTimeline('s1', { limit: 3 });
+  assert.deepEqual(
+    page.entries.map((entry) => entry.id),
+    ['msg-1', 'msg-2'],
+  );
+  assert.equal(page.hasMore, false);
+  // Overshot offset returned nothing, so the client refetched from the top.
+  assert.equal(
+    requests.filter((request) => request.includes('/messages')).length,
+    2,
+  );
+});
+
+test('cancels a turn through the live transport sid', async () => {
+  // Regression: `session.interrupt` rejects stored session ids with a 4001
+  // (verified live on 0.19.0); the interrupt must use the live sid learned
+  // when the turn was started or resumed.
+  const sent: string[] = [];
+  class FakeSocket {
+    onopen?: () => void;
+    onmessage?: (message: { data: string }) => void;
+    onerror?: () => void;
+    onclose?: () => void;
+    constructor() {
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(data: string): void {
+      sent.push(data);
+      const frame = JSON.parse(data) as { id: number };
+      setTimeout(() => {
+        this.onmessage?.({
+          data: JSON.stringify({
+            id: frame.id,
+            jsonrpc: '2.0',
+            result: { status: 'interrupted' },
+          }),
+        });
+      }, 0);
+    }
+    close(): void {
+      // No-op for the fake.
+    }
+  }
+  const fetchImpl = (async (url: string | URL) => {
+    if (String(url).endsWith('/api/auth/ws-ticket')) {
+      return jsonResponse({ ticket: 't-1' });
+    }
+    throw new Error(`unexpected request: ${String(url)}`);
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => new FakeSocket() as unknown as WebSocket,
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+
+  // A pending conversation has no gateway session: nothing to interrupt.
+  const pending = await client.cancelTurn('wave-pending-1', 'turn-0');
+  assert.equal(pending.status, 'cancellation_requested');
+  assert.equal(sent.length, 0);
+
+  (client as unknown as { liveSessions: Map<string, string> }).liveSessions.set(
+    '20260802_000000_abcdef',
+    'live-9',
+  );
+  const result = await client.cancelTurn('20260802_000000_abcdef', 'turn-1');
+  assert.equal(result.status, 'cancellation_requested');
+  const interrupt = JSON.parse(sent[0]) as {
+    method: string;
+    params: { session_id: string };
+  };
+  assert.equal(interrupt.method, 'session.interrupt');
+  assert.equal(interrupt.params.session_id, 'live-9');
+});
+
+test('the turn event queue tells cancellation apart from idle timeout', async () => {
+  // An abort mid-wait is the user's decision and must not read as a dropped
+  // stream (which would surface "Wave lost the connection to Hermes").
+  const abortQueue = new TurnEventQueue(5_000);
+  const controller = new AbortController();
+  const pending = abortQueue.next(controller.signal);
+  controller.abort();
+  assert.equal(await pending, undefined);
+
+  // A queue that stays silent past its idle budget reports a dropped stream.
+  const idleQueue = new TurnEventQueue(20);
+  const result = await idleQueue.next();
+  assert.equal(typeof result, 'symbol');
+
+  // A buffered frame is delivered even under an aborted signal only after
+  // the abort check, which the pump performs — next() itself must still
+  // never hang.
+  const readyQueue = new TurnEventQueue(5_000);
+  readyQueue.push({ payload: { text: 'hi' }, type: 'message.delta' });
+  const frame = await readyQueue.next();
+  assert.deepEqual(frame, { payload: { text: 'hi' }, type: 'message.delta' });
 });
