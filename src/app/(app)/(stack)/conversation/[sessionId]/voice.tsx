@@ -1,7 +1,15 @@
+import { useQuery } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
-import { VoiceScreen } from '@/features/realtime/voice-screen';
+import {
+  loadOpenAiKeyState,
+  OPENAI_KEY_STATE_QUERY_KEY,
+} from '@/features/realtime/openai-key-card';
+import {
+  KeyedRealtimeVoiceScreen,
+  VoiceScreen,
+} from '@/features/realtime/voice-screen';
 import { GatewayVoiceScreen } from '@/features/voice/gateway-voice-screen';
 
 export default function VoiceRoute() {
@@ -10,6 +18,13 @@ export default function VoiceRoute() {
   }>();
   const value = Array.isArray(sessionId) ? sessionId[0] : sessionId;
   const { gatewayClient, state } = useWaveConnection();
+  // Presence and preference only — never the key itself.
+  const keyState = useQuery({
+    enabled: Boolean(gatewayClient),
+    queryFn: loadOpenAiKeyState,
+    queryKey: OPENAI_KEY_STATE_QUERY_KEY,
+    staleTime: Infinity,
+  });
 
   // Voice does not degrade the way chat does: both modes need a reachable
   // backend, so an unreachable one goes back rather than opening a microphone
@@ -17,6 +32,14 @@ export default function VoiceRoute() {
   if (!value) return <Redirect href="/new" />;
   if (gatewayClient) {
     if (state.phase !== 'connected') return <Redirect href="/" />;
+    if (keyState.isPending) return null;
+    // Mode selection (stage 4): Realtime iff a key is saved and the user has
+    // not turned it off; the keyless server-side voice is the default.
+    if (keyState.data?.hasKey && keyState.data.realtimeEnabled) {
+      return (
+        <KeyedRealtimeVoiceScreen client={gatewayClient} sessionId={value} />
+      );
+    }
     return (
       <GatewayVoiceScreen
         baseUrl={state.identity.baseUrl}
@@ -26,7 +49,5 @@ export default function VoiceRoute() {
       />
     );
   }
-  // Realtime stays the companion's voice mode until the user-owned OpenAI key
-  // lands (stage 4 of the gateway migration).
   return <VoiceScreen sessionId={value} />;
 }

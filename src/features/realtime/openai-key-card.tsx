@@ -134,12 +134,13 @@ export function OpenAiKeyCard() {
                   voice.
                 </Typography.Paragraph>
               </View>
-              <Switch
-                disabled={setRealtimeEnabled.isPending}
-                testID="realtime-enabled-switch"
-                value={realtimeEnabled}
-                onValueChange={(value) => setRealtimeEnabled.mutate(value)}
-              />
+              <View testID="realtime-enabled-switch">
+                <Switch
+                  disabled={setRealtimeEnabled.isPending}
+                  value={realtimeEnabled}
+                  onValueChange={(value) => setRealtimeEnabled.mutate(value)}
+                />
+              </View>
             </View>
           </View>
         ) : (

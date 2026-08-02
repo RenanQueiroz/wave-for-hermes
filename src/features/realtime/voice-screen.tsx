@@ -7,14 +7,17 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react';
 import { AppState, ScrollView, View } from 'react-native';
 
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { createGatewayAskHermesExecutor } from '@/features/realtime/gateway-ask-hermes-executor';
 import {
   WaveRealtimeController,
+  type RealtimeBackend,
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
 import {
@@ -22,8 +25,11 @@ import {
   realtimeVoicePreferenceStore,
 } from '@/features/realtime/realtime-voice-preference';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
+import type { GatewayClient } from '@/services/gateway/gateway-client';
+import { OpenAiRealtimeBackend } from '@/services/realtime/openai-realtime-backend';
+import { openAiKeyStore } from '@/services/realtime/openai-key-store';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
-import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
+import type { WaveTimelineResponse } from '@wave/contracts';
 
 interface VoiceScreenProps {
   sessionId: string;
@@ -32,33 +38,136 @@ interface VoiceScreenProps {
 export function VoiceScreen({ sessionId }: VoiceScreenProps) {
   const { companionClient, state: connection } = useWaveConnection();
 
-  // Connected only, companion only: the voice screen auto-starts a Realtime
-  // call on focus, which has nothing to offer while the backend is
-  // unreachable — and Realtime setup is a companion capability until the
-  // user-owned-key path lands. Chat degrades to cached reading; voice does
-  // not degrade.
+  // Connected only: the voice screen auto-starts a Realtime call on focus,
+  // which has nothing to offer while the backend is unreachable. Chat
+  // degrades to cached reading; voice does not degrade.
   if (connection.phase !== 'connected' || !companionClient || !sessionId) {
     return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (
     <ConnectedVoiceScreen
+      backend={companionClient}
       baseUrl={connection.identity.baseUrl}
-      client={companionClient}
+      connectionId={connection.identity.id}
+      loadTimeline={(before, signal) =>
+        companionClient.getSessionTimeline(
+          sessionId,
+          { ...(before ? { before } : {}), limit: 100 },
+          signal,
+        )
+      }
+      sessionId={sessionId}
+    />
+  );
+}
+
+/**
+ * Realtime on a gateway connection with the user-owned OpenAI key (stage 4).
+ * The key is read from secure storage into memory only; the backend binds
+ * ask_hermes to this conversation's session through trusted call state.
+ */
+export function KeyedRealtimeVoiceScreen({
+  client,
+  sessionId,
+}: {
+  client: GatewayClient;
+  sessionId: string;
+}) {
+  const { state: connection } = useWaveConnection();
+  const [apiKey, setApiKey] = useState<string | undefined | null>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    void openAiKeyStore
+      .load()
+      .then((key) => {
+        if (!cancelled) setApiKey(key ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setApiKey(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (connection.phase !== 'connected' || !sessionId) {
+    return <Redirect href={sessionId ? '/' : '/new'} />;
+  }
+  // Key vanished (removed in Settings mid-navigation): gateway voice owns
+  // the route on the next visit; nothing renders a half-configured call.
+  if (apiKey === null) return <Redirect href="/" />;
+  if (apiKey === undefined) return null;
+
+  return (
+    <KeyedRealtimeVoiceScreenReady
+      apiKey={apiKey}
+      baseUrl={connection.identity.baseUrl}
+      client={client}
       connectionId={connection.identity.id}
       sessionId={sessionId}
     />
   );
 }
 
-function ConnectedVoiceScreen({
+function KeyedRealtimeVoiceScreenReady({
+  apiKey,
   baseUrl,
   client,
   connectionId,
   sessionId,
 }: {
+  apiKey: string;
   baseUrl: string;
-  client: WaveBackendClient;
+  client: GatewayClient;
   connectionId: string;
+  sessionId: string;
+}) {
+  const backend = useMemo(
+    () =>
+      new OpenAiRealtimeBackend({
+        apiKey,
+        executeAskHermes: createGatewayAskHermesExecutor({
+          client,
+          sessionId,
+        }),
+      }),
+    [apiKey, client, sessionId],
+  );
+  return (
+    <ConnectedVoiceScreen
+      ephemeralTranscripts
+      backend={backend}
+      baseUrl={baseUrl}
+      connectionId={connectionId}
+      loadTimeline={(before, signal) =>
+        client.getSessionTimeline(
+          sessionId,
+          { ...(before ? { before } : {}), limit: 100 },
+          signal,
+        )
+      }
+      sessionId={sessionId}
+    />
+  );
+}
+
+function ConnectedVoiceScreen({
+  backend,
+  baseUrl,
+  connectionId,
+  ephemeralTranscripts = false,
+  loadTimeline,
+  sessionId,
+}: {
+  backend: RealtimeBackend;
+  baseUrl: string;
+  connectionId: string;
+  ephemeralTranscripts?: boolean;
+  loadTimeline(
+    before: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<WaveTimelineResponse>;
   sessionId: string;
 }) {
   const queryClient = useQueryClient();
@@ -73,10 +182,10 @@ function ConnectedVoiceScreen({
   const controller = useMemo(
     () =>
       new WaveRealtimeController({
-        backend: client,
+        backend,
         transport: new ReactNativeRealtimeTransport(),
       }),
-    [client],
+    [backend],
   );
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const stopAndRefresh = useCallback(() => {
@@ -86,25 +195,19 @@ function ConnectedVoiceScreen({
     const task = (async () => {
       await controller.stop();
       if (controller.getState().phase !== 'idle') return;
+      // The spoken exchange itself is not saved, but work delegated through
+      // ask_hermes lands as ordinary turns — refresh so those are visible.
       await refreshWaveSessionTimeline({
         baseUrl,
         connectionId,
-        load: (before, signal) =>
-          client.getSessionTimeline(
-            sessionId,
-            {
-              ...(before ? { before } : {}),
-              limit: 100,
-            },
-            signal,
-          ),
+        load: loadTimeline,
         queryClient,
         sessionId,
       }).catch(() => undefined);
     })();
     stopAndRefreshRef.current = task;
     return task;
-  }, [baseUrl, client, connectionId, controller, queryClient, sessionId]);
+  }, [baseUrl, connectionId, controller, loadTimeline, queryClient, sessionId]);
   const start = useCallback(() => {
     if (voicePreference.isPending) return;
     stopAndRefreshRef.current = undefined;
@@ -172,6 +275,15 @@ function ConnectedVoiceScreen({
           <Typography.Paragraph muted className="text-center">
             {phaseDescription(state.phase)}
           </Typography.Paragraph>
+          {ephemeralTranscripts ? (
+            <Typography.Paragraph
+              muted
+              className="text-center text-xs"
+              testID="voice-ephemeral-note">
+              Live voice is not saved to this chat. Work Wave hands to Hermes
+              shows up in the conversation afterward.
+            </Typography.Paragraph>
+          ) : null}
         </View>
 
         <View className="w-full max-w-md gap-8">
