@@ -43,6 +43,15 @@ export function createWaveQueryPersister(
 ): Persister {
   return {
     persistClient: async (client: PersistedClient) => {
+      // Never overwrite a good cache with an empty one. Offline reads fail,
+      // failed queries are excluded from the dehydrated state, and the result
+      // is an empty document — so without this guard a single offline start
+      // erases every conversation the cache existed to keep readable. An
+      // empty write is worth nothing anyway: the alternative is restoring
+      // slightly older data, still bounded by the cache's max age.
+      if (client.clientState.queries.length === 0) {
+        return;
+      }
       try {
         await storage.write(JSON.stringify(client));
       } catch {

@@ -28,7 +28,12 @@ test('persists, restores, and removes the dehydrated cache', async () => {
   const persister = createWaveQueryPersister(storage);
   const client = {
     buster: 'wave-query-cache-v1',
-    clientState: { mutations: [], queries: [] },
+    // A non-empty state: an empty one is deliberately not written (see the
+    // "never overwrites a cached document with an empty one" test).
+    clientState: {
+      mutations: [],
+      queries: [{ queryKey: ['wave', 'sessions'] }],
+    },
     timestamp: 1_785_370_000,
   };
 
@@ -80,6 +85,33 @@ test('degrades corrupted or failing storage to an empty cache', async () => {
   );
   await assert.doesNotReject(failing.removeClient());
   assert.equal(await failing.restoreClient(), undefined);
+});
+
+test('never overwrites a cached document with an empty one', async () => {
+  // An offline start fails every read, failed reads are excluded from the
+  // dehydrated state, and persisting that empty state would erase exactly the
+  // conversations the cache exists to keep readable.
+  const cached = JSON.stringify({
+    buster: 'wave-query-cache-v1',
+    clientState: { mutations: [], queries: [{ queryKey: ['wave'] }] },
+    timestamp: 1,
+  });
+  const { current, storage } = memoryStorage(cached);
+  const persister = createWaveQueryPersister(storage);
+
+  await persister.persistClient({
+    buster: 'wave-query-cache-v1',
+    clientState: { mutations: [], queries: [] },
+    timestamp: 2,
+  });
+  assert.equal(current(), cached, 'an empty persist must be a no-op');
+
+  await persister.persistClient({
+    buster: 'wave-query-cache-v1',
+    clientState: { mutations: [], queries: [{ queryKey: ['wave', 'next'] }] },
+    timestamp: 3,
+  });
+  assert.match(current() ?? '', /"next"/, 'a populated persist still writes');
 });
 
 test('dehydrates only successful session list and timeline reads', () => {

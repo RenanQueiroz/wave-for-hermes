@@ -49,8 +49,8 @@ function OfflineNewConversationScreen({ retry }: { retry(): Promise<void> }) {
         <Alert.Content>
           <Alert.Title>Wave is offline</Alert.Title>
           <Alert.Description>
-            Your companion cannot be reached right now. Conversations already on
-            this phone stay readable, and new messages have to wait until the
+            Your Hermes agent cannot be reached right now. Conversations already
+            on this phone stay readable, and new messages have to wait until the
             connection returns.
           </Alert.Description>
         </Alert.Content>

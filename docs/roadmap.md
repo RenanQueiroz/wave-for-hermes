@@ -27,9 +27,11 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    depend on a backend-neutral client and connection identity; both backends reach the same
    offline degradation. Verified on the iOS simulator against a live gateway: sign in, start a
    conversation, stream a reply, and see it listed with its title and preview. Companion pairing
-   still works for devices that have not switched. Remaining before stage 5: Android e2e,
-   attachments and cancel against the gateway, mid-turn approval prompts (`approval.respond`),
-   and search scope.
+   still works for devices that have not switched. Also verified on a physical Pixel 8 Pro
+   (2026-08-02): sign-in, a streamed turn, the drawer listing conversations created on the other
+   device (cross-device visibility through the shared Hermes store), and offline cold start
+   degrading to cached reading. Remaining before stage 5: attachments and cancel against the
+   gateway, mid-turn approval prompts (`approval.respond`), and search scope.
 3. **Adopt gateway voice.** Hermes native voice mode (record → `/api/audio/transcribe` →
    normal turn → `/api/audio/speak-stream`) becomes the default voice mode, plus standalone
    dictation into the composer (STT) and per-message playback (TTS). Degrade clearly when the
@@ -89,13 +91,15 @@ The detailed evidence and acceptance gates live in
   before slow automation could reopen the screen), verify purge-on-disconnect, and repeat the
   LAN validation on physical iOS — including the local-network permission prompt from a client
   built after the `app.json` usage-description addition.
-- Offline-cache durability anomaly resolved (2026-08-01): the persister rewrote its JSON
-  document in place on a one-second throttle, so a reload or process death mid-write left a
-  truncated file, and restore silently treated the corrupt document as "no cache" before the
-  next persist overwrote it with an empty one — one interruption lost everything. Writes now go
-  through a sibling temp file renamed into place and a corrupt document is deleted on restore;
-  validated with repeated kill cycles across the persist window on the iOS simulator. If cache
-  loss recurs after this fix, treat it as evidence for the `expo-sqlite/kv-store` move below.
+- Offline-cache durability, both causes found and fixed. First (2026-08-01): the persister
+  rewrote its JSON document in place, so an interrupted write left a truncated file that restore
+  treated as "no cache"; writes now go through a temp file renamed into place and a corrupt
+  document is deleted on restore. Second, and the real cause of the anomaly (2026-08-02, found
+  on a physical Pixel): failed reads are excluded from the dehydrated state, so **an offline
+  start persisted an empty document over the good cache** — the cache was erased exactly when it
+  was needed. Persisting an empty client state is now a no-op. Verified on the Pixel: before the
+  fix an offline cold start left a 102-byte empty cache and an empty drawer; after it, the cache
+  survived at 771 bytes and all four conversations stayed readable offline.
 
 ## Next: release hardening and focused operations
 

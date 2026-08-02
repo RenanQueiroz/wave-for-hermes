@@ -127,8 +127,7 @@ export function ConnectionScreen() {
       <View className="gap-2">
         <Typography.Heading type="h2">Your Hermes, in Wave</Typography.Heading>
         <Typography.Paragraph type="lead">
-          Pair this phone with the trusted companion running beside your Hermes
-          agent.
+          Sign in to your Hermes agent to chat from this phone.
         </Typography.Paragraph>
       </View>
 
