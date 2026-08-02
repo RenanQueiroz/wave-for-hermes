@@ -12,6 +12,10 @@ import {
   GatewayRpc,
   GatewayRpcError,
 } from '../../src/services/gateway/gateway-rpc.ts';
+import {
+  GatewayClient,
+  isPendingSessionId,
+} from '../../src/services/gateway/gateway-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
 import {
   isCompleteTokenSet,
@@ -298,4 +302,54 @@ test('marks an interrupted turn partial and reports gateway turn errors', () => 
   assert.equal(errorEvents[0].type, 'turn.error');
   assert.equal(errorEvents[0].error.message, 'model unavailable');
   assert.equal(errorEvents[0].error.retryable, true);
+});
+
+test('a new conversation keeps its route while its real session is created', async () => {
+  // Regression: a placeholder session must not be asked for its timeline (the
+  // gateway 404s and the chat screen bounces back to the new-conversation
+  // screen), and after the first turn creates the real session every later
+  // call must address that session rather than the placeholder.
+  const requests: string[] = [];
+  const fetchImpl = (async (url: string, init?: RequestInit) => {
+    requests.push(`${init?.method ?? 'GET'} ${new URL(url).pathname}`);
+    return new Response(JSON.stringify({ ok: true, messages: [] }), {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    });
+  }) as unknown as typeof globalThis.fetch;
+
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+
+  const created = await client.createSession();
+  assert.ok(isPendingSessionId(created.session.id));
+
+  const empty = await client.getSessionTimeline(created.session.id);
+  assert.deepEqual(empty.entries, []);
+  assert.equal(empty.hasMore, false);
+  assert.equal(
+    requests.length,
+    0,
+    'a placeholder session must not reach the gateway',
+  );
+
+  // Simulate the first turn resolving the placeholder to a stored session.
+  (
+    client as unknown as { resolvedSessions: Map<string, string> }
+  ).resolvedSessions.set(created.session.id, '20260802_000000_abcdef');
+
+  await client.getSessionTimeline(created.session.id);
+  await client.updateSession(created.session.id, { title: 'Renamed' });
+  await client.deleteSession(created.session.id);
+  assert.deepEqual(requests, [
+    'GET /api/sessions/20260802_000000_abcdef/messages',
+    'PATCH /api/sessions/20260802_000000_abcdef',
+    'DELETE /api/sessions/20260802_000000_abcdef',
+  ]);
 });
