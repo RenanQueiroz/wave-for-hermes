@@ -12,6 +12,7 @@
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.renanqueiroz.wave",
       "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Allow Wave to reach your Wave Companion directly on your local network.",
         "NSMicrophoneUsageDescription": "Allow Wave to use your microphone for live voice conversations."
       }
     },

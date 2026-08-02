@@ -58,6 +58,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   applyDefaultScheme,
+  isPrivateLanPlainHttpHost,
   isTrustedPlainHttpHost,
 } from './companion-url-policy.ts';
 import { parseWaveSseStream, WaveSseProtocolError } from './wave-sse.ts';
@@ -884,13 +885,15 @@ export function normalizeWaveBaseUrl(
     });
   }
   const insecureHttpAllowed =
-    options.allowInsecureHttp || isTrustedPlainHttpHost(url.hostname);
+    options.allowInsecureHttp ||
+    isTrustedPlainHttpHost(url.hostname) ||
+    isPrivateLanPlainHttpHost(url.hostname);
   if (
     url.protocol !== 'https:' &&
     !(insecureHttpAllowed && url.protocol === 'http:')
   ) {
     throw new WaveBackendError(
-      'Wave Companion must use HTTPS unless it is reached over localhost or a Tailscale (100.64.0.0/10) address.',
+      'Wave Companion must use HTTPS unless it is reached over localhost, a Tailscale (100.64.0.0/10) address, or a private LAN (RFC 1918 or .local) address.',
       {
         kind: 'invalid_base_url',
       },

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   applyDefaultScheme,
+  isPrivateLanPlainHttpHost,
   isTrustedPlainHttpHost,
 } from '../../src/services/wave/companion-url-policy.ts';
 
@@ -25,6 +26,27 @@ test('trusts loopback and the Tailscale CGNAT range only', () => {
   assert.equal(isTrustedPlainHttpHost(''), false);
 });
 
+test('recognizes RFC 1918 literals and mDNS names as private LAN hosts', () => {
+  assert.equal(isPrivateLanPlainHttpHost('192.168.1.50'), true);
+  assert.equal(isPrivateLanPlainHttpHost('10.0.0.7'), true);
+  assert.equal(isPrivateLanPlainHttpHost('172.16.0.1'), true);
+  assert.equal(isPrivateLanPlainHttpHost('172.31.255.255'), true);
+  assert.equal(isPrivateLanPlainHttpHost('renans-mac-mini.local'), true);
+  assert.equal(isPrivateLanPlainHttpHost('Renans-Mac-Mini.LOCAL'), true);
+  assert.equal(isPrivateLanPlainHttpHost('renans-mac-mini.local.'), true);
+
+  assert.equal(isPrivateLanPlainHttpHost('172.15.0.1'), false);
+  assert.equal(isPrivateLanPlainHttpHost('172.32.0.1'), false);
+  assert.equal(isPrivateLanPlainHttpHost('192.169.0.1'), false);
+  assert.equal(isPrivateLanPlainHttpHost('11.0.0.1'), false);
+  assert.equal(isPrivateLanPlainHttpHost('100.101.42.7'), false);
+  assert.equal(isPrivateLanPlainHttpHost('.local'), false);
+  assert.equal(isPrivateLanPlainHttpHost('local'), false);
+  assert.equal(isPrivateLanPlainHttpHost('mac.localdomain'), false);
+  assert.equal(isPrivateLanPlainHttpHost('wave.example.internal'), false);
+  assert.equal(isPrivateLanPlainHttpHost(''), false);
+});
+
 test('defaults the scheme by host trust and leaves explicit schemes alone', () => {
   assert.equal(
     applyDefaultScheme('wave.example.internal'),
@@ -39,6 +61,15 @@ test('defaults the scheme by host trust and leaves explicit schemes alone', () =
     'http://100.101.42.7:8787',
   );
   assert.equal(applyDefaultScheme('localhost:8787'), 'http://localhost:8787');
+  // Private LAN hosts stay https by default: cleartext requires typing http://.
+  assert.equal(
+    applyDefaultScheme('192.168.1.50:8787'),
+    'https://192.168.1.50:8787',
+  );
+  assert.equal(
+    applyDefaultScheme('renans-mac-mini.local:8787'),
+    'https://renans-mac-mini.local:8787',
+  );
   assert.equal(
     applyDefaultScheme('https://wave.example.internal'),
     'https://wave.example.internal',

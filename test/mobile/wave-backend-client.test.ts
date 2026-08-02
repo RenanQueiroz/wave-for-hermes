@@ -64,6 +64,47 @@ test('defaults bare hosts to HTTPS and trusts plain HTTP only on private transpo
   );
 });
 
+test('accepts explicit plain HTTP to private LAN hosts but never by default', () => {
+  // Explicit http to RFC 1918 literals and .local names is valid in every
+  // build; the user typed the cleartext choice.
+  assert.equal(
+    normalizeWaveBaseUrl('http://192.168.1.50:8787'),
+    'http://192.168.1.50:8787',
+  );
+  assert.equal(
+    normalizeWaveBaseUrl('http://10.0.0.7:8787'),
+    'http://10.0.0.7:8787',
+  );
+  assert.equal(
+    normalizeWaveBaseUrl('http://172.31.4.2:8787'),
+    'http://172.31.4.2:8787',
+  );
+  assert.equal(
+    normalizeWaveBaseUrl('http://renans-mac-mini.local:8787'),
+    'http://renans-mac-mini.local:8787',
+  );
+  // A bare LAN host still defaults to https: cleartext is never implicit.
+  assert.equal(
+    normalizeWaveBaseUrl('192.168.1.50:8787'),
+    'https://192.168.1.50:8787',
+  );
+  assert.equal(
+    normalizeWaveBaseUrl('renans-mac-mini.local:8787'),
+    'https://renans-mac-mini.local:8787',
+  );
+  // Public and non-private hosts keep the production HTTPS rule.
+  assert.throws(
+    () => normalizeWaveBaseUrl('http://172.32.0.1:8787'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_base_url',
+  );
+  assert.throws(
+    () => normalizeWaveBaseUrl('http://mac.localdomain:8787'),
+    (error: unknown) =>
+      error instanceof WaveBackendError && error.kind === 'invalid_base_url',
+  );
+});
+
 test('validates pairing responses without sending a device credential', async () => {
   const fetch = async (input: string | URL | Request, init?: RequestInit) => {
     assert.equal(String(input), 'https://wave.test/root/v1/pairings/redeem');

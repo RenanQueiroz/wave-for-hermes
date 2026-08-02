@@ -38,13 +38,18 @@ The detailed evidence and acceptance gates live in
   without user action and started a fresh conversation.
 - Remaining: repeat on physical devices over real radio (background/lock mid-turn, airplane-mode
   transitions), observe the live mid-stream reattach UI (the fixture's 30-second stream ended
-  before slow automation could reopen the screen), and verify purge-on-disconnect.
+  before slow automation could reopen the screen), verify purge-on-disconnect, and validate
+  direct-LAN pairing on a physical device — explicit `http://` to a private address and to a
+  `.local` name on iOS, including the iOS local-network permission prompt from a client built
+  after the `app.json` usage-description addition.
 
 ## Next: release hardening and focused operations
 
-- Add reviewed iOS App Transport Security and Android cleartext-network exceptions before a
-  store-style release build ships the Tailscale plain-HTTP carve-out; development clients already
-  permit it.
+- Review release-build cleartext policy before a store-style build ships the Tailscale and
+  private-LAN plain-HTTP carve-outs; development clients already permit them. iOS App Transport
+  Security exempts IP literals and `.local` hosts, so the review may conclude no Info.plist
+  exception is needed; Android release builds still need an explicit cleartext-network policy for
+  the allowed private ranges.
 - Bound the Companion interaction ledger. Deletion cascades with the parent session, but a
   long-lived session's finalized voice transcripts and handoff records currently grow without an
   age or size limit; define retention before that storage becomes operationally meaningful.

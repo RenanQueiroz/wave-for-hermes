@@ -252,10 +252,16 @@ npm run companion:pair
 
 In Wave, enter the companion URL, a recognizable device name, and the 16-character code. A bare
 address defaults to HTTPS — or to HTTP for localhost and Tailscale CGNAT (`100.64.0.0/10`)
-addresses, the only hosts where all builds accept plain HTTP because the transport is already
-private. Development builds additionally allow an explicit HTTP URL for trusted local testing. Pairing checks the public companion status, redeems the code exactly once, saves the
-device-scoped credential in platform secure storage, and performs an authenticated live Hermes
-compatibility check before entering the app.
+addresses, where the transport is already private. All builds also accept an explicitly typed
+`http://` URL to a private LAN host — an RFC 1918 address like `192.168.1.50` or an mDNS name
+like `renans-mac-mini.local` — for connecting directly on a trusted home network; that traffic
+crosses the LAN unencrypted, so the explicit scheme is the deliberate opt-in, and `.local` names
+resolve on iOS only (use the LAN IP on Android). Note that on the same network a tailnet
+connection is already a direct WireGuard path between the devices, so the Tailscale address stays
+the recommended default. Development builds additionally allow an explicit HTTP URL to any host
+for trusted local testing. Pairing checks the public companion status, redeems the code exactly
+once, saves the device-scoped credential in platform secure storage, and performs an
+authenticated live Hermes compatibility check before entering the app.
 
 On later launches Wave reads the saved connection asynchronously and repeats the compatibility
 check. **Disconnect this device** calls the authenticated self-revocation endpoint, ends that

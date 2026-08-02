@@ -262,9 +262,11 @@ export function ConnectionScreen() {
       </View>
 
       <Typography.Paragraph type="body-xs" muted align="center">
-        A bare address defaults to HTTPS. Plain HTTP is allowed only for
-        localhost and Tailscale (100.64.0.0/10) addresses, where the transport
-        is already private.
+        A bare address defaults to HTTPS. Plain HTTP is allowed for localhost
+        and Tailscale (100.64.0.0/10) addresses, where the transport is already
+        private. Typing http:// explicitly also allows a private LAN address —
+        192.168.x.x or a Mac&apos;s name.local — but that traffic crosses your
+        network unencrypted, and .local names resolve on iOS only.
         {__DEV__
           ? ' Development builds also accept an explicit HTTP URL for trusted local testing.'
           : ''}

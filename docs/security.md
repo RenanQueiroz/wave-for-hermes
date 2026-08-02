@@ -158,11 +158,18 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 
 ### Transport and deployment
 
-- Production mobile connections require HTTPS, with one deliberate carve-out: plain HTTP is
+- Production mobile connections require HTTPS, with two deliberate carve-outs. Plain HTTP is
   accepted when the Companion host is loopback or a Tailscale CGNAT address (`100.64.0.0/10`),
-  where the transport is already private and WireGuard-encrypted. Bare hosts entered during
-  pairing default to HTTPS outside that carve-out. Homelab exposes `/wave/` only through private
-  Tailscale HTTPS and Nginx; Companion and Hermes ports remain unpublished.
+  where the transport is already private and WireGuard-encrypted; bare hosts in this tier default
+  to HTTP. Plain HTTP is also accepted for private LAN hosts — RFC 1918 IPv4 literals and mDNS
+  `.local` names, neither of which routes beyond the local network — but only when the user types
+  `http://` explicitly, because that traffic crosses the LAN unencrypted and the device
+  credential plus conversation content are readable by hosts on the same network (accepted
+  2026-08-01 for trusted home networks; mDNS names are unauthenticated, the same trust level as
+  a LAN IP). Bare hosts outside the Tailscale/loopback tier always default to HTTPS. Reaching
+  LAN hosts requires iOS's local-network permission, declared in `app.json`; Android's system
+  resolver does not resolve `.local` names, so Android uses the LAN IP. Homelab exposes `/wave/`
+  only through private Tailscale HTTPS and Nginx; Companion and Hermes ports remain unpublished.
 - CORS is disabled because Wave supports native iOS and Android only.
 - The Companion container runs non-root with a read-only root filesystem, dropped capabilities,
   a digest-pinned Node 24 Alpine runtime, no runtime package manager, and one dedicated writable
