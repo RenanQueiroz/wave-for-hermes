@@ -92,6 +92,11 @@ documentation before implementing UI.
   through Metro and never edit it by hand.
 - PanelUI's CLI is optional. Copy a component into the repository only when the change deliberately
   requires owning and maintaining its source. Record that decision in the relevant documentation.
+- Two validated PanelUI quirks: `Alert` is `w-full`, so inset it with a padded wrapper rather
+  than horizontal margins; and interactive components drive opacity from their press-feedback
+  animation, so a disabled control never visually dims through classes or its own style — put
+  the dim on a wrapper `View`. Icon typings can also declare more than the runtime entry exports
+  (`RotateCwIcon`); a green typecheck does not prove an icon exists at runtime.
 - Restart Metro with a cleared cache after changes to Metro, global CSS, themes, or PanelUI/Uniwind
   dependencies.
 

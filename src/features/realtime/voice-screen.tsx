@@ -32,11 +32,10 @@ interface VoiceScreenProps {
 export function VoiceScreen({ sessionId }: VoiceScreenProps) {
   const { client, state: connection } = useWaveConnection();
 
-  if (
-    (connection.phase !== 'connected' && connection.phase !== 'offline') ||
-    !client ||
-    !sessionId
-  ) {
+  // Connected only: the voice screen auto-starts a Realtime call on focus,
+  // which has nothing to offer while the companion is unreachable. Chat
+  // degrades to cached reading; voice does not degrade.
+  if (connection.phase !== 'connected' || !client || !sessionId) {
     return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (

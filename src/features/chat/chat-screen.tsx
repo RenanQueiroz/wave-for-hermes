@@ -19,6 +19,9 @@ import {
   Message,
   PaperclipIcon,
   PlusIcon,
+  // RotateCcwIcon deliberately: the package's runtime entry exports only the
+  // counter-clockwise variant even though the typings declare both.
+  RotateCcwIcon,
   ScrollFade,
   SendIcon,
   Shimmer,
@@ -80,6 +83,10 @@ const LIVE_VOICE_WAVE_LEVELS = [0.3, 1, 0.65, 0.3];
 // padding by this much leaves exactly this gap above the keyboard.
 const KEYBOARD_GAP = 12;
 
+// Strong enough to read as inert on the dark composer; the library's own
+// disabled dim is both subtler and suppressed by its press animation.
+const BLOCKED_COMPOSER_BUTTON_STYLE = { opacity: 0.4 } as const;
+
 const EMPTY_STATE_TITLES = [
   'Ask me anything',
   'How can I help?',
@@ -110,6 +117,7 @@ export function ChatScreen({ sessionId }: ChatScreenProps) {
       baseUrl={connection.summary.baseUrl}
       client={client}
       connectionId={connection.summary.device.id}
+      offline={connection.phase === 'offline'}
       sessionId={sessionId}
     />
   );
@@ -119,11 +127,13 @@ function ConnectedChatScreen({
   baseUrl,
   client,
   connectionId,
+  offline,
   sessionId,
 }: {
   baseUrl: string;
   client: WaveBackendClient;
   connectionId: string;
+  offline: boolean;
   sessionId: string;
 }) {
   const insets = useSafeAreaInsets();
@@ -295,13 +305,17 @@ function ConnectedChatScreen({
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
     chat.state.status === 'cancelling';
+  // Dispatching a turn or starting voice needs a reachable companion and the
+  // conversation's current state. While either is missing the composer stays
+  // readable but cannot send; typing is still allowed so drafts survive.
+  const composerBlocked = offline || Boolean(timeline.error);
   const activeAssistantId = chat.state.messages.findLast(
     (message) => message.role === 'assistant',
   )?.id;
 
   const send = useCallback(() => {
     const value = input.trim();
-    if (!value || busy) return;
+    if (!value || busy || composerBlocked) return;
     const attachments = attachmentState.attachments;
     const turnInput: WaveTurnInput =
       attachments.length === 0
@@ -317,7 +331,7 @@ function ConnectedChatScreen({
     setInput('');
     attachmentState.clear();
     void chat.send(turnInput, optimisticText);
-  }, [attachmentState, busy, chat, input]);
+  }, [attachmentState, busy, chat, composerBlocked, input]);
 
   const selectAttachmentSource = useCallback((action: () => Promise<void>) => {
     setAttachmentSheetOpen(false);
@@ -362,6 +376,17 @@ function ConnectedChatScreen({
               <Alert.Description>
                 Wave could not refresh this conversation.
               </Alert.Description>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 self-start"
+                accessibilityLabel="Retry loading this conversation"
+                loading={timeline.isRefetching}
+                startContent={<RotateCcwIcon size={14} />}
+                testID="chat-history-retry"
+                onPress={() => void timeline.refetch()}>
+                Try again
+              </Button>
             </Alert.Content>
           </Alert>
         </View>
@@ -491,25 +516,41 @@ function ConnectedChatScreen({
           </Typography.Paragraph>
         ) : null}
 
+        {composerBlocked ? (
+          <Typography.Paragraph
+            muted
+            className="px-2 text-center text-xs"
+            testID="chat-composer-blocked-hint">
+            Sending and live voice are paused until this conversation can
+            refresh.
+          </Typography.Paragraph>
+        ) : null}
+
         <InputGroup
           className="min-h-14 overflow-hidden rounded-[28px] bg-muted"
           isDisabled={busy}>
           <InputGroup.Prefix className="px-2">
-            <Button
-              size="icon"
-              variant="secondary"
-              accessibilityLabel="Add an attachment"
-              disabled={busy}
-              className="rounded-full"
-              testID="chat-attachment-button"
-              onPress={() => {
-                // The styled sheet renders in the app window, underneath the
-                // keyboard's own window — close the keyboard before opening it.
-                Keyboard.dismiss();
-                setAttachmentSheetOpen(true);
-              }}>
-              <PlusIcon size={20} />
-            </Button>
+            {/* The dim lives on a wrapper View: the button's press-feedback
+                animation drives opacity from the UI thread, overriding both
+                class- and style-based opacity on the button itself. */}
+            <View
+              style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
+              <Button
+                size="icon"
+                variant="secondary"
+                accessibilityLabel="Add an attachment"
+                disabled={busy || composerBlocked}
+                className="rounded-full"
+                testID="chat-attachment-button"
+                onPress={() => {
+                  // The styled sheet renders in the app window, underneath the
+                  // keyboard's own window — close the keyboard before opening it.
+                  Keyboard.dismiss();
+                  setAttachmentSheetOpen(true);
+                }}>
+                <PlusIcon size={20} />
+              </Button>
+            </View>
           </InputGroup.Prefix>
           <InputGroup.Input
             multiline
@@ -536,36 +577,44 @@ function ConnectedChatScreen({
                 ■
               </Button>
             ) : input.trim() ? (
-              <Button
-                size="icon"
-                accessibilityLabel="Send message to Wave"
-                className="rounded-full"
-                testID="chat-send-button"
-                onPress={send}>
-                <SendIcon size={18} />
-              </Button>
+              <View
+                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
+                <Button
+                  size="icon"
+                  accessibilityLabel="Send message to Wave"
+                  className="rounded-full"
+                  disabled={composerBlocked}
+                  testID="chat-send-button"
+                  onPress={send}>
+                  <SendIcon size={18} />
+                </Button>
+              </View>
             ) : (
-              <Button
-                size="icon"
-                accessibilityLabel="Start live voice"
-                className="rounded-full"
-                testID="chat-live-button"
-                onPress={() =>
-                  router.push({
-                    pathname: '/conversation/[sessionId]/voice',
-                    params: { sessionId },
-                  })
-                }>
-                <Soundwave
-                  barWidth={4}
-                  bars={4}
-                  height={18}
-                  levels={LIVE_VOICE_WAVE_LEVELS}
-                  state="idle"
-                  style={{ width: 25 }}
-                  variant="bars"
-                />
-              </Button>
+              <View
+                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
+                <Button
+                  size="icon"
+                  accessibilityLabel="Start live voice"
+                  className="rounded-full"
+                  disabled={composerBlocked}
+                  testID="chat-live-button"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/conversation/[sessionId]/voice',
+                      params: { sessionId },
+                    })
+                  }>
+                  <Soundwave
+                    barWidth={4}
+                    bars={4}
+                    height={18}
+                    levels={LIVE_VOICE_WAVE_LEVELS}
+                    state="idle"
+                    style={{ width: 25 }}
+                    variant="bars"
+                  />
+                </Button>
+              </View>
             )}
           </InputGroup.Suffix>
         </InputGroup>

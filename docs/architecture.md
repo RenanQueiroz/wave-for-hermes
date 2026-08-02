@@ -121,8 +121,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   saving the credential, then requires an authenticated live compatibility check. A saved
   credential is rechecked at launch. When that recheck fails for connectivity-shaped reasons only
   (offline device, timeout, transiently unreachable companion), the connection degrades to an
-  `offline` phase instead of returning to the connect screen: the paired client stays available,
-  cached conversations stay readable, and new work fails with its normal error surfaces. The
+  `offline` phase instead of returning to the connect screen: the paired client stays available
+  and cached conversations stay readable, but composing is honest about what cannot work — the
+  chat send, attachment, and voice controls are disabled (drafting stays possible) while the
+  connection is offline or a conversation's timeline cannot refresh, and the voice route itself
+  is connected-only because a Realtime call has nothing to degrade to. The
   provider re-verifies silently when the app foregrounds, when any Wave read completes over the
   network, or on explicit retry; authorization and compatibility failures never degrade and still
   land on the connect screen. Connected disconnect first revokes the current server-side
