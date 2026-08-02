@@ -13,9 +13,10 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
 1. **Spike the gateway transport and auth.** Speak `tui_gateway` JSON-RPC over
    `/api/ws` from React Native against a real gateway; sign in through the bundled password
    provider or native PKCE. Resolve the open questions: a mobile redirect URI for the native
-   flow (custom scheme needs upstream support; the embedded-webview cookie flow is the
-   fallback), `session.resume` grace semantics, and RPC parity for session rename, delete,
-   search, and attachments. File upstream issues where gaps are confirmed.
+   flow (the embedded-webview cookie flow is the fallback if custom schemes are unsupported),
+   `session.resume` grace semantics, and RPC parity for session rename, delete, search, and
+   attachments. Confirmed gaps get documented client-side workarounds; Wave does not submit
+   issues or changes upstream.
 2. **Migrate text chat and session lifecycle.** Replace the companion transport in
    `WaveBackendClient` with the gateway client behind the same normalized contracts; replace
    pairing with gateway sign-in; rely on resume-plus-history-refetch for turn continuity.
