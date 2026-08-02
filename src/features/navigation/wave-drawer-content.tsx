@@ -62,6 +62,7 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
       connectionId={connection.state.identity.id}
       deviceName={connection.state.identity.label}
       disconnect={connection.disconnect}
+      scheduledJobsAvailable={Boolean(connection.companionClient)}
     />
   );
 }
@@ -73,12 +74,14 @@ function ConnectedWaveDrawerContent({
   deviceName,
   disconnect,
   navigation,
+  scheduledJobsAvailable,
 }: DrawerContentComponentProps & {
   baseUrl: string;
   client: WaveChatClient;
   connectionId: string;
   deviceName: string;
   disconnect(): Promise<boolean>;
+  scheduledJobsAvailable: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
@@ -208,12 +211,18 @@ function ConnectedWaveDrawerContent({
           testID="drawer-search-conversations"
           onPress={() => navigate('/search')}
         />
-        <DrawerAction
-          icon={<CalendarIcon size={19} />}
-          label="Scheduled jobs"
-          testID="drawer-scheduled-jobs"
-          onPress={() => navigate('/operations/jobs')}
-        />
+        {scheduledJobsAvailable ? (
+          // Scheduled-job status is read through the companion's normalized
+          // contract; a gateway connection has no equivalent surface yet, so
+          // the entry degrades by not appearing rather than bouncing to a
+          // redirect.
+          <DrawerAction
+            icon={<CalendarIcon size={19} />}
+            label="Scheduled jobs"
+            testID="drawer-scheduled-jobs"
+            onPress={() => navigate('/operations/jobs')}
+          />
+        ) : null}
       </View>
 
       {errorMessage ? (

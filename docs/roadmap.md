@@ -50,8 +50,18 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    on fresh scroll geometry, so a focus refetch or an older-page load cannot move the list —
    this also fixed the companion path), and a first page whose session-detail count probe
    fails now locates the newest window with bounded single-row offset probes instead of
-   transferring the entire history. Remaining before stage 5: a device pass over composer
-   attachment sending.
+   transferring the entire history. The composer attachment device pass closed the stage's
+   last open verification (2026-08-02): on both platforms the system pickers fed the strict
+   Wave parts end to end against the live gateway — photo attachments stored byte-identical
+   server-side and answered with a streamed reply (including on a brand-new chat, where the
+   attachment queues on the session created at first send), a Markdown file's bounded
+   contents delivered verbatim, and an unsupported binary refused in the composer with the
+   exact contract copy. An owner-reported gap was fixed the same day: on a gateway
+   connection the drawer's Settings and Scheduled jobs entries silently bounced to a new
+   chat because both screens redirect when companion capabilities are absent — Settings now
+   renders its gateway-relevant sections (connection identity, appearance), and the
+   Scheduled jobs entry is shown only on companion connections until a gateway jobs
+   contract exists.
 3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
    runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →
    `/api/audio/speak`), and the composer gained a dictation microphone while finished assistant

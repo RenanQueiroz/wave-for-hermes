@@ -32,13 +32,23 @@ export function SettingsScreen() {
   const router = useRouter();
 
   if (
-    (connection.state.phase !== 'connected' &&
-      connection.state.phase !== 'offline') ||
-    !connection.companionClient
+    connection.state.phase !== 'connected' &&
+    connection.state.phase !== 'offline'
   ) {
-    // Diagnostics and the Realtime voice catalog are companion capabilities.
-    // On a gateway connection this screen has nothing of its own to show yet.
     return <Redirect href="/" />;
+  }
+
+  if (!connection.companionClient) {
+    // Diagnostics and the Realtime voice catalog are companion capabilities,
+    // but appearance and the connection identity are this device's own — on a
+    // gateway connection the screen renders those instead of bouncing away.
+    return (
+      <GatewaySettingsScreen
+        baseUrl={connection.state.identity.baseUrl}
+        deviceName={connection.state.identity.label}
+        onOpenDevelopment={() => router.push('/development')}
+      />
+    );
   }
 
   return (
@@ -49,6 +59,50 @@ export function SettingsScreen() {
       deviceName={connection.state.identity.label}
       onOpenDevelopment={() => router.push('/development')}
     />
+  );
+}
+
+function GatewaySettingsScreen({
+  baseUrl,
+  deviceName,
+  onOpenDevelopment,
+}: {
+  baseUrl: string;
+  deviceName: string;
+  onOpenDevelopment: () => void;
+}) {
+  return (
+    <View className="flex-1 bg-background">
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="gap-5 px-4 py-5">
+        <Card testID="gateway-connection-card">
+          <Card.Header>
+            <Card.Title>Connection</Card.Title>
+            <Card.Description>
+              This phone&apos;s sign-in to your Hermes gateway.
+            </Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <Item>
+              <Item.Content>
+                <Item.Title>{deviceName}</Item.Title>
+                <Item.Description numberOfLines={2}>{baseUrl}</Item.Description>
+              </Item.Content>
+            </Item>
+          </Card.Content>
+        </Card>
+
+        <AppearanceCard />
+
+        <DevelopmentCard onOpenDevelopment={onOpenDevelopment} />
+
+        <Typography.Paragraph muted className="text-center text-xs">
+          Wave stores only this device&apos;s rotating sign-in tokens in the
+          platform secure store.
+        </Typography.Paragraph>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -313,24 +367,7 @@ function ConnectedSettingsScreen({
           </Card.Content>
         </Card>
 
-        {__DEV__ ? (
-          <Card>
-            <Card.Header>
-              <Card.Title>Development</Card.Title>
-              <Card.Description>
-                Local diagnostics are only available in development builds.
-              </Card.Description>
-            </Card.Header>
-            <Card.Footer>
-              <Button
-                variant="outline"
-                testID="open-development-tools"
-                onPress={onOpenDevelopment}>
-                Open development tools
-              </Button>
-            </Card.Footer>
-          </Card>
-        ) : null}
+        <DevelopmentCard onOpenDevelopment={onOpenDevelopment} />
 
         <Typography.Paragraph muted className="text-center text-xs">
           Wave keeps long-lived Hermes and OpenAI credentials on the Gateway,
@@ -338,6 +375,32 @@ function ConnectedSettingsScreen({
         </Typography.Paragraph>
       </ScrollView>
     </View>
+  );
+}
+
+function DevelopmentCard({
+  onOpenDevelopment,
+}: {
+  onOpenDevelopment: () => void;
+}) {
+  if (!__DEV__) return null;
+  return (
+    <Card>
+      <Card.Header>
+        <Card.Title>Development</Card.Title>
+        <Card.Description>
+          Local diagnostics are only available in development builds.
+        </Card.Description>
+      </Card.Header>
+      <Card.Footer>
+        <Button
+          variant="outline"
+          testID="open-development-tools"
+          onPress={onOpenDevelopment}>
+          Open development tools
+        </Button>
+      </Card.Footer>
+    </Card>
   );
 }
 
