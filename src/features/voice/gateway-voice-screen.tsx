@@ -118,11 +118,12 @@ export function GatewayVoiceScreen({
         canListen,
         canSpeak,
         error: voice.state.error,
+        meter: voice.meterDebug.current,
         phase: voice.state.phase,
         userTranscript: voice.state.userTranscript,
       }),
     });
-  }, [canListen, canSpeak, voice.state]);
+  }, [canListen, canSpeak, voice.meterDebug, voice.state]);
 
   const end = useCallback(async () => {
     await stop();
@@ -223,7 +224,10 @@ export function GatewayVoiceScreen({
           </View>
         ) : null}
 
-        {speech.isPending ? null : !canListen || !canSpeak ? (
+        {/* "Not set up" is a claim about the server's configuration, so it
+            only renders when the probe actually answered — a failed probe
+            keeps retrying through the query layer instead. */}
+        {speech.data && (!canListen || !canSpeak) ? (
           <Alert
             className="w-full max-w-md"
             variant="default"
@@ -264,14 +268,27 @@ export function GatewayVoiceScreen({
           </Button>
         ) : null}
         {idle ? (
-          <Button
-            fullWidth
-            accessibilityLabel="Start voice mode"
-            disabled={!canListen || !canSpeak}
-            testID="gateway-voice-primary-button"
-            onPress={() => void start()}>
-            Start voice mode
-          </Button>
+          <>
+            <Button
+              fullWidth
+              accessibilityLabel="Start voice mode"
+              disabled={!canListen || !canSpeak}
+              testID="gateway-voice-primary-button"
+              onPress={() => void start()}>
+              Start voice mode
+            </Button>
+            {/* The screen must be leavable without starting — with no
+                providers configured, Start is disabled and this is the only
+                exit. */}
+            <Button
+              fullWidth
+              variant="outline"
+              accessibilityLabel="Close voice mode"
+              testID="gateway-voice-close-button"
+              onPress={() => void end()}>
+              Close
+            </Button>
+          </>
         ) : (
           <View className="flex-row gap-3">
             <Button

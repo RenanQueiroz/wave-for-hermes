@@ -91,9 +91,14 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    STT/TTS, the dictation mic and every Play control disappear and the voice screen shows
    the named-provider copy with Start disabled — no path to the microphone exists. The
    owner's first spoken round trip on the physical Pixel against the homelab gateway also
-   ran the same day: transcription, turn, and spoken reply all worked, surfacing two
-   defects that now gate the stage — silence auto-send never fired, and the voice screen
-   has no exit without starting.
+   ran the same day: transcription, turn, and spoken reply all worked, surfacing defects
+   that were fixed the same day — silence auto-send never fired on Android (its metering
+   reports peak amplitude where iOS reports average power, so the fixed iOS-calibrated
+   threshold heard everything as speech; detection now tracks a rolling noise floor plus
+   a margin), the voice screen had no exit without starting (idle now shows Close beside
+   Start), and a failed capability probe cached itself as "no providers" for five minutes
+   (it now throws so the bounded retry policy owns recovery). An owner re-test of
+   auto-send on the physical device closes the stage's human gate.
 4. **Realtime as opt-in with a user-owned key.** The user may supply their own OpenAI API key in
    settings (platform secure storage, never logged, excluded from backups; recommend a dedicated
    project-scoped key). Voice mode uses Realtime only when a key is present and the user has not

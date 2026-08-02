@@ -19,10 +19,29 @@ export const SILENCE_HOLD_MS = 1_500;
 /** A single utterance never runs longer than this. */
 export const MAX_UTTERANCE_MS = 60_000;
 /**
- * Metering is in dBFS (0 loud, -160 silent). Anything below this counts as
- * silence; well under normal speech and above room tone on both platforms.
+ * Metering is in dBFS (0 loud, -160 silent), but the two platforms measure
+ * different things: iOS reports average power while Android reports the PEAK
+ * amplitude since the previous poll (`MediaRecorder.maxAmplitude`), which
+ * sits far above average for the same room — quiet-room peaks on a real
+ * Pixel read -30..-20 dBFS, above any fixed threshold that still detects iOS
+ * speech. So "speaking" is judged against a rolling noise floor instead of a
+ * constant: the minimum level over the recent window, plus a margin. On iOS a
+ * -50 dBFS floor yields the same -40 dBFS cut-off the fixed threshold used.
  */
-export const SILENCE_THRESHOLD_DBFS = -40;
+export const SPEECH_MARGIN_DB = 10;
+/** Rolling window for the noise floor: 5 s at the 250 ms sample interval. */
+export const FLOOR_WINDOW_SAMPLES = 20;
+/** Levels this quiet are never speech, however low the floor sits. */
+export const MIN_SPEECH_DBFS = -55;
+
+/** The current speaking cut-off implied by the tracker's noise floor. */
+export function utteranceSpeechThreshold(tracker: UtteranceTracker): number {
+  const floor =
+    tracker.recentLevels.length === 0
+      ? MIN_SPEECH_DBFS - SPEECH_MARGIN_DB
+      : Math.min(...tracker.recentLevels);
+  return Math.max(floor + SPEECH_MARGIN_DB, MIN_SPEECH_DBFS);
+}
 
 const STOP_WORDS = [
   'stop',
@@ -63,10 +82,13 @@ export interface UtteranceTracker {
   silentForMs: number;
   /** Whether any sample has exceeded the speech threshold. */
   heardSpeech: boolean;
+  /** Recent metering samples (dBFS, newest last) for the rolling floor. */
+  recentLevels: number[];
 }
 
 export const initialUtteranceTracker: UtteranceTracker = {
   heardSpeech: false,
+  recentLevels: [],
   silentForMs: 0,
 };
 
@@ -92,9 +114,14 @@ export function observeUtterance(
   if (sample.level === undefined) {
     return { decision: { type: 'continue' }, tracker };
   }
-  const speaking = sample.level > SILENCE_THRESHOLD_DBFS;
+  const recentLevels = [...tracker.recentLevels, sample.level].slice(
+    -FLOOR_WINDOW_SAMPLES,
+  );
+  const speaking =
+    sample.level > utteranceSpeechThreshold({ ...tracker, recentLevels });
   const next: UtteranceTracker = {
     heardSpeech: tracker.heardSpeech || speaking,
+    recentLevels,
     silentForMs: speaking ? 0 : tracker.silentForMs + sampleIntervalMs,
   };
   // Silence only ends an utterance that actually contained speech, and only
@@ -152,7 +179,7 @@ export function voicePhaseDescription(phase: GatewayVoicePhase): string {
     case 'thinking':
       return 'Hermes is working on your request.';
     case 'speaking':
-      return 'Start talking any time to interrupt.';
+      return 'Tap Skip to cut the reply short.';
     default:
       return 'Tap start to talk with your Hermes agent.';
   }

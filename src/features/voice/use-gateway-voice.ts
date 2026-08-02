@@ -28,6 +28,7 @@ import {
   isVoiceStopCommand,
   mimeTypeForRecording,
   observeUtterance,
+  utteranceSpeechThreshold,
   type GatewayVoicePhase,
 } from '@/features/voice/gateway-voice-machine';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
@@ -115,6 +116,8 @@ export function useGatewayVoice({
   const turnAbortRef = useRef<AbortController | undefined>(undefined);
   const submitNowRef = useRef(false);
   const skipSpeakingRef = useRef(false);
+  /** Dev-only snapshot of the live silence detection, for the mobile agent. */
+  const meterDebugRef = useRef<Record<string, unknown>>({});
 
   const releasePlayer = useCallback(() => {
     const player = playerRef.current;
@@ -194,6 +197,14 @@ export function useGatewayVoice({
           SAMPLE_INTERVAL_MS,
         );
         tracker = observed.tracker;
+        if (__DEV__) {
+          meterDebugRef.current = {
+            heardSpeech: tracker.heardSpeech,
+            level: status.metering,
+            silentForMs: tracker.silentForMs,
+            threshold: utteranceSpeechThreshold(tracker),
+          };
+        }
         if (observed.decision.type === 'submit') break;
       }
 
@@ -425,5 +436,13 @@ export function useGatewayVoice({
     skipSpeakingRef.current = true;
   }, []);
 
-  return { respondToPrompt, skipSpeaking, start, state, stop, submitNow };
+  return {
+    meterDebug: meterDebugRef,
+    respondToPrompt,
+    skipSpeaking,
+    start,
+    state,
+    stop,
+    submitNow,
+  };
 }

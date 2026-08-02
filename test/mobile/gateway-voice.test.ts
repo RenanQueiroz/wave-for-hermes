@@ -72,9 +72,52 @@ test('ends an utterance on a held silence that followed real speech', () => {
   assert.equal(submitted, true);
 });
 
+test('ends an utterance on Android-style peak metering over a loud floor', () => {
+  // Regression from the first human round trip on a physical Pixel:
+  // Android reports PEAK amplitude since the last poll, so quiet-room
+  // "silence" reads -30..-25 dBFS — above any fixed iOS-calibrated
+  // threshold, which made silence detection never fire. The rolling noise
+  // floor has to separate those peaks from speech at -12..-8 dBFS.
+  const interval = 250;
+  let tracker = initialUtteranceTracker;
+  let elapsed = 0;
+  const feed = (level: number) => {
+    elapsed += interval;
+    const result = observeUtterance(
+      tracker,
+      { elapsedMs: elapsed, level },
+      interval,
+    );
+    tracker = result.tracker;
+    return result.decision;
+  };
+
+  // A Pixel-like noise floor: peaks around -28 dBFS. Never speech.
+  for (let i = 0; i < 12; i += 1) {
+    assert.deepEqual(feed(-28 + (i % 3)), { type: 'continue' });
+  }
+  assert.equal(tracker.heardSpeech, false);
+
+  // Speech peaks well above the floor register as speech.
+  assert.deepEqual(feed(-10), { type: 'continue' });
+  assert.equal(tracker.heardSpeech, true);
+
+  // Back to the same loud room tone: silence accumulates and submits.
+  let submitted = false;
+  for (let i = 0; i < 10; i += 1) {
+    const decision = feed(-27);
+    if (decision.type === 'submit') {
+      assert.equal(decision.reason, 'silence');
+      submitted = true;
+      break;
+    }
+  }
+  assert.equal(submitted, true);
+});
+
 test('caps an utterance by duration and tolerates missing metering', () => {
   const capped = observeUtterance(
-    { heardSpeech: true, silentForMs: 0 },
+    { heardSpeech: true, recentLevels: [], silentForMs: 0 },
     { elapsedMs: MAX_UTTERANCE_MS, level: -10 },
     250,
   );

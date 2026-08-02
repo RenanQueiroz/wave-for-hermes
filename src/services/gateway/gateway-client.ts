@@ -812,19 +812,19 @@ export class GatewayClient {
 
   /**
    * Which speech capabilities this gateway has configured. There is no public
-   * capability flag on 0.19.0, so this reads the authenticated config once;
-   * a gateway that cannot answer is reported as having neither, and the
-   * affordances disable rather than failing mid-interaction.
+   * capability flag on 0.19.0, so this reads the authenticated config; the
+   * caller's query layer owns retries and caching.
    */
   async getAudioCapabilities(
     signal?: AbortSignal,
   ): Promise<{ stt: boolean; tts: boolean }> {
-    try {
-      const config = await this.request('/api/config', { signal });
-      return readAudioCapabilities(config);
-    } catch {
-      return { stt: false, tts: false };
-    }
+    // A server whose config genuinely names no providers reads as
+    // {stt: false, tts: false} — but a FAILED request must throw rather
+    // than masquerade as that answer: a transient error cached as a
+    // successful "no providers" hid every voice affordance until the
+    // 5-minute staleTime expired, with nothing left to retry.
+    const config = await this.request('/api/config', { signal });
+    return readAudioCapabilities(config);
   }
 
   async cancelTurn(
