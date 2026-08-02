@@ -15,6 +15,7 @@ import {
 import { Platform, ScrollView, Share, View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { OpenAiKeyCard } from '@/features/realtime/openai-key-card';
 import { AppearanceCard } from '@/features/settings/appearance-card';
 import {
   realtimeVoiceCatalogQueryKey,
@@ -93,13 +94,15 @@ function GatewaySettingsScreen({
           </Card.Content>
         </Card>
 
+        <OpenAiKeyCard />
+
         <AppearanceCard />
 
         <DevelopmentCard onOpenDevelopment={onOpenDevelopment} />
 
         <Typography.Paragraph muted className="text-center text-xs">
-          Wave stores only this device&apos;s rotating sign-in tokens in the
-          platform secure store.
+          Wave stores only this device&apos;s rotating sign-in tokens — and your
+          OpenAI key, if you add one — in the platform secure store.
         </Typography.Paragraph>
       </ScrollView>
     </View>
