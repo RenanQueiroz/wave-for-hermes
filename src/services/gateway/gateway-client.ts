@@ -49,6 +49,11 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const TURN_IDLE_TIMEOUT_MS = 120_000;
 const WS_CONNECT_TIMEOUT_MS = 20_000;
 const TIMELINE_PAGE_LIMIT = 200;
+// The gateway caps transcription uploads at 25 MiB; base64 inflates by 4/3, so
+// refuse locally rather than spending the upload to earn a 413.
+const MAX_AUDIO_DATA_URL_CHARS = Math.floor((25 * 1024 * 1024 * 4) / 3);
+const MAX_TRANSCRIPT_CHARS = 32_000;
+const MAX_SPEAK_CHARS = 4_000;
 
 export interface GatewayTokenSink {
   (tokens: GatewayTokens): void;
@@ -384,6 +389,97 @@ export class GatewayClient {
       return { activeTurn: null, apiVersion: 'v1', sessionId };
     } finally {
       connection.close();
+    }
+  }
+
+  // ---- audio ------------------------------------------------------------
+
+  /**
+   * Transcribe a recording through the gateway's configured STT provider.
+   *
+   * The gateway takes base64 data URLs only and caps the upload at 25 MiB;
+   * no provider key ever reaches the client.
+   */
+  async transcribeAudio(
+    input: { dataUrl: string; mimeType: string },
+    signal?: AbortSignal,
+  ): Promise<{ provider?: string; transcript: string }> {
+    if (input.dataUrl.length > MAX_AUDIO_DATA_URL_CHARS) {
+      throw new WaveBackendError('That recording is too long to transcribe.', {
+        kind: 'bad_request',
+      });
+    }
+    const body = await this.request('/api/audio/transcribe', {
+      body: { data_url: input.dataUrl, mime_type: input.mimeType },
+      method: 'POST',
+      signal,
+    });
+    const record = body as { provider?: unknown; transcript?: unknown };
+    return {
+      ...(typeof record.provider === 'string'
+        ? { provider: record.provider }
+        : {}),
+      transcript:
+        typeof record.transcript === 'string'
+          ? record.transcript.slice(0, MAX_TRANSCRIPT_CHARS)
+          : '',
+    };
+  }
+
+  /**
+   * Synthesize speech through the gateway's configured TTS provider. 0.19.0
+   * answers with a buffered data URL (no streaming endpoint at this version),
+   * which is fine for message-length playback.
+   */
+  async speakText(
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<{ dataUrl: string; mimeType: string; provider?: string }> {
+    const trimmed = text.trim().slice(0, MAX_SPEAK_CHARS);
+    if (!trimmed) {
+      throw new WaveBackendError('There is nothing to read aloud.', {
+        kind: 'bad_request',
+      });
+    }
+    const body = await this.request('/api/audio/speak', {
+      body: { text: trimmed },
+      method: 'POST',
+      signal,
+    });
+    const record = body as {
+      data_url?: unknown;
+      mime_type?: unknown;
+      provider?: unknown;
+    };
+    if (typeof record.data_url !== 'string' || !record.data_url) {
+      throw new WaveBackendError('Hermes returned no audio to play.', {
+        kind: 'invalid_response',
+      });
+    }
+    return {
+      dataUrl: record.data_url,
+      mimeType:
+        typeof record.mime_type === 'string' ? record.mime_type : 'audio/mpeg',
+      ...(typeof record.provider === 'string'
+        ? { provider: record.provider }
+        : {}),
+    };
+  }
+
+  /**
+   * Which speech capabilities this gateway has configured. There is no public
+   * capability flag on 0.19.0, so this reads the authenticated config once;
+   * a gateway that cannot answer is reported as having neither, and the
+   * affordances disable rather than failing mid-interaction.
+   */
+  async getAudioCapabilities(
+    signal?: AbortSignal,
+  ): Promise<{ stt: boolean; tts: boolean }> {
+    try {
+      const config = await this.request('/api/config', { signal });
+      return readAudioCapabilities(config);
+    } catch {
+      return { stt: false, tts: false };
     }
   }
 
@@ -784,6 +880,25 @@ function turnInputAttachments(input: WaveTurnInput) {
         ]
       : [],
   );
+}
+
+/**
+ * A provider counts as configured when the config names one and has not
+ * disabled the feature. Shapes vary by provider, so only these two fields are
+ * trusted.
+ */
+export function readAudioCapabilities(config: unknown): {
+  stt: boolean;
+  tts: boolean;
+} {
+  const section = (name: 'stt' | 'tts') => {
+    const value = (config as Record<string, unknown> | null)?.[name];
+    if (typeof value !== 'object' || value === null) return false;
+    const record = value as Record<string, unknown>;
+    if (record.enabled === false) return false;
+    return typeof record.provider === 'string' && record.provider.trim() !== '';
+  };
+  return { stt: section('stt'), tts: section('tts') };
 }
 
 function splitSetCookie(value: string | null): string[] {
