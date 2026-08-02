@@ -112,6 +112,54 @@ test('normalizes message rows into timeline entries with stable ids', () => {
   );
 });
 
+test('folds gateway image annotations out of user messages', () => {
+  // Content captured live on 0.19.0: one annotation pair per attached image,
+  // each followed by a blank line, then the typed text.
+  const annotated =
+    '[The user attached an image:\nA solid blue rectangle.]\n' +
+    '[You can examine it with vision_analyze using image_url: /srv/hermes/images/upload_1.png]\n\n' +
+    '[The user attached an image:\nA solid red square.]\n' +
+    '[You can examine it with vision_analyze using image_url: /srv/hermes/images/upload_2.png]\n\n' +
+    'what do these have in common?';
+  const folded = normalizeMessageRow({ content: annotated, role: 'user' });
+  assert.equal(
+    folded?.content,
+    'what do these have in common?\n' +
+      '[Attached image: A solid blue rectangle.]\n' +
+      '[Attached image: A solid red square.]',
+  );
+  // The server filesystem path must never reach the rendered content.
+  assert.ok(!folded?.content.includes('/srv/hermes'));
+
+  // An empty description degrades to a bare marker.
+  const bare = normalizeMessageRow({
+    content:
+      '[The user attached an image:\n]\n' +
+      '[You can examine it with vision_analyze using image_url: /srv/x.png]\n\nhello',
+    role: 'user',
+  });
+  assert.equal(bare?.content, 'hello\n[Attached image]');
+
+  // Only exact leading annotations fold; lookalikes render unchanged.
+  const midMessage = 'see below\n[The user attached an image:\nnope]';
+  assert.equal(
+    normalizeMessageRow({ content: midMessage, role: 'user' })?.content,
+    midMessage,
+  );
+  const missingVisionLine =
+    '[The user attached an image:\nno second line]\n\nhello';
+  assert.equal(
+    normalizeMessageRow({ content: missingVisionLine, role: 'user' })?.content,
+    missingVisionLine,
+  );
+  // Non-user rows are never rewritten, even with matching content.
+  const assistantEcho = normalizeMessageRow({
+    content: annotated,
+    role: 'assistant',
+  });
+  assert.equal(assistantEcho?.content, annotated);
+});
+
 test('parses, merges, and serializes gateway session cookies', () => {
   const parsed = parseGatewaySetCookies([
     'hermes_session_at="access-1"; HttpOnly; Max-Age=43200; Path=/; SameSite=lax',

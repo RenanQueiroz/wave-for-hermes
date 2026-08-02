@@ -56,7 +56,12 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    server-side and answered with a streamed reply (including on a brand-new chat, where the
    attachment queues on the session created at first send), a Markdown file's bounded
    contents delivered verbatim, and an unsupported binary refused in the composer with the
-   exact contract copy. An owner-reported gap was fixed the same day: on a gateway
+   exact contract copy. The pass surfaced one cosmetic defect, fixed the same day: after
+   the post-turn reconcile, user bubbles rendered the gateway's own image annotations —
+   including the server-side upload path — verbatim; gateway normalization now folds the
+   exactly-matching annotation pairs into bounded Wave-owned `[Attached image: …]` markers
+   after the typed text, leaving anything unrecognized untouched. An owner-reported gap
+   was fixed the same day: on a gateway
    connection the drawer's Settings and Scheduled jobs entries silently bounced to a new
    chat because both screens redirect when companion capabilities are absent — Settings now
    renders its gateway-relevant sections (connection identity, appearance), and the

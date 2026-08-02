@@ -139,15 +139,51 @@ export function toToolDetail(value: unknown) {
   };
 }
 
+// The gateway prepends an annotation pair to the stored user prompt for every
+// attached image (verified live on 0.19.0, including the two-image layout —
+// one pair per image, each followed by a blank line, then the typed text):
+//   [The user attached an image:\n<vision description>]\n
+//   [You can examine it with vision_analyze using image_url: <server path>]
+// Rendering that verbatim leaks the server's filesystem path and buries the
+// typed message, so display normalization folds each pair into a bounded
+// Wave-owned marker placed after the text, mirroring the optimistic composer
+// presentation. Parsing is display-only and conservative: content that does
+// not match exactly renders unchanged, and nothing here is executed.
+const IMAGE_ANNOTATION_PATTERN =
+  /^\[The user attached an image:\n([\s\S]*?)\]\n\[You can examine it with vision_analyze using image_url: [^\n]*\]\n?\n?/;
+const MAX_IMAGE_MARKERS = 8;
+const MAX_MARKER_DESCRIPTION_CHARS = 140;
+
+export function foldImageAnnotations(content: string): string {
+  const markers: string[] = [];
+  let rest = content;
+  while (markers.length < MAX_IMAGE_MARKERS) {
+    const match = IMAGE_ANNOTATION_PATTERN.exec(rest);
+    if (!match) break;
+    const description = match[1].replace(/\s+/g, ' ').trim();
+    const bounded =
+      description.length > MAX_MARKER_DESCRIPTION_CHARS
+        ? `${description.slice(0, MAX_MARKER_DESCRIPTION_CHARS)}…`
+        : description;
+    markers.push(bounded ? `[Attached image: ${bounded}]` : '[Attached image]');
+    rest = rest.slice(match[0].length);
+  }
+  if (markers.length === 0) return content;
+  return [rest.trim(), ...markers].filter(Boolean).join('\n');
+}
+
 export function normalizeMessageRow(
   row: GatewayMessageRow,
 ): WaveConversationMessage | undefined {
   const role = normalizeRole(row.role);
   const rawContent = typeof row.content === 'string' ? row.content : '';
-  const content =
+  let content =
     rawContent.length > MAX_CONTENT_CHARS
       ? rawContent.slice(0, MAX_CONTENT_CHARS)
       : rawContent;
+  if (role === 'user') {
+    content = foldImageAnnotations(content);
+  }
   const toolName = text(row.tool_name, MAX_TOOL_NAME_CHARS);
   const toolInput = toToolDetail(row.tool_calls);
   const createdAt = toIsoTimestamp(row.timestamp);
