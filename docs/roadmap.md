@@ -52,8 +52,10 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    reply is spoken after the turn completes rather than streamed sentence-by-sentence, and the
    interrupt is an explicit Skip control rather than acoustic barge-in, because `expo-audio` has
    no speaker-routing override and an open recorder would force iOS playback to the earpiece.
-   Remaining: a human-spoken end-to-end round trip on a physical device (an automated agent
-   cannot speak into a real microphone).
+   Remaining before the stage closes: a human-spoken end-to-end round trip on a physical
+   device (an automated agent cannot speak into a real microphone), and a degradation run
+   against a gateway with no STT/TTS configured — the gating is unit-tested but no run has
+   seen a providerless server live yet.
 4. **Realtime as opt-in with a user-owned key.** The user may supply their own OpenAI API key in
    settings (platform secure storage, never logged, excluded from backups; recommend a dedicated
    project-scoped key). Voice mode uses Realtime only when a key is present and the user has not
@@ -66,6 +68,9 @@ Contract and dependency-policy amendments in `AGENTS.md` land stage by stage wit
 in advance, so the guide always describes the repository as it is.
 
 ## Now: production voice behavior
+
+These gates apply to Realtime and run as part of stage 4 of the direct-to-gateway migration
+(Realtime with a user-owned key), where the transport they validate gets its new home.
 
 1. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
    when hardware is available.
