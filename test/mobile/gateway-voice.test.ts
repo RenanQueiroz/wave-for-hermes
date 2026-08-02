@@ -34,7 +34,11 @@ test('ends an utterance on a held silence that followed real speech', () => {
   let elapsed = 0;
   const feed = (level: number) => {
     elapsed += interval;
-    const result = observeUtterance(tracker, { elapsedMs: elapsed, level }, interval);
+    const result = observeUtterance(
+      tracker,
+      { elapsedMs: elapsed, level },
+      interval,
+    );
     tracker = result.tracker;
     return result.decision;
   };

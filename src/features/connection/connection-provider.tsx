@@ -120,6 +120,11 @@ interface WaveConnectionContextValue {
    * rather than pretending the capability exists.
    */
   companionClient?: WaveBackendClient;
+  /**
+   * Speech capabilities (dictation, playback, gateway voice) live on the
+   * gateway. Absent on a companion connection, where those affordances hide.
+   */
+  gatewayClient?: GatewayClient;
   disconnect(): Promise<boolean>;
   forget(): Promise<boolean>;
   pair(input: PairWaveDeviceInput): Promise<void>;
@@ -621,6 +626,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     return {
       ...(usable && activeClient ? { client: activeClient } : {}),
       ...(usable && client ? { companionClient: client } : {}),
+      ...(usable && gatewayClient ? { gatewayClient } : {}),
       disconnect,
       forget,
       pair,

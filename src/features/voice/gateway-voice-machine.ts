@@ -9,11 +9,7 @@
  */
 
 export type GatewayVoicePhase =
-  | 'idle'
-  | 'listening'
-  | 'transcribing'
-  | 'thinking'
-  | 'speaking';
+  'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
 
 /** Utterances shorter than this are treated as noise, not speech. */
 export const MIN_UTTERANCE_MS = 500;
@@ -74,8 +70,7 @@ export const initialUtteranceTracker: UtteranceTracker = {
 };
 
 export type UtteranceDecision =
-  | { reason: 'max_duration' | 'silence'; type: 'submit' }
-  | { type: 'continue' };
+  { reason: 'max_duration' | 'silence'; type: 'submit' } | { type: 'continue' };
 
 /**
  * Fold one metering sample into the tracker and decide whether the utterance

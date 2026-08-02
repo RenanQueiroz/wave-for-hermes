@@ -3,10 +3,8 @@ import type { WaveTurnEvent, WaveTurnInput } from '@wave/contracts';
 
 import { initialWaveChatState, waveChatReducer } from './chat-state';
 import { calculateBoundedRetryDelay } from '@/services/query/retry-policy';
-import {
-  WaveBackendClient,
-  WaveBackendError,
-} from '@/services/wave/wave-backend-client';
+import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 const DELTA_FLUSH_MS = 50;
 // Reattaching is a read of the same execution (never a re-dispatch of the
@@ -15,7 +13,7 @@ const DELTA_FLUSH_MS = 50;
 const MAX_REATTACH_ATTEMPTS = 2;
 
 interface UseWaveChatOptions {
-  client: WaveBackendClient;
+  client: WaveChatClient;
   reconcileTimeline(): Promise<unknown>;
   sessionId: string;
 }

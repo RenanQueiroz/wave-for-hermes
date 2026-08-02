@@ -21,11 +21,7 @@ import { mimeTypeForRecording } from '@/features/voice/gateway-voice-machine';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
 
 export type DictationStatus =
-  | 'idle'
-  | 'recording'
-  | 'transcribing'
-  | 'denied'
-  | 'error';
+  'idle' | 'recording' | 'transcribing' | 'denied' | 'error';
 
 export interface DictationState {
   error?: string;

@@ -1,10 +1,10 @@
 import { useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
-import type {
-  WaveSessionListResponse,
-  WaveSessionSummary,
-} from '@wave/contracts';
+import type { WaveSessionSummary } from '@wave/contracts';
 
-import type { WaveBackendClient } from '@/services/wave/wave-backend-client';
+import type {
+  WaveChatClient,
+  WaveSessionPage,
+} from '@/services/wave/wave-chat-client';
 
 import { waveSessionQueryKey } from './session-query-keys';
 
@@ -16,13 +16,13 @@ export function useWaveSessions({
   connectionId,
 }: {
   baseUrl: string;
-  client: WaveBackendClient;
+  client: WaveChatClient;
   connectionId: string;
 }) {
   return useInfiniteQuery<
-    WaveSessionListResponse,
+    WaveSessionPage,
     Error,
-    InfiniteData<WaveSessionListResponse>,
+    InfiniteData<WaveSessionPage>,
     ReturnType<typeof waveSessionQueryKey>,
     number
   >({
@@ -44,7 +44,7 @@ export function useWaveSessions({
 export function flattenWaveSessions(
   data:
     | {
-        pages: WaveSessionListResponse[];
+        pages: WaveSessionPage[];
       }
     | undefined,
 ): WaveSessionSummary[] {

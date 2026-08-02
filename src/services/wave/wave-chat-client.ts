@@ -23,6 +23,18 @@ import type {
   WaveTurnInput,
 } from '@wave/contracts';
 
+/**
+ * One page of conversations. The companion's `apiVersion` envelope field is
+ * deliberately not part of it — screens must not depend on a companion-only
+ * field that the gateway has no equivalent for.
+ */
+export interface WaveSessionPage {
+  hasMore: boolean;
+  limit: number;
+  offset: number;
+  sessions: WaveSessionListResponse['sessions'];
+}
+
 export interface WaveChatClient {
   readonly baseUrl: string;
   cancelTurn(
@@ -57,15 +69,7 @@ export interface WaveChatClient {
   listSessions(
     input?: { limit?: number; offset?: number },
     signal?: AbortSignal,
-  ): Promise<
-    | WaveSessionListResponse
-    | {
-        hasMore: boolean;
-        limit: number;
-        offset: number;
-        sessions: WaveSessionListResponse['sessions'];
-      }
-  >;
+  ): Promise<WaveSessionPage>;
   resumeTurnStream(
     sessionId: string,
     turnId: string,

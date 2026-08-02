@@ -1,5 +1,6 @@
 import {
   useInfiniteQuery,
+  useQuery,
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
@@ -18,6 +19,8 @@ import {
   KeyboardAvoider,
   Message,
   PaperclipIcon,
+  MicIcon,
+  PlayIcon,
   PlusIcon,
   // RotateCcwIcon deliberately: the package's runtime entry exports only the
   // counter-clockwise variant even though the typings declare both.
@@ -54,6 +57,8 @@ import {
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useDictation } from '@/features/voice/use-dictation';
+import { useMessagePlayback } from '@/features/voice/use-message-playback';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
   flattenWaveSessions,
@@ -66,6 +71,7 @@ import {
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-client';
+import type { GatewayClient } from '@/services/gateway/gateway-client';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 interface ChatScreenProps {
@@ -111,7 +117,7 @@ function emptyStateTitleForSession(sessionId: string) {
 }
 
 export function ChatScreen({ sessionId }: ChatScreenProps) {
-  const { client, state: connection } = useWaveConnection();
+  const { client, gatewayClient, state: connection } = useWaveConnection();
 
   if (
     (connection.phase !== 'connected' && connection.phase !== 'offline') ||
@@ -125,6 +131,7 @@ export function ChatScreen({ sessionId }: ChatScreenProps) {
       baseUrl={connection.identity.baseUrl}
       client={client}
       connectionId={connection.identity.id}
+      gatewayClient={gatewayClient}
       offline={connection.phase === 'offline'}
       sessionId={sessionId}
     />
@@ -135,12 +142,14 @@ function ConnectedChatScreen({
   baseUrl,
   client,
   connectionId,
+  gatewayClient,
   offline,
   sessionId,
 }: {
   baseUrl: string;
   client: WaveChatClient;
   connectionId: string;
+  gatewayClient?: GatewayClient;
   offline: boolean;
   sessionId: string;
 }) {
@@ -150,6 +159,22 @@ function ConnectedChatScreen({
   const [input, setInput] = useState('');
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
   const attachmentState = useChatAttachments();
+  // Speech runs entirely through the gateway; a companion connection has no
+  // equivalent, so these affordances simply do not appear there.
+  const speech = useQuery({
+    enabled: Boolean(gatewayClient),
+    queryFn: ({ signal }) =>
+      gatewayClient?.getAudioCapabilities(signal) ?? {
+        stt: false,
+        tts: false,
+      },
+    queryKey: ['wave', connectionId, baseUrl, 'audio-capabilities'],
+    staleTime: 5 * 60_000,
+  });
+  const dictation = useDictation({ client: gatewayClient });
+  const playback = useMessagePlayback({ client: gatewayClient });
+  const canDictate = Boolean(gatewayClient) && speech.data?.stt === true;
+  const canSpeak = Boolean(gatewayClient) && speech.data?.tts === true;
   const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const timelineKey = useMemo(
     () => waveTimelineQueryKey(connectionId, baseUrl, sessionId),
@@ -341,6 +366,22 @@ function ConnectedChatScreen({
     void chat.send(turnInput, optimisticText);
   }, [attachmentState, busy, chat, composerBlocked, input]);
 
+  // Press to dictate, press again to insert. The transcript is appended so a
+  // half-typed message is never lost.
+  const toggleDictation = useCallback(async () => {
+    if (dictation.state.status === 'recording') {
+      const transcript = await dictation.stop();
+      if (!transcript) return;
+      setInput((current) =>
+        current.trim() ? `${current.trim()} ${transcript}` : transcript,
+      );
+      return;
+    }
+    if (dictation.state.status === 'idle') {
+      await dictation.start();
+    }
+  }, [dictation]);
+
   const selectAttachmentSource = useCallback((action: () => Promise<void>) => {
     setAttachmentSheetOpen(false);
     void action();
@@ -358,9 +399,40 @@ function ConnectedChatScreen({
           busy && item.role === 'assistant' && item.id === activeAssistantId
         }
         message={item}
+        playbackStatus={
+          playback.state.messageId === item.id ? playback.state.status : 'idle'
+        }
+        onPlay={canSpeak ? playback.play : undefined}
       />
     ),
-    [activeAssistantId, busy],
+    [
+      activeAssistantId,
+      busy,
+      canSpeak,
+      playback.play,
+      playback.state.messageId,
+      playback.state.status,
+    ],
+  );
+
+  // Legend List re-renders a row only when its key, its item, or `extraData`
+  // changes — a fresh `renderItem` closure alone is invisible to it. Every row
+  // input that lives outside the message itself has to travel through here.
+  const rowExtraData = useMemo(
+    () => ({
+      activeAssistantId,
+      busy,
+      canSpeak,
+      playbackMessageId: playback.state.messageId,
+      playbackStatus: playback.state.status,
+    }),
+    [
+      activeAssistantId,
+      busy,
+      canSpeak,
+      playback.state.messageId,
+      playback.state.status,
+    ],
   );
 
   return (
@@ -429,6 +501,7 @@ function ConnectedChatScreen({
             className="flex-1"
             contentContainerClassName="px-4 py-3"
             data={messages}
+            extraData={rowExtraData}
             ItemSeparatorComponent={ChatTurnSeparator}
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
@@ -524,6 +597,24 @@ function ConnectedChatScreen({
           </Typography.Paragraph>
         ) : null}
 
+        {dictation.state.status === 'recording' ? (
+          <Typography.Paragraph
+            muted
+            className="px-2 text-center text-xs"
+            testID="chat-dictation-hint">
+            Listening — tap the microphone again to insert what you said.
+          </Typography.Paragraph>
+        ) : dictation.state.error ? (
+          <Pressable onPress={dictation.dismissError}>
+            <Typography.Paragraph
+              muted
+              className="px-2 text-center text-xs"
+              testID="chat-dictation-error">
+              {dictation.state.error} Tap to dismiss.
+            </Typography.Paragraph>
+          </Pressable>
+        ) : null}
+
         {composerBlocked ? (
           <Typography.Paragraph
             muted
@@ -559,13 +650,39 @@ function ConnectedChatScreen({
                 <PlusIcon size={20} />
               </Button>
             </View>
+            {canDictate ? (
+              <View
+                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
+                <Button
+                  size="icon"
+                  variant={
+                    dictation.state.status === 'recording'
+                      ? 'destructive'
+                      : 'secondary'
+                  }
+                  accessibilityLabel={
+                    dictation.state.status === 'recording'
+                      ? 'Stop dictating and insert the transcript'
+                      : 'Dictate a message'
+                  }
+                  disabled={busy || composerBlocked}
+                  loading={dictation.state.status === 'transcribing'}
+                  className="rounded-full"
+                  testID="chat-dictate-button"
+                  onPress={() => void toggleDictation()}>
+                  <MicIcon size={18} />
+                </Button>
+              </View>
+            ) : null}
           </InputGroup.Prefix>
           <InputGroup.Input
             multiline
             accessibilityLabel="Message Wave"
             className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
             placeholder="Message Wave"
-            style={{ paddingLeft: 60, paddingRight: 56 }}
+            // Clears the prefix buttons, which the InputGroup overlays on the
+            // field: 8 padding + 44 attachment + 44 mic + spacing.
+            style={{ paddingLeft: canDictate ? 116 : 60, paddingRight: 56 }}
             submitBehavior="submit"
             testID="chat-composer-input"
             value={input}
@@ -702,11 +819,19 @@ const ChatTurn = memo(
   function ChatTurn({
     isStreaming,
     message,
+    onPlay,
+    playbackStatus,
   }: {
     isStreaming: boolean;
     message: WaveChatMessage;
+    onPlay?: (messageId: string, text: string) => void;
+    playbackStatus: 'idle' | 'loading' | 'playing' | 'error';
   }) {
     const isUser = message.role === 'user';
+    const spokenText = message.parts
+      .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+      .join('\n\n')
+      .trim();
     return (
       <Message
         align={isUser ? 'end' : 'start'}
@@ -763,6 +888,25 @@ const ChatTurn = memo(
               <Shimmer textClassName="text-base">Wave is thinking…</Shimmer>
             </Message.Bubble>
           ) : null}
+          {/* Playback belongs to finished assistant text only: there is
+              nothing stable to read aloud mid-stream. */}
+          {!isUser && !isStreaming && onPlay && spokenText ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              accessibilityLabel={
+                playbackStatus === 'playing'
+                  ? 'Stop reading this message aloud'
+                  : 'Read this message aloud'
+              }
+              className="self-start"
+              loading={playbackStatus === 'loading'}
+              startContent={<PlayIcon size={14} />}
+              testID={`chat-play-${message.id}`}
+              onPress={() => onPlay(message.id, spokenText)}>
+              {playbackStatus === 'playing' ? 'Stop' : 'Play'}
+            </Button>
+          ) : null}
         </Message.Content>
       </Message>
     );
@@ -770,7 +914,9 @@ const ChatTurn = memo(
   (previous, next) =>
     previous.isStreaming === next.isStreaming &&
     previous.message.id === next.message.id &&
-    previous.message.parts === next.message.parts,
+    previous.message.parts === next.message.parts &&
+    previous.playbackStatus === next.playbackStatus &&
+    previous.onPlay === next.onPlay,
 );
 
 function ChatToolStep({
