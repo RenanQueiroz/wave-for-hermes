@@ -164,6 +164,13 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   LAN hosts requires iOS's local-network permission, declared in `app.json`. `.local` resolution
   is the platform resolver's job — iOS and current Android resolve mDNS names (validated on a
   Pixel 8 Pro on Android 17); a device that cannot falls back to the LAN IP.
+- Release builds carry the same carve-outs natively (reviewed 2026-08-02): Android sets
+  `android:usesCleartextTraffic="true"` because its network security config cannot scope
+  cleartext to IP ranges — the app's URL policy is the scoping enforcement, and no other code
+  path issues cleartext requests (OpenAI traffic is HTTPS/WSS only). iOS keeps ATS enabled
+  (`NSAllowsArbitraryLoads` false) with only `NSAllowsLocalNetworking` for `.local` hosts —
+  Expo's template default, now pinned explicitly in `app.json`; IP literals are exempt from
+  ATS by design.
 - CORS is not applicable because Wave supports native iOS and Android only.
 - The mobile production export is scanned for upstream keys, server-only imports, and forbidden
   protocol strings. Dependency alignment and workspace boundaries are automated, and the

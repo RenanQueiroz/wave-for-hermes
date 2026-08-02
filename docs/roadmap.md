@@ -199,11 +199,18 @@ The detailed evidence and acceptance gates live in
 
 ## Next: release hardening and focused operations
 
-- Review release-build cleartext policy before a store-style build ships the Tailscale and
-  private-LAN plain-HTTP carve-outs; development clients already permit them. iOS App Transport
-  Security exempts IP literals and `.local` hosts, so the review may conclude no Info.plist
-  exception is needed; Android release builds still need an explicit cleartext-network policy for
-  the allowed private ranges.
+- Release-build cleartext policy — reviewed and landed (2026-08-02), so direct LAN connections
+  (`http://<mac>.local`, LAN IPs, Tailscale CGNAT) work in production builds, not only dev
+  clients. Android release builds set `android:usesCleartextTraffic="true"`: Android's network
+  security config cannot express IP ranges, so the OS flag is app-wide and the app's own
+  unit-tested URL policy remains the scoping enforcement (production builds accept plain HTTP
+  only for loopback, Tailscale CGNAT, RFC 1918, and `.local` hosts; no other code path issues
+  cleartext requests). iOS was already correct — Expo's template ships ATS on
+  (`NSAllowsArbitraryLoads` false) with `NSAllowsLocalNetworking` for `.local` names, and IP
+  literals are exempt from ATS by design — so `app.json` now pins that posture explicitly
+  rather than inheriting it from the template.
+  Verified in the regenerated native projects and Expo Doctor; exercising it on a device is part
+  of the signed release-build smoke below.
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.

@@ -181,8 +181,11 @@ like `renans-mac-mini.local` — for connecting directly on a trusted home netwo
 crosses the LAN unencrypted, so the explicit scheme is the deliberate opt-in. `.local` names
 resolve on iOS and current Android; fall back to the LAN IP on a device that cannot resolve
 them. Note that on the same network a tailnet connection is already a direct WireGuard path
-between the devices, so the Tailscale address stays the recommended default. Development builds
-additionally allow an explicit HTTP URL to any host for trusted local testing.
+between the devices, so the Tailscale address stays the recommended default. These private
+carve-outs work in release builds too — Android release enables cleartext app-wide with the
+app's URL policy as the scoping enforcement, and iOS keeps ATS on with only local networking
+allowed (see `docs/security.md`). Development builds additionally allow an explicit HTTP URL to
+any host for trusted local testing.
 
 Sign-in sends the password to the gateway exactly once and keeps only the gateway's rotating
 session tokens in platform secure storage. On later launches Wave restores and re-verifies the
