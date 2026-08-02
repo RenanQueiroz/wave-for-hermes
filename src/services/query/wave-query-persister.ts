@@ -57,13 +57,26 @@ export function createWaveQueryPersister(
       }
     },
     restoreClient: async () => {
+      let raw: string | undefined;
       try {
-        const raw = await storage.read();
-        if (!raw) {
-          return undefined;
-        }
+        raw = await storage.read();
+      } catch {
+        return undefined;
+      }
+      if (!raw) {
+        return undefined;
+      }
+      try {
         return JSON.parse(raw) as PersistedClient;
       } catch {
+        // A document that no longer parses is unrecoverable. Deleting it
+        // makes the corruption observable as a clean empty cache instead of
+        // leaving a permanently unreadable file behind.
+        try {
+          await storage.delete();
+        } catch {
+          // Best effort; the next successful persist replaces it anyway.
+        }
         return undefined;
       }
     },

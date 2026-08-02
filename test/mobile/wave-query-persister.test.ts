@@ -42,8 +42,23 @@ test('persists, restores, and removes the dehydrated cache', async () => {
 });
 
 test('degrades corrupted or failing storage to an empty cache', async () => {
-  const corrupted = createWaveQueryPersister(memoryStorage('not json').storage);
+  // A truncated persist (interrupted write) must not leave a permanently
+  // unreadable document behind: restore reports no cache AND deletes the
+  // corrupt file so the next persist starts clean.
+  const { current, storage } = memoryStorage('{"buster":"wave-query-cach');
+  const corrupted = createWaveQueryPersister(storage);
   assert.equal(await corrupted.restoreClient(), undefined);
+  assert.equal(current(), undefined);
+
+  // A delete failure while cleaning up corruption still degrades quietly.
+  const stuck = createWaveQueryPersister({
+    delete: () => {
+      throw new Error('locked');
+    },
+    read: () => 'not json',
+    write: () => undefined,
+  });
+  assert.equal(await stuck.restoreClient(), undefined);
 
   const failing = createWaveQueryPersister({
     delete: () => {

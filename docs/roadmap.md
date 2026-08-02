@@ -48,11 +48,13 @@ The detailed evidence and acceptance gates live in
   before slow automation could reopen the screen), verify purge-on-disconnect, and repeat the
   LAN validation on physical iOS — including the local-network permission prompt from a client
   built after the `app.json` usage-description addition.
-- Investigate offline-cache durability: after heavy development-session churn (repeated JS
-  reloads and unauthorized refetches against restarted fixtures), both test devices later
-  cold-started offline with an empty persisted cache even though conversations had previously
-  been cached and read offline on the same pairing. Reproduce deliberately and determine what
-  emptied the persisted file before trusting the cache for long-lived pairings.
+- Offline-cache durability anomaly resolved (2026-08-01): the persister rewrote its JSON
+  document in place on a one-second throttle, so a reload or process death mid-write left a
+  truncated file, and restore silently treated the corrupt document as "no cache" before the
+  next persist overwrote it with an empty one — one interruption lost everything. Writes now go
+  through a sibling temp file renamed into place and a corrupt document is deleted on restore;
+  validated with repeated kill cycles across the persist window on the iOS simulator. If cache
+  loss recurs after this fix, treat it as evidence for the `expo-sqlite/kv-store` move below.
 
 ## Next: release hardening and focused operations
 
@@ -76,7 +78,8 @@ The detailed evidence and acceptance gates live in
   the repository; the in-app setup prompt covers the source-build path today.
 - Move the persisted query cache to `expo-sqlite/kv-store` with TanStack's per-query persister
   only if persist-write jank is measured, the cache file grows past a few megabytes in real use,
-  or offline search over conversation content becomes a product goal. The storage seam in
+  offline search over conversation content becomes a product goal, or cache corruption recurs
+  despite the atomic-replace write path. The storage seam in
   `src/services/query/wave-query-cache.ts` keeps that swap contained.
 - Recycle chat-timeline rows by keying Task disclosure state per message if very long
   conversations show fling gaps despite the draw-distance buffer.

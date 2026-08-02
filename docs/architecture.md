@@ -377,8 +377,10 @@ protocol messages.
   timelines stay readable offline. Only successful session-list and timeline reads dehydrate
   (never diagnostics, jobs, or Realtime state), entries expire after seven days or a cache-buster
   bump, and pairing, forgetting, and disconnecting purge the file alongside the in-memory cache.
-  A connectivity-shaped refetch failure over cached data renders a quiet offline notice; every
-  other error keeps its explicit surface.
+  Persist writes go through a sibling temp file renamed into place so an interrupted write can
+  never truncate the document, and a document that fails to parse on restore is deleted rather
+  than left permanently unreadable. A connectivity-shaped refetch failure over cached data
+  renders a quiet offline notice; every other error keeps its explicit surface.
 - Active SSE and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only credential bootstrap and compatibility state; it is not a
   general application-state container.
