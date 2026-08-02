@@ -396,11 +396,20 @@ export class GatewayClient {
     try {
       const liveSessionId = await this.resolveLiveSession(rpc, sessionId);
       for (const attachment of attachments) {
-        await rpc.call('image.attach_bytes', {
-          content_base64: attachment.base64,
-          filename: attachment.name,
-          session_id: liveSessionId,
-        });
+        try {
+          // Queues the image on the live session; the next prompt.submit
+          // consumes it (verified live on 0.19.0, including the 25 MiB cap
+          // and unsupported-extension rejections).
+          await rpc.call('image.attach_bytes', {
+            content_base64: attachment.base64,
+            filename: attachment.name,
+            session_id: liveSessionId,
+          });
+        } catch (error) {
+          // Surface the gateway's own reason ("image too large (…)") instead
+          // of a generic transport failure.
+          throw toWaveError(error);
+        }
       }
       const turnId = `gw-turn-${Date.now()}`;
       const translator = new GatewayTurnTranslator({
@@ -409,10 +418,20 @@ export class GatewayClient {
         turnId,
       });
       yield translator.start();
+      let submitFailure: WaveBackendError | undefined;
       void rpc
         .call('prompt.submit', { session_id: liveSessionId, text })
-        .catch(() => events.fail());
-      yield* this.pump(events, translator, signal);
+        .catch((error: unknown) => {
+          submitFailure = toWaveError(error);
+          events.fail();
+        });
+      try {
+        yield* this.pump(events, translator, signal);
+      } catch (error) {
+        // A rejected submit fails the queue; report the submit's actual error
+        // rather than the queue's generic dropped-stream one.
+        throw submitFailure ?? error;
+      }
     } finally {
       close();
     }
@@ -1032,12 +1051,25 @@ function splitSetCookie(value: string | null): string[] {
   return value.split(/,(?=\s*[^=;,]+=)/).map((part) => part.trim());
 }
 
+/** Gateway app-level error codes for a session id it does not know. */
+const RPC_NOT_FOUND_CODES = new Set([4001, 4007]);
+/** Attachment rejections: empty/invalid/unsupported/oversized input. */
+const RPC_BAD_REQUEST_CODES = new Set([4015, 4016, 4017, 4018]);
+
 function toWaveError(error: unknown): WaveBackendError {
   if (error instanceof WaveBackendError) return error;
   if (error instanceof GatewayRpcError) {
+    if (RPC_NOT_FOUND_CODES.has(error.code)) {
+      return new WaveBackendError(error.message, { kind: 'not_found' });
+    }
+    if (RPC_BAD_REQUEST_CODES.has(error.code)) {
+      // The caller's input is the problem; retrying the same input cannot
+      // succeed, and the gateway's message names the actual limit.
+      return new WaveBackendError(error.message, { kind: 'bad_request' });
+    }
     return new WaveBackendError(error.message, {
-      kind: error.code === 4007 ? 'not_found' : 'upstream_unavailable',
-      retryable: error.code !== 4007,
+      kind: 'upstream_unavailable',
+      retryable: true,
     });
   }
   return new WaveBackendError('Hermes could not complete the request.', {

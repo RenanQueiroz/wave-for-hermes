@@ -18,6 +18,7 @@ import {
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
+import { WaveBackendError } from '../../src/services/wave/wave-backend-client.ts';
 import {
   isCompleteTokenSet,
   mergeRotatedTokens,
@@ -532,4 +533,172 @@ test('the turn event queue tells cancellation apart from idle timeout', async ()
   readyQueue.push({ payload: { text: 'hi' }, type: 'message.delta' });
   const frame = await readyQueue.next();
   assert.deepEqual(frame, { payload: { text: 'hi' }, type: 'message.delta' });
+});
+
+/**
+ * A fake gateway socket that answers the turn RPCs (`session.create`,
+ * `image.attach_bytes`, `prompt.submit`) and streams configured event frames
+ * after a successful submit. Method behavior is overridable per test.
+ */
+function makeTurnFixtureClient(options: {
+  attachResult?: { code: number; message: string };
+  submitResult?: { code: number; message: string };
+}) {
+  const calls: { method: string; params: Record<string, unknown> }[] = [];
+  class FakeTurnSocket {
+    onopen?: () => void;
+    onmessage?: (message: { data: string }) => void;
+    onerror?: () => void;
+    onclose?: () => void;
+    constructor() {
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(data: string): void {
+      const frame = JSON.parse(data) as {
+        id: number;
+        method: string;
+        params: Record<string, unknown>;
+      };
+      calls.push({ method: frame.method, params: frame.params });
+      const reply = (body: Record<string, unknown>) => {
+        setTimeout(() => {
+          this.onmessage?.({
+            data: JSON.stringify({ id: frame.id, jsonrpc: '2.0', ...body }),
+          });
+        }, 0);
+      };
+      const emit = (type: string, payload: Record<string, unknown>) => {
+        setTimeout(() => {
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'event',
+              params: { payload, type },
+            }),
+          });
+        }, 0);
+      };
+      if (frame.method === 'session.create') {
+        reply({
+          result: { session_id: 'live-1', stored_session_id: 'stored-1' },
+        });
+        return;
+      }
+      if (frame.method === 'image.attach_bytes') {
+        if (options.attachResult) {
+          reply({ error: options.attachResult });
+          return;
+        }
+        reply({ result: { attached: true, count: 1 } });
+        return;
+      }
+      if (frame.method === 'prompt.submit') {
+        if (options.submitResult) {
+          reply({ error: options.submitResult });
+          return;
+        }
+        reply({ result: { ok: true } });
+        emit('message.delta', { text: 'reply text' });
+        emit('message.complete', { text: 'reply text' });
+        return;
+      }
+      reply({ result: {} });
+    }
+    close(): void {
+      // No-op for the fake.
+    }
+  }
+  const fetchImpl = (async (url: string | URL) => {
+    if (String(url).endsWith('/api/auth/ws-ticket')) {
+      return jsonResponse({ ticket: 't-1' });
+    }
+    throw new Error(`unexpected request: ${String(url)}`);
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => new FakeTurnSocket() as unknown as WebSocket,
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+  return { calls, client };
+}
+
+const IMAGE_TURN_INPUT = [
+  { text: 'What is attached?', type: 'text' as const },
+  {
+    dataUrl: 'data:image/png;base64,aWs=',
+    mimeType: 'image/png' as const,
+    name: 'tiny.png',
+    type: 'image' as const,
+  },
+];
+
+test('attaches images to the live session before submitting the turn', async () => {
+  // Verified live on 0.19.0: `image.attach_bytes` queues the image on the
+  // LIVE session (stored ids earn a 4001) and the next prompt.submit consumes
+  // the queue, so the attach must land on the same socket, before submit.
+  const { calls, client } = makeTurnFixtureClient({});
+  const created = await client.createSession();
+  const events: string[] = [];
+  for await (const event of client.streamTurn(
+    created.session.id,
+    IMAGE_TURN_INPUT,
+  )) {
+    events.push(event.type);
+  }
+  assert.deepEqual(events, [
+    'turn.started',
+    'assistant.started',
+    'assistant.delta',
+    'assistant.completed',
+    'turn.completed',
+  ]);
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ['session.create', 'image.attach_bytes', 'prompt.submit'],
+  );
+  const attach = calls[1];
+  assert.equal(attach.params.session_id, 'live-1');
+  // The data-URL prefix is stripped; the gateway gets bare base64.
+  assert.equal(attach.params.content_base64, 'aWs=');
+  assert.equal(attach.params.filename, 'tiny.png');
+  assert.equal(calls[2].params.session_id, 'live-1');
+});
+
+test('surfaces the gateway reason when an attachment is rejected', async () => {
+  const { client } = makeTurnFixtureClient({
+    attachResult: {
+      code: 4018,
+      message: 'image too large (26214401 bytes; cap is 25 MB)',
+    },
+  });
+  const created = await client.createSession();
+  const stream = client.streamTurn(created.session.id, IMAGE_TURN_INPUT);
+  await assert.rejects(stream.next(), (error: unknown) => {
+    assert.ok(error instanceof WaveBackendError);
+    assert.equal(error.kind, 'bad_request');
+    assert.equal(error.retryable, false);
+    assert.match(error.message, /image too large/);
+    return true;
+  });
+});
+
+test('a rejected submit reports its own error, not a dropped stream', async () => {
+  const { client } = makeTurnFixtureClient({
+    submitResult: { code: 4001, message: 'session not found' },
+  });
+  const created = await client.createSession();
+  const events: string[] = [];
+  const consume = async () => {
+    for await (const event of client.streamTurn(created.session.id, 'hello')) {
+      events.push(event.type);
+    }
+  };
+  await assert.rejects(consume(), (error: unknown) => {
+    assert.ok(error instanceof WaveBackendError);
+    assert.equal(error.kind, 'not_found');
+    assert.equal(error.message, 'session not found');
+    return true;
+  });
+  assert.deepEqual(events, ['turn.started']);
 });
