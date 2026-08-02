@@ -195,6 +195,10 @@ export function ConnectionScreen() {
                   ? validationError.message
                   : undefined
               }
+              // Android keyboards apply suggestions/correction to plain text
+              // fields even with autoCorrect off; the URI input class is what
+              // actually disables them (and adds the "/" key).
+              keyboardType="url"
               label="Hermes gateway URL"
               placeholder="https://hermes.example.internal"
               testID="gateway-url-input"
@@ -215,6 +219,10 @@ export function ConnectionScreen() {
                   ? validationError.message
                   : undefined
               }
+              // Usernames are not words: visible-password is the input class
+              // Android keyboards reliably leave alone (no suggestions, no
+              // correction). iOS ignores it and keeps the default keyboard.
+              keyboardType="visible-password"
               label="Username"
               testID="gateway-username-input"
               value={username}
@@ -303,6 +311,7 @@ export function ConnectionScreen() {
                   ? validationError.message
                   : undefined
               }
+              keyboardType="url"
               label="Companion URL"
               placeholder="https://wave.example.internal"
               testID="companion-url-input"
@@ -344,6 +353,9 @@ export function ConnectionScreen() {
                   ? validationError.message
                   : undefined
               }
+              // Uppercasing happens in formatPairingCode, so the
+              // suggestion-free visible-password class costs nothing here.
+              keyboardType="visible-password"
               label="Pairing code"
               maxLength={19}
               placeholder="XXXX-XXXX-XXXX-XXXX"

@@ -66,7 +66,12 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    chat because both screens redirect when companion capabilities are absent — Settings now
    renders its gateway-relevant sections (connection identity, appearance), and the
    Scheduled jobs entry is shown only on companion connections until a gateway jobs
-   contract exists.
+   contract exists. Owner-reported sign-in friction on the physical Pixel exposed two more
+   fixes (2026-08-02): connection errors from gateway paths had been rewritten with the
+   companion's "pair again" copy (a wrong password looked like a revoked device — gateway
+   errors now surface their own messages, verified live against the homelab gateway), and
+   the connect screen's URL/username/pairing-code fields now use input classes Android
+   keyboards actually leave uncorrected.
 3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
    runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →
    `/api/audio/speak`), and the composer gained a dictation microphone while finished assistant

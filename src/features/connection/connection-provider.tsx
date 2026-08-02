@@ -200,13 +200,17 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         if (operation !== operationRef.current) return;
         if (isOfflineLikeWaveError(error)) {
           setState({
-            error: toConnectionError(error),
+            error: toConnectionError(error, 'gateway'),
             identity,
             phase: 'offline',
           });
           return;
         }
-        setState({ error: toConnectionError(error), identity, phase: 'error' });
+        setState({
+          error: toConnectionError(error, 'gateway'),
+          identity,
+          phase: 'error',
+        });
       }
     },
     [buildGatewayClient],
@@ -479,7 +483,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       } catch (error) {
         if (operation !== operationRef.current) return;
         setState({
-          error: toConnectionError(error),
+          error: toConnectionError(error, 'gateway'),
           phase: 'error',
         });
       }
@@ -653,7 +657,17 @@ export function useWaveConnection() {
   return context;
 }
 
-function toConnectionError(error: unknown): ConnectionError {
+/**
+ * Backend errors → user-facing connection errors. The flavor matters: the
+ * companion's fixed copy translates its device-credential model ("pair
+ * again"), but gateway errors are already written for the sign-in UI — a
+ * gateway 401 is "wrong username or password", never a revoked pairing, so
+ * rewriting it with companion copy sent users chasing the wrong problem.
+ */
+function toConnectionError(
+  error: unknown,
+  flavor: 'companion' | 'gateway' = 'companion',
+): ConnectionError {
   if (
     error instanceof WaveCredentialStoreError ||
     error instanceof ActiveSessionStoreError
@@ -665,6 +679,22 @@ function toConnectionError(error: unknown): ConnectionError {
     };
   }
   if (error instanceof WaveBackendError) {
+    if (flavor === 'gateway') {
+      switch (error.kind) {
+        case 'unauthorized':
+        case 'upstream_incompatible':
+        case 'invalid_response':
+          return { kind: error.kind, message: error.message, retryable: false };
+        case 'rate_limited':
+          return { kind: error.kind, message: error.message, retryable: true };
+        default:
+          return {
+            kind: error.kind,
+            message: error.message,
+            retryable: error.retryable,
+          };
+      }
+    }
     switch (error.kind) {
       case 'unauthorized':
         return {
