@@ -35,12 +35,16 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    now interrupts through the live transport sid (the stored id silently fails with a 4001),
    the timeline pages from the NEWEST end (`/messages?limit=` keeps the oldest rows, so long
    conversations hid their newest messages), and a user Stop is reported as a cancellation
-   rather than "Wave lost the connection". Attachments were then live-verified the same way
+   rather than "Wave lost the connection". Mid-turn agent prompts now render inline and are
+   answerable — Hermes can pause a turn to ask for tool approval or a clarifying answer, and
+   Wave previously rendered nothing, so the turn hung until the idle timeout. Conversation
+   search now covers message content (the gateway does not index titles), and deleting a
+   conversation while its turn is running is refused explicitly, which the gateway itself
+   does not enforce. Attachments were live-verified the same way
    (2026-08-02): `image.attach_bytes` queues on the live sid before `prompt.submit` consumes
    it — the exact order the client already used — and attachment rejections now surface the
    gateway's own reason (cap, unsupported type) as non-retryable input errors instead of a
-   generic failure. Remaining before stage 5: mid-turn approval prompts (`approval.respond`)
-   and search scope.
+   generic failure. Remaining before stage 5: a device pass over composer attachment sending.
 3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
    runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →
    `/api/audio/speak`), and the composer gained a dictation microphone while finished assistant

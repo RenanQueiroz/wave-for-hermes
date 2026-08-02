@@ -160,7 +160,12 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   on any refresh. A conversation the user just started is routed by a local placeholder id until
   its first turn creates the real session; the client maps the two so the route stays stable. It
   also carries the gateway's speech endpoints — `/api/audio/transcribe` and `/api/audio/speak` —
-  on a longer timeout than a REST read, because both are model work rather than lookups.
+  on a longer timeout than a REST read, because both are model work rather than lookups, and
+  full-text search, which covers message content only (the gateway does not index titles).
+  A turn that is streaming keeps its RPC channel registered so mid-turn agent prompts can be
+  answered on the socket bound to its live session, and a delete is refused while that channel
+  or the gateway's own `session.active_list` reports a running turn — the gateway accepts a
+  mid-turn delete and lets the conversation reappear, so Wave enforces the contract itself.
 - `src/features/voice` is the gateway speech layer. `gateway-voice-machine.ts` holds the pure
   decisions (silence detection, utterance caps, stop words, upload MIME mapping, phase copy) so
   they are testable without a microphone; `use-dictation.ts` records one utterance into the

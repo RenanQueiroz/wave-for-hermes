@@ -185,11 +185,18 @@ documentation before implementing UI.
   client. Correlate handoffs to canonical Hermes messages through server-internal stable metadata,
   and refresh that timeline before returning from live voice.
 - Do not silently broaden a chat tool into arbitrary administration access.
+- Hermes can pause a running turn to ask the user something. Render approval and clarify
+  prompts inline in the turn they belong to, answer them on the socket bound to that turn's
+  live session, and clear the prompt as soon as anything proves it settled — including an
+  answer from another client or a server-side expiry. Never collect secrets or passwords on
+  the phone: decline `secret`/`sudo` requests with copy that says why.
 - Device credentials authorize the paired user to the Wave Gateway account. They do not create
   per-device copies or allowlists of Hermes sessions. Session IDs must still be validated and
   resolved by Hermes, and active turn/call conflicts must be enforced before destructive changes.
 - Keep conversation listing paginated. Rename and delete through typed Wave lifecycle routes;
-  deleting a session with an active turn or Realtime call must fail explicitly.
+  deleting a session with an active turn or Realtime call must fail explicitly — and where a
+  backend does not enforce that itself, the client does, using the backend's own liveness
+  signal rather than local state alone.
 - Turn attachments use strict Wave parts. Mobile may send up to four bounded inline images or
   bounded text-file contents with a non-empty message. Reject unsupported binary documents before
   dispatch and never expose a generic Hermes upload or filesystem endpoint.
