@@ -28,6 +28,13 @@ Keep the product focused:
 
 If a requested change conflicts with this product contract, stop and raise the conflict.
 
+A direct-to-gateway migration is decided (2026-08-01, recorded in `docs/architecture.md` and
+staged in `docs/roadmap.md`): the companion will be retired, gateway OAuth replaces pairing,
+Hermes's server-side voice becomes the default voice mode, and Realtime becomes an opt-in mode
+whose OpenAI key the user supplies and the app holds in platform secure storage. Until a stage
+lands, the contract above still governs the code as it exists; amend the affected clauses in the
+same change that lands each stage.
+
 ## Expo 57 is the source of truth
 
 Expo has changed. Before writing Expo or React Native code, read the exact versioned documentation

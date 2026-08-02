@@ -4,6 +4,36 @@ This roadmap records product work that remains after the authenticated text-chat
 vertical slices, ordered by user impact and production risk. Feature-level detail for completed
 work lives in the README, [`architecture.md`](./architecture.md), and [`security.md`](./security.md).
 
+## Now: direct-to-gateway migration (decided 2026-08-01)
+
+Wave will retire the companion and connect directly to the Hermes gateway so a new user only
+downloads the app and signs in to their existing Hermes deployment. The findings and accepted
+trade-offs are recorded in [`architecture.md`](./architecture.md); the staged plan:
+
+1. **Spike the gateway transport and auth.** Speak `tui_gateway` JSON-RPC over
+   `/api/ws` from React Native against a real gateway; sign in through the bundled password
+   provider or native PKCE. Resolve the open questions: a mobile redirect URI for the native
+   flow (custom scheme needs upstream support; the embedded-webview cookie flow is the
+   fallback), `session.resume` grace semantics, and RPC parity for session rename, delete,
+   search, and attachments. File upstream issues where gaps are confirmed.
+2. **Migrate text chat and session lifecycle.** Replace the companion transport in
+   `WaveBackendClient` with the gateway client behind the same normalized contracts; replace
+   pairing with gateway sign-in; rely on resume-plus-history-refetch for turn continuity.
+3. **Adopt gateway voice.** Hermes native voice mode (record → `/api/audio/transcribe` →
+   normal turn → `/api/audio/speak-stream`) becomes the default voice mode, plus standalone
+   dictation into the composer (STT) and per-message playback (TTS). Degrade clearly when the
+   server has no STT/TTS provider configured.
+4. **Realtime as opt-in with a user-owned key.** The user may supply their own OpenAI API key in
+   settings (platform secure storage, never logged, excluded from backups; recommend a dedicated
+   project-scoped key). Voice mode uses Realtime only when a key is present and the user has not
+   disabled it; otherwise gateway voice. This amends the product contract's server-side-key rule
+   for the user-owned-key case — the decision record is in `architecture.md`.
+5. **Retire the companion.** Remove the workspace, contracts that exist only for it, the pairing
+   flow, and the deployment documentation once the app runs fully against the gateway.
+
+Contract and dependency-policy amendments in `AGENTS.md` land stage by stage with the code, not
+in advance, so the guide always describes the repository as it is.
+
 ## Now: production voice behavior
 
 1. Repeat the Realtime microphone, playback, tool-call, mute, and teardown proof on physical iOS
@@ -63,9 +93,10 @@ The detailed evidence and acceptance gates live in
   Security exempts IP literals and `.local` hosts, so the review may conclude no Info.plist
   exception is needed; Android release builds still need an explicit cleartext-network policy for
   the allowed private ranges.
-- Bound the Companion interaction ledger. Deletion cascades with the parent session, but a
-  long-lived session's finalized voice transcripts and handoff records currently grow without an
-  age or size limit; define retention before that storage becomes operationally meaningful.
+- Bound the Companion interaction ledger only if the direct-to-gateway migration stalls: the
+  ledger retires with the companion. Deletion cascades with the parent session today, but a
+  long-lived session's finalized voice transcripts and handoff records grow without an age or
+  size limit.
 - Expand the drawer's operational area only with reviewed read-only resources that Hermes exposes
   through stable contracts. Each surface needs its own normalized Wave schema; do not introduce a
   generic Hermes API browser or operational mutations.
@@ -74,8 +105,6 @@ The detailed evidence and acceptance gates live in
 
 ## Later: deliberate options
 
-- Publish the Companion container image to a registry so future users can deploy without cloning
-  the repository; the in-app setup prompt covers the source-build path today.
 - Move the persisted query cache to `expo-sqlite/kv-store` with TanStack's per-query persister
   only if persist-write jank is measured, the cache file grows past a few megabytes in real use,
   offline search over conversation content becomes a product goal, or cache corruption recurs

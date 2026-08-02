@@ -66,13 +66,42 @@ deployment split already exists where it matters — Homelab owns manifests, net
 images, and secrets. If the companion should ever be distributed on its own, publish the container
 image, not a second source tree.
 
-The Companion exists because of two hard external constraints, not preference: Hermes exposes a
+The Companion originally existed because of two hard external constraints: Hermes exposed a
 single server-wide API key with no scoped, revocable per-device credential, and OpenAI Realtime
-requires a trusted server to hold the standard key and attach the server-side sideband. Platform
-secure storage protects a credential at rest but cannot make a client-held server-wide key safe.
-Reconsider a companion-free topology only if Hermes itself ever provides both scoped revocable
-mobile credentials limited to the conversation surface and a supported server-side Realtime
-credential and sideband extension point.
+requires a trusted server to hold a standard key when that key must be hidden from the user.
+
+A review of the upstream `hermes-agent` repository (2026-08-01, desktop client plus
+`hermes_cli/web_server.py` and `tui_gateway`) found the first constraint has fallen and reframed
+the second:
+
+- The Hermes gateway now implements RFC 8252 native-app OAuth: it brokers PKCE through
+  `/auth/native/{authorize,token,refresh}`, issues short-lived access tokens with refresh
+  tokens, gates any non-loopback deployment behind OAuth or a bundled password provider, and
+  advertises supported flows through `auth_flows` on the public `/api/status`. This is a
+  first-class per-user, revocable credential story — the capability whose absence justified the
+  pairing-code companion.
+- The gateway runs speech server-side: `/api/audio/transcribe`, `/api/audio/speak`, and
+  `/api/audio/speak-stream`, with STT/TTS providers and their keys held in server configuration.
+  The desktop client's voice mode is push-to-talk (client records, gateway transcribes, the
+  transcript runs as a normal turn, gateway speaks the reply) and the client never holds a
+  provider key.
+- Chat transport is `tui_gateway` JSON-RPC over WebSocket (`/api/ws`). On disconnect, sessions
+  detach into a grace-windowed orphan reaper that a prompt `session.resume` cancels — weaker
+  than the companion's run-to-completion turn with sequence-numbered frame replay, and frame
+  replay was not found in the gateway path.
+
+**Decision (2026-08-01): retire the companion and connect Wave directly to the Hermes gateway.**
+The owner accepted the trade-offs explicitly: gateway OAuth replaces device pairing; the app
+gains the gateway's native voice mode (server-side STT/TTS) as the default voice path plus
+standalone dictation and message playback; OpenAI Realtime remains as an opt-in mode whose API
+key the user supplies and the app keeps in platform secure storage — the ephemeral-token
+server pattern exists to hide a business-owned key from end users, and in Wave the user owns
+the key; and grace-windowed resume replaces companion turn replay because a client that needs
+no separate deployment is worth that regression. Open items to verify during the migration:
+a mobile-usable redirect URI for the native PKCE flow (the current flow redirects to a desktop
+loopback listener; a custom scheme needs upstream support or the embedded-webview fallback),
+the exact `session.resume` grace semantics, and gateway RPC parity for session rename, delete,
+search, and attachments.
 
 The companion targets Node.js 24 rather than Bun or Python: the official OpenAI SDK and Fastify
 are first-class on Node LTS, and one language spans the contracts, the client, and the server.
