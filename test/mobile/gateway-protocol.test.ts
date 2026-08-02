@@ -354,6 +354,9 @@ test('a new conversation keeps its route while its real session is created', asy
     'GET /api/sessions/20260802_000000_abcdef',
     'GET /api/sessions/20260802_000000_abcdef/messages',
     'PATCH /api/sessions/20260802_000000_abcdef',
+    // Delete probes for a running turn first (the gateway would otherwise
+    // accept a mid-turn delete and let the session reappear).
+    'POST /api/auth/ws-ticket',
     'DELETE /api/sessions/20260802_000000_abcdef',
   ]);
 });
@@ -949,4 +952,80 @@ test('routes prompt responses through the active turn socket', async () => {
     false,
     'the closed turn socket must not receive responses',
   );
+});
+
+test('refuses to delete a conversation whose turn is still running', async () => {
+  // Wave's contract requires an active-turn delete to fail explicitly. The
+  // gateway does not enforce it — a mid-turn DELETE answers ok:true, the turn
+  // finishes, and the session reappears (verified live on 0.19.0) — so the
+  // client enforces it using the gateway's own active_list status, which
+  // reports "working" during a turn.
+  const requests: string[] = [];
+  class ActiveListSocket {
+    onopen?: () => void;
+    onmessage?: (message: { data: string }) => void;
+    onerror?: () => void;
+    onclose?: () => void;
+    constructor() {
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(data: string): void {
+      const frame = JSON.parse(data) as { id: number; method: string };
+      setTimeout(() => {
+        this.onmessage?.({
+          data: JSON.stringify({
+            id: frame.id,
+            jsonrpc: '2.0',
+            result: {
+              sessions: [
+                { id: 'live-1', session_key: 'busy-1', status: 'working' },
+                { id: 'live-2', session_key: 'calm-1', status: 'idle' },
+              ],
+            },
+          }),
+        });
+      }, 0);
+    }
+    close(): void {
+      // No-op for the fake.
+    }
+  }
+  const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+    const parsed = new URL(String(url));
+    requests.push(`${init?.method ?? 'GET'} ${parsed.pathname}`);
+    if (parsed.pathname.endsWith('/api/auth/ws-ticket')) {
+      return jsonResponse({ ticket: 't-1' });
+    }
+    return jsonResponse({ ok: true });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => new ActiveListSocket() as unknown as WebSocket,
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+
+  await assert.rejects(client.deleteSession('busy-1'), (error: unknown) => {
+    assert.ok(error instanceof WaveBackendError);
+    assert.equal(error.kind, 'conflict');
+    assert.equal(error.retryable, false);
+    assert.match(error.message, /still working/);
+    return true;
+  });
+  assert.equal(
+    requests.some((request) => request.startsWith('DELETE')),
+    false,
+    'a busy conversation must never reach the delete endpoint',
+  );
+
+  // An idle conversation deletes normally.
+  const deleted = await client.deleteSession('calm-1');
+  assert.equal(deleted.deleted, true);
+  assert.ok(requests.includes('DELETE /api/sessions/calm-1'));
+
+  // getActiveTurn recognizes 0.19.0's "working" status.
+  const active = await client.getActiveTurn('busy-1');
+  assert.ok(active.activeTurn);
+  const idle = await client.getActiveTurn('calm-1');
+  assert.equal(idle.activeTurn, null);
 });

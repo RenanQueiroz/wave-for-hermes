@@ -393,6 +393,16 @@ export class GatewayClient {
     };
   }
 
+  /**
+   * Delete a conversation, refusing while a turn is still running.
+   *
+   * Wave's contract requires an active-turn delete to fail explicitly. The
+   * gateway does not enforce that: a mid-turn `DELETE` answers `{"ok":true}`
+   * while the turn runs to completion and re-persists the session, so it
+   * silently reappears in the list (verified live on 0.19.0). Wave therefore
+   * enforces it here, using the gateway's own `session.active_list` status
+   * as the signal rather than trusting local state.
+   */
   async deleteSession(
     sessionId: string,
     signal?: AbortSignal,
@@ -400,6 +410,19 @@ export class GatewayClient {
     sessionId = this.resolveSessionId(sessionId);
     if (isPendingSessionId(sessionId)) {
       return { apiVersion: 'v1', deleted: true, sessionId };
+    }
+    if (this.activeTurns.has(sessionId)) {
+      throw new WaveBackendError(
+        'This conversation is still working. Stop it before deleting.',
+        { kind: 'conflict' },
+      );
+    }
+    const active = await this.getActiveTurn(sessionId, signal);
+    if (active.activeTurn) {
+      throw new WaveBackendError(
+        'This conversation is still working. Stop it before deleting.',
+        { kind: 'conflict' },
+      );
     }
     await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'DELETE',
@@ -576,6 +599,13 @@ export class GatewayClient {
     }
   }
 
+  /**
+   * Whether a turn is running for this session, from the gateway's own view.
+   *
+   * A probe that cannot answer reports "no active turn" rather than failing:
+   * this is a hint used to offer resume and to guard deletes, and an
+   * unreachable gateway will fail the real operation anyway.
+   */
   async getActiveTurn(
     sessionId: string,
     signal?: AbortSignal,
@@ -588,8 +618,10 @@ export class GatewayClient {
     if (isPendingSessionId(sessionId)) {
       return { activeTurn: null, apiVersion: 'v1', sessionId };
     }
-    const connection = await this.openSocket(signal);
+    let connection:
+      Awaited<ReturnType<GatewayClient['openSocket']>> | undefined;
     try {
+      connection = await this.openSocket(signal);
       const result = await connection.rpc.call('session.active_list', {});
       const sessions = Array.isArray(result.sessions) ? result.sessions : [];
       const match = sessions.find(
@@ -599,7 +631,12 @@ export class GatewayClient {
           ((entry as Record<string, unknown>).session_key === sessionId ||
             (entry as Record<string, unknown>).id === sessionId),
       ) as Record<string, unknown> | undefined;
-      const running = match?.status === 'running' || match?.running === true;
+      // 0.19.0 reports `working` while a turn runs and `idle` otherwise
+      // (verified live); `running` is kept as a defensive alias.
+      const running =
+        match?.status === 'working' ||
+        match?.status === 'running' ||
+        match?.running === true;
       return {
         activeTurn: running
           ? { latestSequence: -1, turnId: `gw-active-${sessionId}` }
@@ -610,7 +647,7 @@ export class GatewayClient {
     } catch {
       return { activeTurn: null, apiVersion: 'v1', sessionId };
     } finally {
-      connection.close();
+      connection?.close();
     }
   }
 
