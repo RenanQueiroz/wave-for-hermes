@@ -17,5 +17,15 @@ export function ConnectionGate() {
       </View>
     );
   }
-  return <Redirect href={state.phase === 'connected' ? '/new' : '/connect'} />;
+  // Offline still enters the app: a saved pairing with cached conversations
+  // must stay readable when only the network is missing.
+  return (
+    <Redirect
+      href={
+        state.phase === 'connected' || state.phase === 'offline'
+          ? '/new'
+          : '/connect'
+      }
+    />
+  );
 }

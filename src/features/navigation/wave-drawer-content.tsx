@@ -43,7 +43,11 @@ import {
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
   const connection = useWaveConnection();
-  if (connection.state.phase !== 'connected' || !connection.client) {
+  if (
+    (connection.state.phase !== 'connected' &&
+      connection.state.phase !== 'offline') ||
+    !connection.client
+  ) {
     return (
       <View
         className="flex-1 items-center justify-center bg-background"

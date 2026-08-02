@@ -1,7 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Redirect, useFocusEffect, useRouter } from 'expo-router';
+import {
+  Redirect,
+  useFocusEffect,
+  useNavigation,
+  useRouter,
+} from 'expo-router';
+import { DrawerActions } from 'expo-router/react-navigation';
 import { Alert, Button, Spinner, Typography } from 'panelui-native';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
@@ -10,8 +16,11 @@ import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import { waveSessionQueryKey } from './session-query-keys';
 
 export function NewConversationScreen() {
-  const { client, state } = useWaveConnection();
+  const { client, retry, state } = useWaveConnection();
 
+  if (state.phase === 'offline') {
+    return <OfflineNewConversationScreen retry={retry} />;
+  }
   if (state.phase !== 'connected' || !client) {
     return <Redirect href="/" />;
   }
@@ -21,6 +30,54 @@ export function NewConversationScreen() {
       client={client}
       connectionId={state.summary.device.id}
     />
+  );
+}
+
+// Starting a conversation needs the companion, so the offline landing points
+// at what still works — reading the conversations cached on this phone — and
+// leaves reconnection to a deliberate retry or the automatic re-verification.
+function OfflineNewConversationScreen({ retry }: { retry(): Promise<void> }) {
+  const navigation = useNavigation();
+  const [retrying, setRetrying] = useState(false);
+
+  return (
+    <View
+      className="flex-1 items-center justify-center gap-4 bg-background px-8"
+      testID="offline-new-conversation-screen">
+      <Alert variant="warning" testID="offline-cold-start-notice">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>Wave is offline</Alert.Title>
+          <Alert.Description>
+            Your companion cannot be reached right now. Conversations already on
+            this phone stay readable, and new messages have to wait until the
+            connection returns.
+          </Alert.Description>
+        </Alert.Content>
+      </Alert>
+      <View className="w-full max-w-sm gap-2">
+        <Button
+          fullWidth
+          accessibilityLabel="Browse cached conversations"
+          testID="offline-browse-cached-button"
+          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+          Browse cached conversations
+        </Button>
+        <Button
+          fullWidth
+          variant="outline"
+          accessibilityLabel="Retry connecting to the companion"
+          loading={retrying}
+          testID="offline-retry-connection-button"
+          onPress={() => {
+            if (retrying) return;
+            setRetrying(true);
+            void retry().finally(() => setRetrying(false));
+          }}>
+          Try again
+        </Button>
+      </View>
+    </View>
   );
 }
 

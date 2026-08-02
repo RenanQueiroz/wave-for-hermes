@@ -29,12 +29,16 @@ The detailed evidence and acceptance gates live in
   `onStartReached`, no gaps or jumps), and turn survival across a hard app kill mid-stream — the
   slow fixture turn ran to completion detached twice and its full response was recovered on
   return. Cached chats also stayed readable with the companion process down.
-- Remaining: repeat on physical devices over real radio (background/lock mid-turn), observe the
-  live mid-stream reattach UI (the fixture's 30-second stream ended before slow automation could
-  reopen the screen), exercise airplane-mode offline notices and purge-on-disconnect, and confirm
-  offline cold-start behavior — launch verification currently gates on a reachable companion, so
-  the persisted cache may be unreachable when starting fully offline; decide whether cold-start
-  should degrade to cached reading instead.
+- Offline cold start now degrades to cached reading instead of gating on a reachable companion,
+  validated end to end on the iOS simulator (2026-08-01): a cold start against a dead companion
+  (connection refused) and against a hung companion (timeout) both landed on the offline screen
+  with the drawer's cached chats, offline notices, and a fully readable cached conversation;
+  re-verification against a companion that no longer recognized the device hard-gated back to the
+  connect screen; and after the hung companion resumed, the app promoted itself to connected
+  without user action and started a fresh conversation.
+- Remaining: repeat on physical devices over real radio (background/lock mid-turn, airplane-mode
+  transitions), observe the live mid-stream reattach UI (the fixture's 30-second stream ended
+  before slow automation could reopen the screen), and verify purge-on-disconnect.
 
 ## Next: release hardening and focused operations
 

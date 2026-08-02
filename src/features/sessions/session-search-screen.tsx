@@ -22,7 +22,11 @@ import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 
 export function SessionSearchScreen() {
   const connection = useWaveConnection();
-  if (connection.state.phase !== 'connected' || !connection.client) {
+  if (
+    (connection.state.phase !== 'connected' &&
+      connection.state.phase !== 'offline') ||
+    !connection.client
+  ) {
     return <Redirect href="/" />;
   }
   return (

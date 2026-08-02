@@ -119,7 +119,13 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   authorization headers or raw protocol messages.
 - The PanelUI connection route performs the public status check and one-time redemption before
   saving the credential, then requires an authenticated live compatibility check. A saved
-  credential is rechecked at launch. Connected disconnect first revokes the current server-side
+  credential is rechecked at launch. When that recheck fails for connectivity-shaped reasons only
+  (offline device, timeout, transiently unreachable companion), the connection degrades to an
+  `offline` phase instead of returning to the connect screen: the paired client stays available,
+  cached conversations stay readable, and new work fails with its normal error surfaces. The
+  provider re-verifies silently when the app foregrounds, when any Wave read completes over the
+  network, or on explicit retry; authorization and compatibility failures never degrade and still
+  land on the connect screen. Connected disconnect first revokes the current server-side
   device and aborts its active text and Realtime work before deleting the secure record. When the
   Gateway is unreachable, local-only forgetting is a separate explicit recovery action.
 - `WaveQueryProvider` owns finite server state for session lists and unified timelines. Connection changes

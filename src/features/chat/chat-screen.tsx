@@ -98,7 +98,11 @@ function emptyStateTitleForSession(sessionId: string) {
 export function ChatScreen({ sessionId }: ChatScreenProps) {
   const { client, state: connection } = useWaveConnection();
 
-  if (connection.phase !== 'connected' || !client || !sessionId) {
+  if (
+    (connection.phase !== 'connected' && connection.phase !== 'offline') ||
+    !client ||
+    !sessionId
+  ) {
     return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (

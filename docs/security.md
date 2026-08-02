@@ -151,6 +151,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   JSON file in the app sandbox (platform encryption at rest, no credentials or provider
   identifiers), expires after seven days, and is purged whenever the device pairs, forgets, or
   disconnects.
+- A cold start whose saved-credential recheck fails for connectivity-shaped reasons degrades to
+  reading that local cache with the stored device credential; it grants no new authority. An
+  unauthorized or incompatible recheck never degrades — it still returns the device to the
+  connect screen.
 
 ### Transport and deployment
 

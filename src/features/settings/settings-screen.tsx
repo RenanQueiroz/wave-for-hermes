@@ -31,11 +31,11 @@ export function SettingsScreen() {
   const connection = useWaveConnection();
   const router = useRouter();
 
-  if (connection.state.phase !== 'connected') {
-    return <Redirect href="/" />;
-  }
-
-  if (!connection.client) {
+  if (
+    (connection.state.phase !== 'connected' &&
+      connection.state.phase !== 'offline') ||
+    !connection.client
+  ) {
     return <Redirect href="/" />;
   }
 

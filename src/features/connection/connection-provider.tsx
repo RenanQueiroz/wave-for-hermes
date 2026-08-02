@@ -10,6 +10,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
@@ -21,6 +22,7 @@ import {
   WaveCredentialStoreError,
 } from '@/services/credentials/connection-record';
 import { SecureWaveCredentialStore } from '@/services/credentials/secure-credential-store';
+import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { waveQueryPersister } from '@/services/query/wave-query-cache';
 import {
   ActiveSessionStore,
@@ -51,6 +53,14 @@ export type WaveConnectionState =
   | {
       compatibility: WaveCompatibilityResponse;
       phase: 'connected';
+      summary: WaveConnectionSummary;
+    }
+  // A saved pairing whose companion is unreachable for connectivity-shaped
+  // reasons only. The app degrades to reading cached data with the stored
+  // client; authorization and compatibility failures never land here.
+  | {
+      error: ConnectionError;
+      phase: 'offline';
       summary: WaveConnectionSummary;
     }
   | {
@@ -120,15 +130,38 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         });
       } catch (error) {
         if (operation !== operationRef.current) return;
+        const summary = toWaveConnectionSummary(record);
+        if (isOfflineLikeWaveError(error)) {
+          setState({
+            error: toConnectionError(error),
+            phase: 'offline',
+            summary,
+          });
+          return;
+        }
         setState({
           error: toConnectionError(error),
           phase: 'error',
-          summary: toWaveConnectionSummary(record),
+          summary,
         });
       }
     },
     [allowInsecureHttp],
   );
+
+  // Re-verifies the saved pairing without leaving the offline phase, so the
+  // user keeps reading cached data while the outcome decides the next phase.
+  const reverifyingRef = useRef(false);
+  const reverifyOffline = useCallback(async () => {
+    const record = recordRef.current;
+    if (!record || reverifyingRef.current) return;
+    reverifyingRef.current = true;
+    try {
+      await verify(record, ++operationRef.current);
+    } finally {
+      reverifyingRef.current = false;
+    }
+  }, [verify]);
 
   const initialize = useCallback(async () => {
     const operation = ++operationRef.current;
@@ -184,6 +217,29 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       }
     };
   }, [store, verify]);
+
+  useEffect(() => {
+    if (state.phase !== 'offline') return;
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void reverifyOffline();
+    });
+    return () => subscription.remove();
+  }, [reverifyOffline, state.phase]);
+
+  useEffect(() => {
+    if (state.phase !== 'offline') return;
+    // Any Wave read completing over the network proves the companion is
+    // reachable again, so promote (or hard-fail) the saved pairing instead of
+    // leaving fresh data behind an offline banner. Manual cache writes prove
+    // nothing and stay ignored.
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.action.type !== 'success') return;
+      if (event.action.manual) return;
+      const [root] = event.query.queryKey;
+      if (root !== 'wave') return;
+      void reverifyOffline();
+    });
+  }, [queryClient, reverifyOffline, state.phase]);
 
   const pair = useCallback(
     async (input: PairWaveDeviceInput) => {
@@ -311,10 +367,15 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       await initialize();
       return;
     }
+    if (state.phase === 'offline') {
+      // Keep the cached-reading UI mounted while the retry decides.
+      await reverifyOffline();
+      return;
+    }
     const operation = ++operationRef.current;
     setState({ phase: 'loading' });
     await verify(record, operation);
-  }, [initialize, verify]);
+  }, [initialize, reverifyOffline, state.phase, verify]);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -322,10 +383,12 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       name: 'wave-connection',
       read: () => ({
         phase: state.phase,
-        ...(state.phase === 'connected' || state.phase === 'error'
+        ...(state.phase === 'connected' ||
+        state.phase === 'offline' ||
+        state.phase === 'error'
           ? { summary: state.summary }
           : {}),
-        ...(state.phase === 'error'
+        ...(state.phase === 'offline' || state.phase === 'error'
           ? {
               error: {
                 kind: state.error.kind,
@@ -339,7 +402,9 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<WaveConnectionContextValue>(
     () => ({
-      ...(state.phase === 'connected' && client ? { client } : {}),
+      ...((state.phase === 'connected' || state.phase === 'offline') && client
+        ? { client }
+        : {}),
       disconnect,
       forget,
       pair,
