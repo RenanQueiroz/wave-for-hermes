@@ -105,6 +105,14 @@ documentation before implementing UI.
   animation, so a disabled control never visually dims through classes or its own style — put
   the dim on a wrapper `View`. Icon typings can also declare more than the runtime entry exports
   (`RotateCwIcon`); a green typecheck does not prove an icon exists at runtime.
+- Keyboard avoidance is chosen by surface shape (validated on device): a stacked form
+  scrolls through `@/components/keyboard-aware-scroll-view` (PanelUI's per-Input
+  `avoidKeyboard` lift translates only the focused field, sliding it over the fields
+  above it); a lone field — optionally grouped with its submit button — lifts through
+  `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus; pinned composers dock
+  with `KeyboardAvoider mode="dock"`. Android keyboards also ignore `autoCorrect={false}`
+  on plain-text input classes — use `keyboardType="url"`/`"visible-password"` for values
+  that must not be corrected.
 - React Native's Android renderer resolves the CSS logical corner classes `rounded-es-*` and
   `rounded-se-*` to the diagonally opposite corner (validated on RN 0.86:
   `BorderRadiusStyle.resolve` reads the tokens inline-axis-first; iOS is correct, and

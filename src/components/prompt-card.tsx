@@ -7,7 +7,14 @@
  * identically. Content is inert per the product contract: the command crosses
  * as a bounded detail inside a CodeBlock, never as Markdown.
  */
-import { Alert, Button, CodeBlock, Input, Typography } from 'panelui-native';
+import {
+  Alert,
+  Button,
+  CodeBlock,
+  Input,
+  KeyboardAvoider,
+  Typography,
+} from 'panelui-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -50,6 +57,7 @@ export function PromptCard({
   prompt: WaveChatPrompt;
 }) {
   const [answer, setAnswer] = useState('');
+  const [answerFocused, setAnswerFocused] = useState(false);
   const declineOnly = prompt.kind === 'secret' || prompt.kind === 'sudo';
 
   return (
@@ -128,28 +136,37 @@ export function PromptCard({
                 `flex-1` input does not reserve room for a trailing button,
                 and the button clips off the card's right edge. */}
             {prompt.allowsFreeText ? (
-              <View className="w-full gap-2">
-                <Input
-                  accessibilityLabel="Answer Hermes"
-                  className="w-full"
-                  editable={!busy}
-                  placeholder="Type an answer…"
-                  testID="chat-prompt-answer-input"
-                  value={answer}
-                  onChangeText={setAnswer}
-                />
-                <Button
-                  size="sm"
-                  accessibilityLabel="Send answer"
-                  className="self-start"
-                  disabled={busy || !answer.trim()}
-                  testID="chat-prompt-answer-send"
-                  onPress={() =>
-                    onRespond({ answer: answer.trim(), kind: 'clarify' })
-                  }>
-                  Send
-                </Button>
-              </View>
+              // The input and its Send button lift together, gated on the
+              // input's own focus. A no-op inside the chat screen's docked
+              // composer stack (the overlap is already zero there); on the
+              // voice screen — which has no other keyboard handling — it
+              // keeps the whole answer section clear of the keyboard.
+              <KeyboardAvoider active={answerFocused}>
+                <View className="w-full gap-2">
+                  <Input
+                    accessibilityLabel="Answer Hermes"
+                    className="w-full"
+                    editable={!busy}
+                    placeholder="Type an answer…"
+                    testID="chat-prompt-answer-input"
+                    value={answer}
+                    onBlur={() => setAnswerFocused(false)}
+                    onChangeText={setAnswer}
+                    onFocus={() => setAnswerFocused(true)}
+                  />
+                  <Button
+                    size="sm"
+                    accessibilityLabel="Send answer"
+                    className="self-start"
+                    disabled={busy || !answer.trim()}
+                    testID="chat-prompt-answer-send"
+                    onPress={() =>
+                      onRespond({ answer: answer.trim(), kind: 'clarify' })
+                    }>
+                    Send
+                  </Button>
+                </View>
+              </KeyboardAvoider>
             ) : null}
           </View>
         ) : null}

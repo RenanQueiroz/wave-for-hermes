@@ -158,6 +158,17 @@ test('folds gateway image annotations out of user messages', () => {
     role: 'assistant',
   });
   assert.equal(assistantEcho?.content, annotated);
+
+  // Session previews carry the same annotations and fold the same way.
+  const [session] = normalizeSessionRows({
+    sessions: [{ id: 's1', preview: annotated }],
+  });
+  assert.equal(
+    session?.preview,
+    'what do these have in common?\n' +
+      '[Attached image: A solid blue rectangle.]\n' +
+      '[Attached image: A solid red square.]',
+  );
 });
 
 test('parses, merges, and serializes gateway session cookies', () => {

@@ -71,7 +71,11 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    companion's "pair again" copy (a wrong password looked like a revoked device — gateway
    errors now surface their own messages, verified live against the homelab gateway), and
    the connect screen's URL/username/pairing-code fields now use input classes Android
-   keyboards actually leave uncorrected.
+   keyboards actually leave uncorrected. Keyboard avoidance followed (2026-08-02): the
+   connect form scrolls its focused field clear of the keyboard through a keyboard-aware
+   scroll container, the prompt card's free-text answer lifts with its Send button, and
+   the rename dialog's input lifts itself — verified on the physical Pixel and the iOS
+   simulator.
 3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
    runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →
    `/api/audio/speak`), and the composer gained a dictation microphone while finished assistant

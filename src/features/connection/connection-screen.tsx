@@ -10,13 +10,14 @@ import {
   Typography,
 } from 'panelui-native';
 import { useMemo, useState } from 'react';
-import { ScrollView, Share, View } from 'react-native';
+import { Share, View } from 'react-native';
 
 import {
   COMPANION_SETUP_PROMPT,
   COMPANION_SETUP_PROMPT_SHARE_TITLE,
 } from './companion-setup-prompt';
 import { useWaveConnection } from './connection-provider';
+import { KeyboardAwareScrollView } from '@/components/keyboard-aware-scroll-view';
 
 const PAIRING_CODE_LENGTH = 16;
 type ConnectionField =
@@ -118,7 +119,10 @@ export function ConnectionScreen() {
   };
 
   return (
-    <ScrollView
+    // Keyboard-aware: scrolls the focused field clear of the keyboard, which
+    // matters for the lower fields of both sign-in forms.
+    <KeyboardAwareScrollView
+      bottomOffset={24}
       className="flex-1 bg-background"
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode="interactive"
@@ -443,7 +447,7 @@ export function ConnectionScreen() {
           ? ' Development builds also accept an explicit HTTP URL for trusted local testing.'
           : ''}
       </Typography.Paragraph>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

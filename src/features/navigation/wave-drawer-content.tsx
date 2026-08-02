@@ -322,6 +322,9 @@ function ConnectedWaveDrawerContent({
           </Dialog.Description>
           <Input
             autoFocus
+            // The dialog itself does not reposition for the keyboard; lift
+            // the field when the centered card lands under it.
+            avoidKeyboard
             accessibilityLabel="Conversation title"
             className="mt-4"
             maxLength={200}

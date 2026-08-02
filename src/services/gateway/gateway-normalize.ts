@@ -75,7 +75,15 @@ export function normalizeSessionRow(
   const id = text(row.id, 256);
   if (!id) return undefined;
   const title = text(row.title, MAX_TITLE_CHARS);
-  const preview = text(row.preview, MAX_PREVIEW_CHARS);
+  // Session previews are the newest user prompt, so they carry the same
+  // image annotations as the stored message; fold them the same way. A
+  // preview truncated mid-annotation will not match and renders as-is.
+  const preview = text(
+    typeof row.preview === 'string'
+      ? foldImageAnnotations(row.preview)
+      : row.preview,
+    MAX_PREVIEW_CHARS,
+  );
   const messageCount = count(row.message_count);
   const toolCallCount = count(row.tool_call_count);
   const startedAt = toIsoTimestamp(row.started_at);
