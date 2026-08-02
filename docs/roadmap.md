@@ -10,13 +10,17 @@ Wave will retire the companion and connect directly to the Hermes gateway so a n
 downloads the app and signs in to their existing Hermes deployment. The findings and accepted
 trade-offs are recorded in [`architecture.md`](./architecture.md); the staged plan:
 
-1. **Spike the gateway transport and auth.** Speak `tui_gateway` JSON-RPC over
-   `/api/ws` from React Native against a real gateway; sign in through the bundled password
-   provider or native PKCE. Resolve the open questions: a mobile redirect URI for the native
-   flow (the embedded-webview cookie flow is the fallback if custom schemes are unsupported),
-   `session.resume` grace semantics, and RPC parity for session rename, delete, search, and
-   attachments. Confirmed gaps get documented client-side workarounds; Wave does not submit
-   issues or changes upstream.
+1. **Spike the gateway transport and auth — complete (2026-08-02).** Verified live against a
+   local gateway at the homelab's exact version (0.19.0) with the homelab's public surface
+   cross-checked: password sign-in with rotating 12h/30d tokens (no browser flow needed —
+   native PKCE does not exist at this version, mooting the redirect-URI question), single-use
+   30-second tickets per WebSocket connect, full JSON-RPC turn streaming, and REST
+   list/messages/rename/delete/search. Resilience measured: in-flight turns run to completion
+   through disconnects and reattach with full history; only idle sessions are reaped (20
+   seconds). Audio verified with zero client keys. Notable: logout cannot revoke the stateless
+   tokens (expiry or server secret rotation only), and the agent can raise mid-turn approval
+   prompts the app must render. Confirmed gaps have documented client-side workarounds; Wave
+   does not submit issues or changes upstream.
 2. **Migrate text chat and session lifecycle.** Replace the companion transport in
    `WaveBackendClient` with the gateway client behind the same normalized contracts; replace
    pairing with gateway sign-in; rely on resume-plus-history-refetch for turn continuity.
