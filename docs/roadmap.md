@@ -32,10 +32,19 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    device (cross-device visibility through the shared Hermes store), and offline cold start
    degrading to cached reading. Remaining before stage 5: attachments and cancel against the
    gateway, mid-turn approval prompts (`approval.respond`), and search scope.
-3. **Adopt gateway voice.** Hermes native voice mode (record → `/api/audio/transcribe` →
-   normal turn → `/api/audio/speak-stream`) becomes the default voice mode, plus standalone
-   dictation into the composer (STT) and per-message playback (TTS). Degrade clearly when the
-   server has no STT/TTS provider configured.
+3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
+   runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →
+   `/api/audio/speak`), and the composer gained a dictation microphone while finished assistant
+   messages gained a Play control. All three are gated on a cached probe of the server's
+   configured providers and disable with copy naming what is missing. Verified against a live
+   0.19.0 gateway: real recorded speech transcribed accurately, ran as a turn, and came back as
+   synthesized audio; dictation, playback, and the listen/transcribe/idle loop exercised on both
+   the iOS simulator and a physical Pixel 8 Pro. Two deliberate deviations from the plan: the
+   reply is spoken after the turn completes rather than streamed sentence-by-sentence, and the
+   interrupt is an explicit Skip control rather than acoustic barge-in, because `expo-audio` has
+   no speaker-routing override and an open recorder would force iOS playback to the earpiece.
+   Remaining: a human-spoken end-to-end round trip on a physical device (an automated agent
+   cannot speak into a real microphone).
 4. **Realtime as opt-in with a user-owned key.** The user may supply their own OpenAI API key in
    settings (platform secure storage, never logged, excluded from backups; recommend a dedicated
    project-scoped key). Voice mode uses Realtime only when a key is present and the user has not

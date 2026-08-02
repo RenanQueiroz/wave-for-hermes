@@ -28,8 +28,9 @@ Wave mobile ◀════════ direct WebRTC audio ══════�
 ```
 
 The companion is being retired in favour of a direct Hermes gateway connection (see the decision
-below). Stage 2 of that migration landed the gateway transport, sign-in, and conversation
-surfaces, so the app now supports two backends: a saved gateway session (username/password
+below). Stages 2 and 3 of that migration landed the gateway transport, sign-in, conversation
+surfaces, and the gateway's own voice mode, dictation, and message playback, so the app now
+supports two backends: a saved gateway session (username/password
 sign-in, opaque rotating tokens) and, for devices that have not switched, the companion pairing
 described above. Standard OpenAI and Hermes API keys remain server-side on the companion path. The phone stores only a revocable device credential and its small
 connection profile in platform secure storage. The SDP and Wave-owned call state used to establish
@@ -157,7 +158,20 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   synthesizes the monotonic sequence numbers and turn identity the chat reducer expects, holds
   session tokens as opaque device-only values, and persists the rotated pair the gateway returns
   on any refresh. A conversation the user just started is routed by a local placeholder id until
-  its first turn creates the real session; the client maps the two so the route stays stable.
+  its first turn creates the real session; the client maps the two so the route stays stable. It
+  also carries the gateway's speech endpoints — `/api/audio/transcribe` and `/api/audio/speak` —
+  on a longer timeout than a REST read, because both are model work rather than lookups.
+- `src/features/voice` is the gateway speech layer. `gateway-voice-machine.ts` holds the pure
+  decisions (silence detection, utterance caps, stop words, upload MIME mapping, phase copy) so
+  they are testable without a microphone; `use-dictation.ts` records one utterance into the
+  composer; `use-message-playback.ts` reads one finished assistant message aloud, one player at a
+  time; and `use-gateway-voice.ts` drives the continuous loop — listen, transcribe, run the
+  transcript as an ordinary turn, speak the reply — abandoning any cycle whose generation has been
+  superseded by stop or unmount. Recordings are mono 16 kHz, uploaded as a data URL, and deleted
+  from the device cache immediately afterwards. All three affordances are gated on a cached probe
+  of what the server actually has configured, and disable with honest copy when it has neither
+  provider. The voice route picks the gateway screen whenever the gateway is the active backend
+  and leaves Realtime to companion connections until the user-owned OpenAI key lands.
 - The PanelUI connection route performs the public status check and one-time redemption before
   saving the credential, then requires an authenticated live compatibility check. A saved
   credential is rechecked at launch. When that recheck fails for connectivity-shaped reasons only

@@ -3,9 +3,10 @@
  *
  * The cycle is listen → transcribe → think → speak → listen. Unlike Realtime
  * this is half-duplex: the gateway transcribes a finished recording, the
- * transcript runs as a normal turn, and the reply is spoken back. Keeping the
- * decisions here (rather than in the screen) makes silence detection, stop
- * words, and barge-in testable without a microphone.
+ * transcript runs as a normal turn, and the reply is spoken back, with the
+ * microphone closed while Wave speaks. Keeping the decisions here (rather
+ * than in the screen) makes silence detection and stop words testable without
+ * a microphone.
  */
 
 export type GatewayVoicePhase =
@@ -106,18 +107,6 @@ export function observeUtterance(
     return { decision: { reason: 'silence', type: 'submit' }, tracker: next };
   }
   return { decision: { type: 'continue' }, tracker: next };
-}
-
-/**
- * Barge-in: while Wave is speaking, the mic keeps listening and loud-enough
- * input interrupts playback. The threshold is deliberately higher than the
- * silence threshold so the device's own playback bleeding into the mic does
- * not interrupt itself.
- */
-export const BARGE_IN_THRESHOLD_DBFS = -25;
-
-export function shouldBargeIn(level: number | undefined): boolean {
-  return level !== undefined && level > BARGE_IN_THRESHOLD_DBFS;
 }
 
 const MIME_TYPE_BY_EXTENSION: Record<string, string> = {

@@ -3,13 +3,11 @@ import test from 'node:test';
 
 import { readAudioCapabilities } from '../../src/services/gateway/gateway-client.ts';
 import {
-  BARGE_IN_THRESHOLD_DBFS,
   initialUtteranceTracker,
   isVoiceStopCommand,
   MAX_UTTERANCE_MS,
   mimeTypeForRecording,
   observeUtterance,
-  shouldBargeIn,
   SILENCE_HOLD_MS,
   voicePhaseDescription,
   voicePhaseTitle,
@@ -91,13 +89,6 @@ test('caps an utterance by duration and tolerates missing metering', () => {
   );
   assert.deepEqual(unmetered.decision, { type: 'continue' });
   assert.equal(unmetered.tracker.heardSpeech, false);
-});
-
-test('barges in only on input louder than playback bleed', () => {
-  assert.equal(shouldBargeIn(BARGE_IN_THRESHOLD_DBFS + 5), true);
-  assert.equal(shouldBargeIn(BARGE_IN_THRESHOLD_DBFS - 5), false);
-  assert.equal(shouldBargeIn(-80), false);
-  assert.equal(shouldBargeIn(undefined), false);
 });
 
 test('reads audio capabilities from a gateway config', () => {

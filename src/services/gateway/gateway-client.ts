@@ -54,6 +54,10 @@ const TIMELINE_PAGE_LIMIT = 200;
 const MAX_AUDIO_DATA_URL_CHARS = Math.floor((25 * 1024 * 1024 * 4) / 3);
 const MAX_TRANSCRIPT_CHARS = 32_000;
 const MAX_SPEAK_CHARS = 4_000;
+// Speech synthesis and transcription are model work, not lookups: a locally
+// hosted provider routinely takes tens of seconds where a REST read takes
+// milliseconds.
+const AUDIO_REQUEST_TIMEOUT_MS = 90_000;
 
 export interface GatewayTokenSink {
   (tokens: GatewayTokens): void;
@@ -73,6 +77,8 @@ interface GatewayRequestOptions {
   body?: unknown;
   method?: 'DELETE' | 'GET' | 'PATCH' | 'POST';
   signal?: AbortSignal;
+  /** Overrides the client's default budget for slow endpoints. */
+  timeoutMs?: number;
 }
 
 /** Normalize a gateway base URL under the same scheme policy as pairing. */
@@ -413,6 +419,7 @@ export class GatewayClient {
       body: { data_url: input.dataUrl, mime_type: input.mimeType },
       method: 'POST',
       signal,
+      timeoutMs: AUDIO_REQUEST_TIMEOUT_MS,
     });
     const record = body as { provider?: unknown; transcript?: unknown };
     return {
@@ -445,6 +452,7 @@ export class GatewayClient {
       body: { text: trimmed },
       method: 'POST',
       signal,
+      timeoutMs: AUDIO_REQUEST_TIMEOUT_MS,
     });
     const record = body as {
       data_url?: unknown;
@@ -699,7 +707,10 @@ export class GatewayClient {
     options: GatewayRequestOptions = {},
   ): Promise<unknown> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    const timer = setTimeout(
+      () => controller.abort(),
+      options.timeoutMs ?? this.requestTimeoutMs,
+    );
     const abort = () => controller.abort();
     options.signal?.addEventListener('abort', abort, { once: true });
     let response: Response;

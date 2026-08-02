@@ -161,6 +161,14 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   revoke them server-side, so their real lifetime is their expiry (12 hours access, 30 days
   refresh) or a rotation of the gateway's signing secret. Wave says so in the disconnect flow
   rather than implying a server-side revocation it cannot perform.
+- Gateway speech holds no provider key on the device: voice mode, dictation, and message playback
+  upload a recording to, or request synthesis from, the user's own gateway, which owns the STT and
+  TTS credentials. Each recording lives in the app cache only until its upload returns and is
+  deleted immediately afterwards, including on the failure and abandoned-cycle paths. The
+  microphone runs only while the user is in voice mode or holding dictation, never in the
+  background, and Wave closes the recording session before playing anything back. What the user
+  says in gateway voice mode becomes an ordinary conversation turn — it is persisted by Hermes
+  exactly like typed text, which is the deliberate difference from ephemeral Realtime transcripts.
 
 ### Transport and deployment
 

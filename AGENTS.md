@@ -224,9 +224,14 @@ documentation before implementing UI.
   do not request video for Realtime. Camera permission is deliberately enabled only for the
   user-invoked chat attachment flow; do not make it part of voice setup or background capture.
 - WebRTC owns the live-call audio session for full-duplex capture and playback. Never start an
-  `expo-audio` recorder — for metering or anything else — while a call can be active; `expo-audio`
-  is reserved for the user-invoked Settings voice previews. Add real input levels only through
-  data WebRTC itself exposes safely.
+  `expo-audio` recorder — for metering or anything else — while a Realtime call can be active, and
+  add real input levels for a call only through data WebRTC itself exposes safely. `expo-audio`
+  owns the microphone for the modes WebRTC is not in: gateway voice mode, composer dictation, and
+  the user-invoked Settings voice previews. Those and a Realtime call are mutually exclusive; do
+  not create a surface where both can hold the audio session at once.
+- Gateway voice mode is deliberately half-duplex. `expo-audio` exposes no speaker-routing override,
+  so an open recorder forces iOS playback to the earpiece: close the recorder before speaking and
+  offer an explicit interrupt control rather than acoustic barge-in.
 - Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
   SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
   native edits or repository-owned config plugin.
