@@ -55,8 +55,10 @@ test('ends an utterance on a held silence that followed real speech', () => {
     assert.deepEqual(feed(-80), { type: 'continue' });
   }
 
-  // Speaking again resets the silence counter.
+  // Sustained speech (two consecutive samples) resets the silence counter;
+  // a single sample alone only holds it (see the isolated-peak test).
   feed(-12);
+  feed(-11);
   assert.equal(tracker.silentForMs, 0);
 
   // A full hold of silence submits.
@@ -115,9 +117,53 @@ test('ends an utterance on Android-style peak metering over a loud floor', () =>
   assert.equal(submitted, true);
 });
 
+test('an isolated peak pauses the silence countdown instead of restarting it', () => {
+  const interval = 250;
+  let tracker = initialUtteranceTracker;
+  let elapsed = 0;
+  const feed = (level: number) => {
+    elapsed += interval;
+    const result = observeUtterance(
+      tracker,
+      { elapsedMs: elapsed, level },
+      interval,
+    );
+    tracker = result.tracker;
+    return result.decision;
+  };
+
+  // Establish a floor and real (sustained) speech.
+  for (let i = 0; i < 8; i += 1) feed(-60);
+  feed(-15);
+  feed(-14);
+  assert.equal(tracker.heardSpeech, true);
+  assert.equal(tracker.silentForMs, 0);
+
+  // Most of the hold elapses, then a single stray peak lands mid-pause.
+  const nearHold = Math.floor(SILENCE_HOLD_MS / interval) - 1;
+  for (let i = 0; i < nearHold; i += 1) feed(-60);
+  const beforeBlip = tracker.silentForMs;
+  assert.deepEqual(feed(-12), { type: 'continue' });
+  // The countdown held its ground rather than resetting to zero.
+  assert.equal(tracker.silentForMs, beforeBlip);
+
+  // The hold then completes within a couple of quiet samples — nowhere near
+  // a full restart of the countdown.
+  let submitted = false;
+  for (let i = 0; i < 2; i += 1) {
+    const decision = feed(-60);
+    if (decision.type === 'submit') {
+      assert.equal(decision.reason, 'silence');
+      submitted = true;
+      break;
+    }
+  }
+  assert.equal(submitted, true);
+});
+
 test('caps an utterance by duration and tolerates missing metering', () => {
   const capped = observeUtterance(
-    { heardSpeech: true, recentLevels: [], silentForMs: 0 },
+    { heardSpeech: true, recentLevels: [], silentForMs: 0, speakingStreak: 0 },
     { elapsedMs: MAX_UTTERANCE_MS, level: -10 },
     250,
   );

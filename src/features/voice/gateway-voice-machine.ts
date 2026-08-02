@@ -15,7 +15,14 @@ export type GatewayVoicePhase =
 /** Utterances shorter than this are treated as noise, not speech. */
 export const MIN_UTTERANCE_MS = 500;
 /** Silence that ends an utterance. */
-export const SILENCE_HOLD_MS = 1_500;
+export const SILENCE_HOLD_MS = 1_200;
+/**
+ * Consecutive above-threshold samples before the silence countdown resets.
+ * Real speech always sustains across polls; an isolated peak (a rustle, a
+ * distant noise — Android meters peaks) must not restart the whole hold,
+ * which is what made auto-send feel slow "sometimes" on the Pixel.
+ */
+export const SUSTAINED_SPEECH_SAMPLES = 2;
 /** A single utterance never runs longer than this. */
 export const MAX_UTTERANCE_MS = 60_000;
 /**
@@ -84,12 +91,15 @@ export interface UtteranceTracker {
   heardSpeech: boolean;
   /** Recent metering samples (dBFS, newest last) for the rolling floor. */
   recentLevels: number[];
+  /** Consecutive above-threshold samples ending at the newest one. */
+  speakingStreak: number;
 }
 
 export const initialUtteranceTracker: UtteranceTracker = {
   heardSpeech: false,
   recentLevels: [],
   silentForMs: 0,
+  speakingStreak: 0,
 };
 
 export type UtteranceDecision =
@@ -119,10 +129,24 @@ export function observeUtterance(
   );
   const speaking =
     sample.level > utteranceSpeechThreshold({ ...tracker, recentLevels });
+  const speakingStreak = speaking ? tracker.speakingStreak + 1 : 0;
+  const sustained = speakingStreak >= SUSTAINED_SPEECH_SAMPLES;
+  // The countdown measures silence AFTER speech. The first heard speech
+  // discards any leading silence (else the opening word of an utterance
+  // that followed a long quiet would submit itself instantly); sustained
+  // speech keeps resetting it; an isolated blip mid-pause merely holds it,
+  // so a stray peak — Android meters peaks — cannot restart the whole hold.
+  const firstSpeech = speaking && !tracker.heardSpeech;
   const next: UtteranceTracker = {
     heardSpeech: tracker.heardSpeech || speaking,
     recentLevels,
-    silentForMs: speaking ? 0 : tracker.silentForMs + sampleIntervalMs,
+    silentForMs:
+      sustained || firstSpeech
+        ? 0
+        : speaking
+          ? tracker.silentForMs
+          : tracker.silentForMs + sampleIntervalMs,
+    speakingStreak,
   };
   // Silence only ends an utterance that actually contained speech, and only
   // after the recording is long enough to be worth transcribing.
