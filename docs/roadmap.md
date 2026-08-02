@@ -123,11 +123,12 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    (key-shaped literals refused) and `security.md` (user-owned-key model + revocation
    story). The toggle-off fallback to gateway voice was verified live both ways, and a
    log sweep spanning two live Realtime calls confirmed the key appears nowhere in device
-   logs. Remaining are the human gates:
-   a spoken ask_hermes round trip (an automated host-audio attempt registered microphone
-   level but no model response, so this needs a real voice) and the physical-device audio
-   gates in `webrtc-foundation.md` — these gate calling Realtime production-ready, listed
-   under production voice behavior below.
+   logs. The spoken gate closed
+   2026-08-02: the owner ran a real voice session on the physical Pixel against the
+   direct user-keyed path, including Wave delegating work to Hermes mid-call, and
+   confirmed it works well. Remaining before Realtime is called production-ready are the
+   physical-device audio gates in `webrtc-foundation.md`, listed under production voice
+   behavior below.
 5. **Retire the companion — landed (2026-08-02).** The `companion/` workspace, its Dockerfile
    and admin/fixture tooling, the mobile companion transport (`WaveBackendClient`, the Wave SSE
    parser, the paired-device credential store), the pairing flow, the operations/scheduled-jobs

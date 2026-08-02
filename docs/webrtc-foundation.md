@@ -146,6 +146,10 @@ companion backend):
 - explicit peer, media, data-channel, timer, and backend-call teardown;
 - return to the existing chat on both the Radon-managed iOS and Android devices.
 
+On 2026-08-02, the owner validated the direct user-keyed path end to end on the physical
+Pixel 8 Pro: a real spoken Realtime conversation, including Wave delegating work to Hermes
+mid-call through `ask_hermes`, with no companion involved.
+
 On 2026-07-31, both Radon-managed platforms additionally passed denial and later recovery of
 microphone permission, the system-settings recovery action, a successful subsequent call reaching
 `Listening`, established-call background teardown, and another clean idle state ready to reconnect.
