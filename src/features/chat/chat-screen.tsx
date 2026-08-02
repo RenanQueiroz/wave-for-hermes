@@ -48,6 +48,7 @@ import { useCSSVariable } from 'uniwind';
 import { CameraIcon } from '@/components/icons/camera-icon';
 import { LegendList } from '@/components/legend-list';
 import { OfflineNotice } from '@/components/offline-notice';
+import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
   timelineToWaveChatMessages,
@@ -366,6 +367,57 @@ function ConnectedChatScreen({
     void chat.send(turnInput, optimisticText);
   }, [attachmentState, busy, chat, composerBlocked, input]);
 
+  // Mid-turn prompt responses go to the gateway client directly: prompts are
+  // a gateway-only capability, and the response must reach the streaming
+  // turn's own socket. Busy/error state is stamped with the prompt it belongs
+  // to, so a new prompt starts clean without any effect-driven reset.
+  const [promptStatus, setPromptStatus] = useState<{
+    busy: boolean;
+    error?: string;
+    promptId?: string;
+  }>({ busy: false });
+  const activePromptId = chat.state.activePrompt?.promptId;
+  const promptBusy =
+    promptStatus.promptId === activePromptId && promptStatus.busy;
+  const promptError =
+    promptStatus.promptId === activePromptId ? promptStatus.error : undefined;
+  const respondToPrompt = useCallback(
+    (response: PromptCardResponse) => {
+      const prompt = chat.state.activePrompt;
+      if (!prompt || !gatewayClient) return;
+      const input =
+        response.kind === 'approval'
+          ? { choice: response.choice, kind: 'approval' as const }
+          : response.kind === 'clarify'
+            ? {
+                answer: response.answer,
+                kind: 'clarify' as const,
+                promptId: prompt.promptId,
+              }
+            : {
+                kind:
+                  prompt.kind === 'sudo'
+                    ? ('sudo' as const)
+                    : ('secret' as const),
+                promptId: prompt.promptId,
+              };
+      setPromptStatus({ busy: true, promptId: prompt.promptId });
+      void gatewayClient
+        .respondToPrompt(sessionId, input)
+        .catch((error: unknown) => {
+          setPromptStatus({
+            busy: false,
+            error:
+              error instanceof WaveBackendError
+                ? error.message
+                : 'Wave could not deliver that answer.',
+            promptId: prompt.promptId,
+          });
+        });
+    },
+    [chat.state.activePrompt, gatewayClient, sessionId],
+  );
+
   // Press to dictate, press again to insert. The transcript is appended so a
   // half-typed message is never lost.
   const toggleDictation = useCallback(async () => {
@@ -545,6 +597,16 @@ function ConnectedChatScreen({
         className="gap-2 bg-background px-4 pt-2"
         mode="dock"
         style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+        {/* A mid-turn prompt docks above the composer so it is answerable
+            without scrolling; the turn is paused until it is. */}
+        {chat.state.activePrompt && gatewayClient ? (
+          <PromptCard
+            busy={promptBusy}
+            error={promptError}
+            prompt={chat.state.activePrompt}
+            onRespond={respondToPrompt}
+          />
+        ) : null}
         {attachmentState.attachments.length > 0 ? (
           <Attachment.Group
             className="gap-1"

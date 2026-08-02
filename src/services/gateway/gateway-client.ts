@@ -144,6 +144,16 @@ export class GatewayClient {
    * a turn needs the sid the turn was started under.
    */
   private readonly liveSessions = new Map<string, string>();
+  /**
+   * Stored session id → the RPC channel of the turn currently streaming on
+   * it. Mid-turn prompts (approval/clarify/secret/sudo) must be answered on
+   * a socket bound to the live session, and the streaming socket is exactly
+   * that; entries live only as long as their turn.
+   */
+  private readonly activeTurns = new Map<
+    string,
+    { liveSessionId: string; rpc: GatewayRpc }
+  >();
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -395,6 +405,12 @@ export class GatewayClient {
     const { events, rpc, close } = connection;
     try {
       const liveSessionId = await this.resolveLiveSession(rpc, sessionId);
+      // A first turn on a placeholder id learns its stored id only here, and
+      // every later lookup (including prompt responses) resolves to that
+      // stored id — so the prompt channel must be keyed by it, not by the
+      // placeholder this call started with.
+      sessionId = this.resolveSessionId(sessionId);
+      this.activeTurns.set(sessionId, { liveSessionId, rpc });
       for (const attachment of attachments) {
         try {
           // Queues the image on the live session; the next prompt.submit
@@ -433,7 +449,61 @@ export class GatewayClient {
         throw submitFailure ?? error;
       }
     } finally {
+      if (this.activeTurns.get(sessionId)?.rpc === rpc) {
+        this.activeTurns.delete(sessionId);
+      }
       close();
+    }
+  }
+
+  /**
+   * Answer the mid-turn prompt currently blocking this session's streaming
+   * turn. Approvals resolve the session's oldest pending request (the
+   * gateway keys them FIFO, verified live); clarify/secret/sudo correlate by
+   * the prompt id the request carried. Secret and sudo are always declined —
+   * Wave never collects credentials on the phone.
+   */
+  async respondToPrompt(
+    sessionId: string,
+    input:
+      | { choice: string; kind: 'approval' }
+      | { answer: string; kind: 'clarify'; promptId: string }
+      | { kind: 'secret' | 'sudo'; promptId: string },
+  ): Promise<void> {
+    sessionId = this.resolveSessionId(sessionId);
+    const active = this.activeTurns.get(sessionId);
+    if (!active) {
+      throw new WaveBackendError('This prompt is no longer waiting.', {
+        kind: 'not_found',
+      });
+    }
+    try {
+      if (input.kind === 'approval') {
+        await active.rpc.call('approval.respond', {
+          choice: input.choice,
+          session_id: active.liveSessionId,
+        });
+      } else if (input.kind === 'clarify') {
+        await active.rpc.call('clarify.respond', {
+          answer: input.answer,
+          request_id: input.promptId,
+          session_id: active.liveSessionId,
+        });
+      } else if (input.kind === 'secret') {
+        await active.rpc.call('secret.respond', {
+          request_id: input.promptId,
+          session_id: active.liveSessionId,
+          value: '',
+        });
+      } else {
+        await active.rpc.call('sudo.respond', {
+          password: '',
+          request_id: input.promptId,
+          session_id: active.liveSessionId,
+        });
+      }
+    } catch (error) {
+      throw toWaveError(error);
     }
   }
 

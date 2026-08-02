@@ -702,3 +702,251 @@ test('a rejected submit reports its own error, not a dropped stream', async () =
   });
   assert.deepEqual(events, ['turn.started']);
 });
+
+test('translates observed tool frames with bounded input and output details', () => {
+  // tool.generating / tool.start / tool.complete are the frames 0.19.0
+  // actually emits (verified live); tool.complete carries args and result,
+  // and a truthy result.error — a denied approval's BLOCKED text, for
+  // example — is the failure signal.
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-9',
+    sessionId: 'session-1',
+    turnId: 'turn-9',
+  });
+  translator.start();
+
+  assert.deepEqual(
+    translator.translate({
+      payload: { name: 'terminal' },
+      type: 'tool.generating',
+    }),
+    [],
+  );
+  const started = translator.translate({
+    payload: { context: 'Running echo hi', name: 'terminal', tool_id: 't1' },
+    type: 'tool.start',
+  });
+  assert.equal(started[0].type, 'tool.status');
+  assert.equal(started[0].status, 'started');
+  assert.equal(started[0].toolName, 'terminal');
+
+  const completed = translator.translate({
+    payload: {
+      args: { command: 'echo hi' },
+      duration_s: 0.4,
+      name: 'terminal',
+      result: { error: null, exit_code: 0, output: 'hi' },
+      tool_id: 't1',
+    },
+    type: 'tool.complete',
+  });
+  assert.equal(completed[0].type, 'tool.status');
+  assert.equal(completed[0].status, 'completed');
+  assert.equal(completed[0].toolInput?.text, '{"command":"echo hi"}');
+  assert.equal(completed[0].toolOutput?.text, 'hi');
+
+  const failed = translator.translate({
+    payload: {
+      args: { command: 'rm -rf /tmp/x' },
+      name: 'terminal',
+      result: {
+        error: 'BLOCKED: Command denied by user.',
+        exit_code: -1,
+        output: '',
+      },
+      tool_id: 't2',
+    },
+    type: 'tool.complete',
+  });
+  assert.equal(failed[0].status, 'failed');
+  assert.match(failed[0].toolOutput?.text ?? '', /BLOCKED/);
+});
+
+test('translates approval and clarify prompts and resolves them on progress', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-10',
+    sessionId: 'session-1',
+    turnId: 'turn-10',
+  });
+  translator.start();
+
+  // approval.request: session-FIFO (no request_id), choices from the frame.
+  const approval = translator.translate({
+    payload: {
+      allow_permanent: true,
+      choices: ['once', 'session', 'always', 'deny'],
+      command: 'rm -rf /tmp/wave-probe',
+      description: 'delete in root path',
+      pattern_key: 'delete in root path',
+    },
+    type: 'approval.request',
+  });
+  assert.equal(approval.length, 1);
+  const prompt = approval[0];
+  assert.equal(prompt.type, 'prompt.request');
+  assert.equal(prompt.kind, 'approval');
+  assert.equal(prompt.allowsFreeText, false);
+  assert.deepEqual(prompt.choices, ['once', 'session', 'always', 'deny']);
+  assert.equal(prompt.command?.text, 'rm -rf /tmp/wave-probe');
+  assert.equal(prompt.description, 'delete in root path');
+
+  // The next frame proves the wait ended: prompt.resolved precedes it.
+  const afterAnswer = translator.translate({
+    payload: {
+      args: { command: 'rm -rf /tmp/wave-probe' },
+      name: 'terminal',
+      result: { error: null, exit_code: 0, output: '' },
+      tool_id: 't1',
+    },
+    type: 'tool.complete',
+  });
+  assert.deepEqual(
+    afterAnswer.map((event) => event.type),
+    ['prompt.resolved', 'tool.status'],
+  );
+  assert.equal(afterAnswer[0].promptId, prompt.promptId);
+
+  // clarify.request correlates by the gateway's request_id.
+  const clarify = translator.translate({
+    payload: {
+      choices: ['alpha', 'beta'],
+      question: 'Which flavor?',
+      request_id: 'req-77',
+    },
+    type: 'clarify.request',
+  });
+  assert.equal(clarify[0].type, 'prompt.request');
+  assert.equal(clarify[0].kind, 'clarify');
+  assert.equal(clarify[0].promptId, 'req-77');
+  assert.equal(clarify[0].allowsFreeText, true);
+  assert.deepEqual(clarify[0].choices, ['alpha', 'beta']);
+  assert.equal(clarify[0].question, 'Which flavor?');
+
+  // A clarify frame without a request_id cannot be answered: noise.
+  assert.deepEqual(
+    translator.translate({
+      payload: { question: 'orphan' },
+      type: 'clarify.request',
+    }),
+    [],
+  );
+
+  // Turn completion resolves a still-pending prompt before finishing.
+  const finished = translator.translate({
+    payload: { text: 'done' },
+    type: 'message.complete',
+  });
+  assert.deepEqual(
+    finished.map((event) => event.type),
+    // assistant.started is synthesized because no delta ever arrived.
+    [
+      'prompt.resolved',
+      'assistant.started',
+      'assistant.completed',
+      'turn.completed',
+    ],
+  );
+
+  // secret/sudo requests surface as decline-only prompts.
+  const secretTranslator = new GatewayTurnTranslator({
+    messageId: 'assistant-11',
+    sessionId: 'session-1',
+    turnId: 'turn-11',
+  });
+  secretTranslator.start();
+  const secret = secretTranslator.translate({
+    payload: { prompt: 'API key for svc', request_id: 'req-88' },
+    type: 'secret.request',
+  });
+  assert.equal(secret[0].kind, 'secret');
+  assert.equal(secret[0].allowsFreeText, false);
+  assert.deepEqual(secret[0].choices, []);
+  assert.equal(secret[0].question, 'API key for svc');
+});
+
+test('routes prompt responses through the active turn socket', async () => {
+  const { calls, client } = makeTurnFixtureClient({});
+  const created = await client.createSession();
+  // Regression: a first turn starts on a placeholder id and learns its stored
+  // id mid-flight. The prompt channel must be keyed by the STORED id, because
+  // that is what every later lookup resolves to — otherwise answering an
+  // approval on a brand-new conversation fails with "no longer waiting".
+  const prompts: string[] = [];
+  for await (const event of client.streamTurn(created.session.id, 'hello')) {
+    if (event.type === 'turn.started') {
+      const channels = (
+        client as unknown as { activeTurns: Map<string, unknown> }
+      ).activeTurns;
+      prompts.push(...channels.keys());
+    }
+  }
+  assert.deepEqual(prompts, ['stored-1']);
+  // The turn ended, so its prompt channel is gone.
+  await assert.rejects(
+    client.respondToPrompt(created.session.id, {
+      choice: 'once',
+      kind: 'approval',
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'not_found');
+      return true;
+    },
+  );
+
+  // With an active turn, responses ride its rpc and live sid.
+  const recorded: { method: string; params: Record<string, unknown> }[] = [];
+  (
+    client as unknown as {
+      activeTurns: Map<string, { liveSessionId: string; rpc: unknown }>;
+    }
+  ).activeTurns.set('stored-1', {
+    liveSessionId: 'live-1',
+    rpc: {
+      call: (method: string, params: Record<string, unknown>) => {
+        recorded.push({ method, params });
+        return Promise.resolve({});
+      },
+    },
+  });
+  await client.respondToPrompt('stored-1', {
+    choice: 'deny',
+    kind: 'approval',
+  });
+  await client.respondToPrompt('stored-1', {
+    answer: 'alpha',
+    kind: 'clarify',
+    promptId: 'req-77',
+  });
+  await client.respondToPrompt('stored-1', {
+    kind: 'secret',
+    promptId: 'req-88',
+  });
+  await client.respondToPrompt('stored-1', {
+    kind: 'sudo',
+    promptId: 'req-99',
+  });
+  assert.deepEqual(recorded, [
+    {
+      method: 'approval.respond',
+      params: { choice: 'deny', session_id: 'live-1' },
+    },
+    {
+      method: 'clarify.respond',
+      params: { answer: 'alpha', request_id: 'req-77', session_id: 'live-1' },
+    },
+    {
+      method: 'secret.respond',
+      params: { request_id: 'req-88', session_id: 'live-1', value: '' },
+    },
+    {
+      method: 'sudo.respond',
+      params: { password: '', request_id: 'req-99', session_id: 'live-1' },
+    },
+  ]);
+  assert.equal(
+    calls.some((call) => call.method === 'approval.respond'),
+    false,
+    'the closed turn socket must not receive responses',
+  );
+});

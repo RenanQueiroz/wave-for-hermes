@@ -417,3 +417,71 @@ function hermesTimeline(
     };
   });
 }
+
+test('tracks a mid-turn prompt through request, resolution, and turn end', () => {
+  const base = {
+    apiVersion: 'v1' as const,
+    eventId: 'event-p',
+    sessionId: 'session-1',
+    timestamp: '2026-07-30T02:00:00.000Z',
+    turnId: 'turn-1',
+  };
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'assistant-1',
+    input: 'run it',
+    type: 'send',
+    userId: 'user-1',
+  });
+  state = waveChatReducer(state, {
+    event: {
+      ...base,
+      allowsFreeText: false,
+      choices: ['once', 'deny'],
+      command: { text: 'rm -rf /tmp/x', truncated: false },
+      description: 'delete in root path',
+      kind: 'approval',
+      promptId: 'approval-1',
+      sequence: 1,
+      type: 'prompt.request',
+    },
+    type: 'event',
+  });
+  assert.equal(state.activePrompt?.promptId, 'approval-1');
+  assert.equal(state.activePrompt?.kind, 'approval');
+  assert.deepEqual(state.activePrompt?.choices, ['once', 'deny']);
+  assert.equal(state.status, 'streaming');
+
+  // A resolution for a DIFFERENT prompt changes nothing.
+  const unrelated = waveChatReducer(state, {
+    event: { ...base, promptId: 'other', sequence: 2, type: 'prompt.resolved' },
+    type: 'event',
+  });
+  assert.equal(unrelated.activePrompt?.promptId, 'approval-1');
+
+  // The matching resolution clears it.
+  const resolved = waveChatReducer(state, {
+    event: {
+      ...base,
+      promptId: 'approval-1',
+      sequence: 2,
+      type: 'prompt.resolved',
+    },
+    type: 'event',
+  });
+  assert.equal(resolved.activePrompt, undefined);
+
+  // A turn that ends while a prompt is showing also clears it.
+  const ended = waveChatReducer(state, {
+    event: { ...base, completed: true, sequence: 3, type: 'turn.completed' },
+    type: 'event',
+  });
+  assert.equal(ended.activePrompt, undefined);
+
+  // So does a transport failure.
+  const failed = waveChatReducer(state, {
+    message: 'boom',
+    retryable: true,
+    type: 'transport.error',
+  });
+  assert.equal(failed.activePrompt, undefined);
+});

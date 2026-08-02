@@ -2,9 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Alert, Button, Soundwave, Typography } from 'panelui-native';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppState, ScrollView, View } from 'react-native';
 
+import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
@@ -35,7 +36,52 @@ export function GatewayVoiceScreen({
   const queryClient = useQueryClient();
   const router = useRouter();
   const voice = useGatewayVoice({ client, sessionId });
-  const { start, stop } = voice;
+  const { respondToPrompt, start, stop } = voice;
+
+  // Mid-turn prompts render the same card chat uses; the loop waits in
+  // `thinking` until the answer (or the server-side expiry) unblocks it.
+  // Busy/error state is stamped with its prompt so a new prompt starts clean.
+  const [promptStatus, setPromptStatus] = useState<{
+    busy: boolean;
+    error?: string;
+    promptId?: string;
+  }>({ busy: false });
+  const activePromptId = voice.state.prompt?.promptId;
+  const promptBusy =
+    promptStatus.promptId === activePromptId && promptStatus.busy;
+  const promptError =
+    promptStatus.promptId === activePromptId ? promptStatus.error : undefined;
+  const answerPrompt = useCallback(
+    (response: PromptCardResponse) => {
+      const prompt = voice.state.prompt;
+      if (!prompt) return;
+      const input =
+        response.kind === 'approval'
+          ? { choice: response.choice, kind: 'approval' as const }
+          : response.kind === 'clarify'
+            ? {
+                answer: response.answer,
+                kind: 'clarify' as const,
+                promptId: prompt.promptId,
+              }
+            : {
+                kind:
+                  prompt.kind === 'sudo'
+                    ? ('sudo' as const)
+                    : ('secret' as const),
+                promptId: prompt.promptId,
+              };
+      setPromptStatus({ busy: true, promptId: prompt.promptId });
+      void respondToPrompt(input).catch(() => {
+        setPromptStatus({
+          busy: false,
+          error: 'Wave could not deliver that answer.',
+          promptId: prompt.promptId,
+        });
+      });
+    },
+    [respondToPrompt, voice.state.prompt],
+  );
 
   // Speech has to be configured server-side. Probing once keeps the screen
   // from opening a microphone it has nowhere to send.
@@ -165,6 +211,17 @@ export function GatewayVoiceScreen({
             ) : null}
           </View>
         </View>
+
+        {voice.state.prompt ? (
+          <View className="w-full max-w-md">
+            <PromptCard
+              busy={promptBusy}
+              error={promptError}
+              prompt={voice.state.prompt}
+              onRespond={answerPrompt}
+            />
+          </View>
+        ) : null}
 
         {speech.isPending ? null : !canListen || !canSpeak ? (
           <Alert

@@ -22,6 +22,7 @@ import {
 import { File } from 'expo-file-system';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { WaveChatPrompt } from '@/features/chat/chat-state';
 import {
   initialUtteranceTracker,
   isVoiceStopCommand,
@@ -59,6 +60,12 @@ export interface GatewayVoiceState {
   /** Live input level in dBFS while listening, when the platform reports it. */
   level?: number;
   phase: GatewayVoicePhase;
+  /**
+   * A mid-turn prompt (approval/clarify/secret) blocking the turn. The voice
+   * screen renders the same card as chat; the loop stays in `thinking` until
+   * the prompt resolves (an unanswered approval expires server-side in 60s).
+   */
+  prompt?: WaveChatPrompt;
   /** What the last utterance transcribed to. */
   userTranscript: string;
 }
@@ -253,14 +260,49 @@ export function useGatewayVoice({
             }));
           } else if (event.type === 'assistant.completed') {
             spoken = spoken ? `${spoken}\n\n${event.content}` : event.content;
+          } else if (event.type === 'prompt.request') {
+            setState((current) => ({
+              ...current,
+              prompt: {
+                allowsFreeText: event.allowsFreeText,
+                choices: event.choices,
+                ...(event.command ? { command: event.command } : {}),
+                ...(event.description
+                  ? { description: event.description }
+                  : {}),
+                kind: event.kind,
+                promptId: event.promptId,
+                ...(event.question ? { question: event.question } : {}),
+                turnId: event.turnId,
+              },
+            }));
+          } else if (event.type === 'prompt.resolved') {
+            setState((current) =>
+              current.prompt?.promptId === event.promptId
+                ? { ...current, prompt: undefined }
+                : current,
+            );
           } else if (event.type === 'turn.error') {
             throw new Error(event.error.message);
           }
         }
       } finally {
         if (turnAbortRef.current === abort) turnAbortRef.current = undefined;
+        setState((current) =>
+          current.prompt ? { ...current, prompt: undefined } : current,
+        );
       }
       return spoken.trim();
+    },
+    [],
+  );
+
+  /** Answer the prompt blocking the current voice turn. */
+  const respondToPrompt = useCallback(
+    async (input: Parameters<GatewayClient['respondToPrompt']>[1]) => {
+      const gateway = clientRef.current;
+      if (!gateway) return;
+      await gateway.respondToPrompt(sessionIdRef.current, input);
     },
     [],
   );
@@ -383,5 +425,5 @@ export function useGatewayVoice({
     skipSpeakingRef.current = true;
   }, []);
 
-  return { skipSpeaking, start, state, stop, submitNow };
+  return { respondToPrompt, skipSpeaking, start, state, stop, submitNow };
 }

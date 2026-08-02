@@ -32,7 +32,21 @@ export interface WaveChatMessage {
 export type WaveChatStatus =
   'cancelling' | 'error' | 'idle' | 'streaming' | 'submitting';
 
+/** A mid-turn prompt from the agent, blocking the active turn until answered. */
+export interface WaveChatPrompt {
+  allowsFreeText: boolean;
+  choices: string[];
+  command?: WaveToolDetail;
+  description?: string;
+  kind: 'approval' | 'clarify' | 'secret' | 'sudo';
+  promptId: string;
+  question?: string;
+  turnId: string;
+}
+
 export interface WaveChatState {
+  /** The prompt currently awaiting the user, if any. */
+  activePrompt?: WaveChatPrompt;
   activeTurnId?: string;
   error?: {
     message: string;
@@ -130,12 +144,14 @@ export function waveChatReducer(
     case 'cancelled':
       return {
         ...state,
+        activePrompt: undefined,
         activeTurnId: undefined,
         status: 'cancelling',
       };
     case 'transport.error':
       return {
         ...state,
+        activePrompt: undefined,
         activeTurnId: undefined,
         error: {
           message: action.message,
@@ -153,6 +169,7 @@ export function waveChatReducer(
         ? state
         : {
             ...state,
+            activePrompt: undefined,
             activeTurnId: undefined,
             error: undefined,
             status: 'idle',
@@ -294,9 +311,29 @@ function applyEvent(
         })),
         status: 'streaming',
       };
+    case 'prompt.request':
+      return {
+        ...state,
+        activePrompt: {
+          allowsFreeText: event.allowsFreeText,
+          choices: event.choices,
+          ...(event.command ? { command: event.command } : {}),
+          ...(event.description ? { description: event.description } : {}),
+          kind: event.kind,
+          promptId: event.promptId,
+          ...(event.question ? { question: event.question } : {}),
+          turnId: event.turnId,
+        },
+        status: 'streaming',
+      };
+    case 'prompt.resolved':
+      return state.activePrompt?.promptId === event.promptId
+        ? { ...state, activePrompt: undefined }
+        : state;
     case 'turn.completed':
       return {
         ...state,
+        activePrompt: undefined,
         activeTurnId: undefined,
         status: 'streaming',
       };
@@ -304,6 +341,7 @@ function applyEvent(
       if (event.error.code === 'cancelled' && state.status === 'cancelling') {
         return {
           ...state,
+          activePrompt: undefined,
           activeTurnId: undefined,
           error: undefined,
           status: 'cancelling',
@@ -311,6 +349,7 @@ function applyEvent(
       }
       return {
         ...state,
+        activePrompt: undefined,
         activeTurnId: undefined,
         error: {
           message: event.error.message,
