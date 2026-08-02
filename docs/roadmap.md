@@ -87,10 +87,13 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    reply is spoken after the turn completes rather than streamed sentence-by-sentence, and the
    interrupt is an explicit Skip control rather than acoustic barge-in, because `expo-audio` has
    no speaker-routing override and an open recorder would force iOS playback to the earpiece.
-   Remaining before the stage closes: a human-spoken end-to-end round trip on a physical
-   device (an automated agent cannot speak into a real microphone), and a degradation run
-   against a gateway with no STT/TTS configured — the gating is unit-tested but no run has
-   seen a providerless server live yet.
+   The providerless degradation run closed (2026-08-02): against a gateway reporting no
+   STT/TTS, the dictation mic and every Play control disappear and the voice screen shows
+   the named-provider copy with Start disabled — no path to the microphone exists. The
+   owner's first spoken round trip on the physical Pixel against the homelab gateway also
+   ran the same day: transcription, turn, and spoken reply all worked, surfacing two
+   defects that now gate the stage — silence auto-send never fired, and the voice screen
+   has no exit without starting.
 4. **Realtime as opt-in with a user-owned key.** The user may supply their own OpenAI API key in
    settings (platform secure storage, never logged, excluded from backups; recommend a dedicated
    project-scoped key). Voice mode uses Realtime only when a key is present and the user has not
