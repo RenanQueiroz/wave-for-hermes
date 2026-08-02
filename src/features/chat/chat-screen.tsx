@@ -41,7 +41,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Keyboard, Pressable, ScrollView, View } from 'react-native';
+import {
+  Keyboard,
+  Pressable,
+  ScrollView,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
@@ -56,6 +63,7 @@ import {
   type WaveChatPart,
 } from '@/features/chat/chat-state';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
+import { isNearTimelineEnd } from '@/features/chat/timeline-scroll';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import { useDictation } from '@/features/voice/use-dictation';
@@ -487,6 +495,20 @@ function ConnectedChatScreen({
     ],
   );
 
+  // Legend List gates its maintain-at-end scroll on a cached flag that can go
+  // stale mid-momentum, which yanked the list to the newest message while the
+  // user was reading far-back history and a refetch replaced `data`. Gate the
+  // pin on fresh scroll geometry instead: far from the end, no data change is
+  // allowed to move the list. Starts true because the list opens at the end.
+  const [nearEnd, setNearEnd] = useState(true);
+  const trackNearEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const next = isNearTimelineEnd(event.nativeEvent);
+      setNearEnd((previous) => (previous === next ? previous : next));
+    },
+    [],
+  );
+
   return (
     <View className="flex-1 bg-background">
       {headerTitle ? <Stack.Screen options={{ title: headerTitle }} /> : null}
@@ -543,8 +565,9 @@ function ConnectedChatScreen({
           <LegendList
             alignItemsAtEnd
             initialScrollAtEnd
-            maintainScrollAtEnd
+            maintainScrollAtEnd={nearEnd}
             maintainVisibleContentPosition
+            onScroll={trackNearEnd}
             // Turns hold disclosure state (expanded Tasks), which recycled
             // rows would carry between messages — so no recycling; the draw
             // buffer covers fast flings instead.

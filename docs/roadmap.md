@@ -44,7 +44,14 @@ trade-offs are recorded in [`architecture.md`](./architecture.md); the staged pl
    (2026-08-02): `image.attach_bytes` queues on the live sid before `prompt.submit` consumes
    it — the exact order the client already used — and attachment rejections now surface the
    gateway's own reason (cap, unsupported type) as non-retryable input errors instead of a
-   generic failure. Remaining before stage 5: a device pass over composer attachment sending.
+   generic failure. Two review findings were then fixed and re-verified on both the iOS
+   simulator and the Pixel 9 emulator (2026-08-02): the chat timeline no longer snaps to the
+   newest message while the user reads far-back history (the maintain-at-end pin is now gated
+   on fresh scroll geometry, so a focus refetch or an older-page load cannot move the list —
+   this also fixed the companion path), and a first page whose session-detail count probe
+   fails now locates the newest window with bounded single-row offset probes instead of
+   transferring the entire history. Remaining before stage 5: a device pass over composer
+   attachment sending.
 3. **Adopt gateway voice — landed (2026-08-02).** On a gateway connection the voice route now
    runs Hermes's own voice mode (record → `/api/audio/transcribe` → normal turn →
    `/api/audio/speak`), and the composer gained a dictation microphone while finished assistant

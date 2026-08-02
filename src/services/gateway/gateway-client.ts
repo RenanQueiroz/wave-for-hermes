@@ -53,6 +53,11 @@ const TIMELINE_PAGE_LIMIT = 200;
 // (verified live on 0.19.0), so an uncapped limit is how "from this offset to
 // the end" is expressed. The offset bounds the actual payload.
 const FETCH_TO_END_LIMIT = 100_000;
+// When the count probe cannot answer, histories at or under this row count
+// are fetched whole in one bounded request; anything larger is located with
+// single-row probes first. Bounds the worst-case first-page transfer that
+// previously pulled the entire history.
+const UNKNOWN_COUNT_SCAN_LIMIT = 500;
 // The gateway caps transcription uploads at 25 MiB; base64 inflates by 4/3, so
 // refuse locally rather than spending the upload to earn a 413.
 const MAX_AUDIO_DATA_URL_CHARS = Math.floor((25 * 1024 * 1024 * 4) / 3);
@@ -297,23 +302,32 @@ export class GatewayClient {
     // so start from the session's reported row count. The uncapped limit and
     // the client-side tail slice keep this correct even when that count has
     // drifted from the true total.
-    const count = await this.fetchMessageCount(sessionId, signal);
-    let offset = Math.max(count - limit, 0);
-    let rows = await this.fetchMessageRows(
-      sessionId,
-      FETCH_TO_END_LIMIT,
-      offset,
-      signal,
-    );
-    if (rows.length === 0 && offset > 0) {
-      // The reported count overshot the stored rows; take history from the top.
-      offset = 0;
+    const reported = await this.fetchMessageCount(sessionId, signal);
+    let offset: number;
+    let rows: unknown[];
+    if (reported === null) {
+      ({ offset, rows } = await this.fetchNewestWindow(
+        sessionId,
+        limit,
+        signal,
+      ));
+    } else {
+      offset = Math.max(reported - limit, 0);
       rows = await this.fetchMessageRows(
         sessionId,
         FETCH_TO_END_LIMIT,
-        0,
+        offset,
         signal,
       );
+      if (rows.length === 0 && offset > 0) {
+        // The reported count overshot the stored rows.
+        ({ offset, rows } = await this.fetchNewestWindow(
+          sessionId,
+          limit,
+          signal,
+          offset,
+        ));
+      }
     }
     const drop = Math.max(rows.length - limit, 0);
     const lower = offset + drop;
@@ -342,23 +356,92 @@ export class GatewayClient {
     return Array.isArray(rows) ? rows : [];
   }
 
-  /** The session's row count from its detail row; 0 when unavailable. */
+  /**
+   * The session's row count from its detail row. `null` means the probe could
+   * not answer (request failed, or the field is missing) — which is different
+   * from a session the server reports as empty.
+   */
   private async fetchMessageCount(
     sessionId: string,
     signal?: AbortSignal,
-  ): Promise<number> {
+  ): Promise<number | null> {
     try {
       const body = await this.request(
         `/api/sessions/${encodeURIComponent(sessionId)}`,
         { signal },
       );
       const count = (body as { message_count?: unknown } | null)?.message_count;
-      return typeof count === 'number' && Number.isFinite(count) && count > 0
-        ? Math.floor(count)
-        : 0;
-    } catch {
-      return 0;
+      if (typeof count !== 'number' || !Number.isFinite(count)) return null;
+      return Math.max(Math.floor(count), 0);
+    } catch (error) {
+      if (error instanceof WaveBackendError && error.kind === 'cancelled') {
+        throw error;
+      }
+      return null;
     }
+  }
+
+  /**
+   * The newest `limit` rows of a session whose row count is unknown (the
+   * count probe failed) or proved wrong (`countUpperBound` rows were not
+   * there). `/messages` keeps the OLDEST rows when `limit` truncates, so the
+   * tail can only be addressed through an offset near the true count — locate
+   * that count with bounded single-row probes (a row exists at `offset` iff
+   * the count exceeds it, verified live on 0.19.0) instead of transferring
+   * the entire history from offset 0.
+   */
+  private async fetchNewestWindow(
+    sessionId: string,
+    limit: number,
+    signal?: AbortSignal,
+    countUpperBound?: number,
+  ): Promise<{ offset: number; rows: unknown[] }> {
+    const hasRowAt = async (probe: number) =>
+      (await this.fetchMessageRows(sessionId, 1, probe, signal)).length > 0;
+
+    let low = 0; // the count is at least `low`
+    let high = countUpperBound; // the count is at most `high`
+    if (high === undefined) {
+      if (!(await hasRowAt(UNKNOWN_COUNT_SCAN_LIMIT - 1))) {
+        // Short history: one bounded fetch from the top covers all of it.
+        const rows = await this.fetchMessageRows(
+          sessionId,
+          UNKNOWN_COUNT_SCAN_LIMIT,
+          0,
+          signal,
+        );
+        return { offset: 0, rows };
+      }
+      low = UNKNOWN_COUNT_SCAN_LIMIT;
+      let span = UNKNOWN_COUNT_SCAN_LIMIT * 2;
+      while (high === undefined) {
+        if (span >= FETCH_TO_END_LIMIT) {
+          high = FETCH_TO_END_LIMIT;
+        } else if (await hasRowAt(span - 1)) {
+          low = span;
+          span *= 2;
+        } else {
+          high = span - 1;
+        }
+      }
+    }
+    // The count is the smallest offset holding no row.
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (await hasRowAt(mid)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    const offset = Math.max(low - limit, 0);
+    const rows = await this.fetchMessageRows(
+      sessionId,
+      FETCH_TO_END_LIMIT,
+      offset,
+      signal,
+    );
+    return { offset, rows };
   }
 
   async createSession(

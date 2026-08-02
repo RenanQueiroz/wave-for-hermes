@@ -314,10 +314,13 @@ test('a new conversation keeps its route while its real session is created', asy
   const requests: string[] = [];
   const fetchImpl = (async (url: string, init?: RequestInit) => {
     requests.push(`${init?.method ?? 'GET'} ${new URL(url).pathname}`);
-    return new Response(JSON.stringify({ ok: true, messages: [] }), {
-      headers: { 'content-type': 'application/json' },
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({ message_count: 0, messages: [], ok: true }),
+      {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      },
+    );
   }) as unknown as typeof globalThis.fetch;
 
   const client = new GatewayClient({
@@ -368,7 +371,10 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-function timelineFixtureClient(rowCount: number, reportedCount: number) {
+function timelineFixtureClient(
+  rowCount: number,
+  reportedCount: number | 'unavailable',
+) {
   const rows = Array.from({ length: rowCount }, (_, index) => ({
     content: `message ${index + 1}`,
     id: index + 1,
@@ -379,6 +385,9 @@ function timelineFixtureClient(rowCount: number, reportedCount: number) {
     const parsed = new URL(String(url));
     requests.push(`${parsed.pathname}${parsed.search}`);
     if (parsed.pathname === '/api/sessions/s1') {
+      if (reportedCount === 'unavailable') {
+        return new Response('gateway error', { status: 500 });
+      }
       return jsonResponse({ id: 's1', message_count: reportedCount });
     }
     const limit = Number(parsed.searchParams.get('limit') ?? '500');
@@ -446,10 +455,58 @@ test('recovers when the reported message count overshoots the rows', async () =>
     ['msg-1', 'msg-2'],
   );
   assert.equal(page.hasMore, false);
-  // Overshot offset returned nothing, so the client refetched from the top.
-  assert.equal(
-    requests.filter((request) => request.includes('/messages')).length,
-    2,
+  // The overshot offset returned nothing, so the client located the true end
+  // with single-row probes before fetching the real window.
+  const messageRequests = requests.filter((request) =>
+    request.includes('/messages'),
+  );
+  assert.ok(messageRequests.length >= 3);
+  for (const request of messageRequests.slice(1, -1)) {
+    assert.match(
+      request,
+      /limit=1&/,
+      `expected a single-row probe: ${request}`,
+    );
+  }
+});
+
+test('the first page stays bounded when the count probe fails', async () => {
+  // Regression: with the count unknown the client fell back to offset=0 with
+  // an uncapped limit — transferring the entire history. The fallback must
+  // locate the end with bounded probes and still return the newest window.
+  const { client, requests } = timelineFixtureClient(1_200, 'unavailable');
+  const page = await client.getSessionTimeline('s1', { limit: 100 });
+  assert.equal(page.entries.length, 100);
+  assert.equal(page.entries[0]?.id, 'msg-1101');
+  assert.equal(page.entries.at(-1)?.id, 'msg-1200');
+  assert.equal(page.hasMore, true);
+  assert.equal(page.nextCursor, '1100');
+  // Every row request either probes a single row or fetches the final window
+  // from deep in the history; nothing pulls the conversation from offset 0.
+  for (const request of requests.filter((r) => r.includes('/messages'))) {
+    assert.ok(
+      /limit=1&/.test(request) || /offset=1100$/.test(request),
+      `unbounded request: ${request}`,
+    );
+  }
+});
+
+test('a short history with a failed count probe takes one bounded fetch', async () => {
+  const { client, requests } = timelineFixtureClient(7, 'unavailable');
+  const page = await client.getSessionTimeline('s1', { limit: 3 });
+  assert.deepEqual(
+    page.entries.map((entry) => entry.id),
+    ['msg-5', 'msg-6', 'msg-7'],
+  );
+  assert.equal(page.hasMore, true);
+  assert.equal(page.nextCursor, '4');
+  // One probe past the short-history bound, then a single capped fetch.
+  assert.deepEqual(
+    requests.filter((request) => request.includes('/messages')),
+    [
+      '/api/sessions/s1/messages?limit=1&offset=499',
+      '/api/sessions/s1/messages?limit=500&offset=0',
+    ],
   );
 });
 
