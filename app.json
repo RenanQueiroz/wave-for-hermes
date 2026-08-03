@@ -3,7 +3,10 @@
     "name": "wave",
     "slug": "wave",
     "version": "1.0.0",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "wave",
@@ -89,6 +92,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "27e949c2-192e-4a46-a37f-1bd116c0a40b"
+      }
     }
   }
 }
