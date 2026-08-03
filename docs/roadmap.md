@@ -18,11 +18,11 @@ administration console.
 
 - Live-probe Wave's authentication, chat, resume, cancellation, prompt, session-list, pin,
   redirect, activity, event-stream, and speech behavior against v0.20.
-- Replace v0.19-only assumptions in the gateway adapter with measured capabilities and safe
+- Replace v0.19-only assumptions in the gateway adapter with measured behavior and safe
   attempt-and-degrade behavior. Older gateways must continue to support the current feature set.
-- Normalize the active agent's hydrated `session.info.tools` into a small, in-memory set of
-  Wave-owned capability categories. Raw tool/skill metadata, configuration, paths, and peer details
-  never leave `src/services/gateway` or enter an OpenAI prompt.
+- Keep Hermes tool, skill, MCP, A2A, system-prompt, and other agent-configuration metadata outside
+  Wave's product model and OpenAI prompts. Feature compatibility comes from explicit protocol
+  contracts and safe attempt-and-degrade behavior, not agent capability inference.
 - Add credential-free protocol fixtures and update [`hermes-connectivity.md`](./hermes-connectivity.md)
   when the v0.20 behavior has been verified rather than inferred from source.
 
@@ -74,10 +74,11 @@ remains Wave's full-duplex mode.
 - Let the user choose from Wave's explicit supported-model list:
   `gpt-realtime-2.1-mini` (the default) or `gpt-realtime-2.1`. Wave will not dynamically fetch a
   model catalog or accept arbitrary model ids; changing the preference applies to the next call.
-- Give Realtime a bounded, Wave-authored summary of the active Hermes agent's normalized capability
-  categories so it can route work more intelligently through `ask_hermes`. Treat the summary as
-  hints rather than guarantees, and never expose raw tools, skills, MCP/A2A metadata, or additional
-  Hermes functions directly to OpenAI.
+- Keep `ask_hermes({ instruction })` deliberately generic: it delegates external information,
+  private context, files, coding, automation, actions, and specialized workflows while Hermes
+  chooses its own configured tools and skills. Do not advertise, classify, summarize, or mirror
+  Hermes tools, skills, MCP/A2A metadata, or configuration to OpenAI. Preserve an execution
+  preference only when the user explicitly states it.
 - Refine the Realtime prompt for unclear audio, background speech and silence, within-utterance
   self-correction, literal values, concise preambles, and tool failures.
 - Add deterministic whole-utterance Stop handling without persisting the transcript.
@@ -85,9 +86,14 @@ remains Wave's full-duplex mode.
   `correct_hermes({ instruction })` operation. It may target only the one active Hermes execution
   bound to trusted call state, accepts no model-controlled identifiers, is rate-bounded, and never
   retries automatically.
-- Keep the semantics distinct: speech barge-in stops Wave's audio, `ask_hermes` starts a separate
-  request, and `correct_hermes` redirects active backend work. A raced completion must not silently
-  become a new request.
+- Use Realtime's dynamic session-update flow to keep the complete tool list at `[ask_hermes]` while
+  idle and `[ask_hermes, correct_hermes]` only after one bound Hermes execution becomes active;
+  restore the ask-only list when it settles. Serialize updates and confirm `session.updated`, but
+  keep controller validation authoritative when an update races or fails.
+- Keep the semantics distinct: speech barge-in stops Wave's audio; a change to the current
+  deliverable uses `correct_hermes`; distinct work that leaves it unchanged uses `ask_hermes` and
+  the bounded queue; ordinary conversation uses neither. Clarify ambiguous add-versus-replace
+  intent. A raced completion must not silently become a new request.
 
 Adding `correct_hermes` changes a security-sensitive product contract. Its implementation is not
 complete until the shared schema, controller, prompt, tests, [`architecture.md`](./architecture.md),
