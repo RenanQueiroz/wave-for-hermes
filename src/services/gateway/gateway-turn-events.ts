@@ -7,7 +7,7 @@
  * both: it owns a monotonic counter per turn and stamps the Wave-side turn id
  * it was constructed with.
  *
- * Frame types observed live on 0.19.0 (see `plans/gateway-protocol-notes.md`):
+ * Frame types observed live on 0.19.0 (see `docs/hermes-connectivity.md`):
  * `session.info`, `message.start`, `thinking.delta`, `message.delta`,
  * `tool.generating`, `tool.start`, `tool.complete`, `approval.request`,
  * `clarify.request`, `reasoning.available`, `message.complete` (the

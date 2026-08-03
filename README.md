@@ -38,10 +38,8 @@ Wave mobile ── rotating session tokens + gateway protocol ──> Hermes gat
      └════ direct WebRTC audio + sideband (user-owned key) ════> OpenAI Realtime API
 ```
 
-The retired Wave Companion (a self-hosted middle tier that held the credentials server-side) was
-removed in the direct-to-gateway migration; see [`docs/roadmap.md`](./docs/roadmap.md) for the
-staged history. Environment-specific deployment, networking, and secrets for the gateway remain in
-the Homelab repository.
+Wave has no application backend of its own. Environment-specific deployment, networking, and
+gateway secrets remain in the Homelab repository.
 
 ## Current status
 
@@ -62,8 +60,8 @@ currently includes:
 - runtime-neutral normalized Wave error, turn-event, session, unified timeline, attachment,
   Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - resumable turn streams: a dropped connection, backgrounding, or app restart no longer cancels a
-  running Hermes turn — the chat screen reattaches by turn ID with sequence replay, while explicit
-  Stop still cancels;
+  running Hermes turn — the chat screen resumes the live session and reconciles from authoritative
+  Hermes history, while explicit Stop still cancels;
 - an offline read cache that keeps previously viewed chats and the session list readable without
   connectivity, showing a quiet offline notice for connectivity-shaped failures and purging itself
   on sign-in and sign-out;

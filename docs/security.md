@@ -37,8 +37,7 @@ therefore equivalent to granting access to that Hermes account, not to one conve
 ### The user-owned OpenAI key
 
 Realtime live voice runs from the app with an OpenAI API key the user supplies in Settings — the
-one deliberate exception to "the mobile process never holds an upstream key", decided in the
-direct-to-gateway migration (`architecture.md`).
+one deliberate exception to "the mobile process never holds an upstream key."
 
 - The key lives only in platform secure storage (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`: never backed
   up, never migrated to another device). Only its presence enters the query cache or UI; it is
@@ -174,7 +173,7 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - CORS is not applicable because Wave supports native iOS and Android only.
 - The mobile production export is scanned for upstream keys, server-only imports, and forbidden
   protocol strings. Dependency alignment and workspace boundaries are automated, and the
-  boundary check fails if a companion workspace reappears.
+  boundary check fails if a server-side Wave backend reappears.
 
 ## Validation status
 
@@ -186,8 +185,7 @@ exports for iOS and Android pass the boundary scanner. Live validation against t
 gateway deployment covers sign-in, streaming, history, rename/delete, prompts, both voice modes,
 and Realtime call setup/teardown on the user's own key.
 
-The 2026-07-31 dependency review is recorded in
-[`dependency-security.md`](./dependency-security.md).
+The current dependency review is recorded in [`dependency-security.md`](./dependency-security.md).
 
 Before the first store release, still complete:
 

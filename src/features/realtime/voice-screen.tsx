@@ -32,9 +32,9 @@ import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-r
 import type { WaveTimelineResponse } from '@wave/contracts';
 
 /**
- * Realtime on a gateway connection with the user-owned OpenAI key (stage 4).
- * The key is read from secure storage into memory only; the backend binds
- * ask_hermes to this conversation's session through trusted call state.
+ * Realtime on a gateway connection with the user-owned OpenAI key. The key is
+ * read from secure storage into memory only; the backend binds ask_hermes to
+ * this conversation's session through trusted call state.
  */
 export function KeyedRealtimeVoiceScreen({
   client,

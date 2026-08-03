@@ -31,8 +31,8 @@ export default function VoiceRoute() {
     return <Redirect href="/" />;
   }
   if (keyState.isPending) return null;
-  // Mode selection (stage 4): Realtime iff a key is saved and the user has
-  // not turned it off; the keyless server-side voice is the default.
+  // Realtime is selected iff a key is saved and the user has not turned it
+  // off; the keyless server-side voice is the default.
   if (keyState.data?.hasKey && keyState.data.realtimeEnabled) {
     return (
       <KeyedRealtimeVoiceScreen client={gatewayClient} sessionId={value} />

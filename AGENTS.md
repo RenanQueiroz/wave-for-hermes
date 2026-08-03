@@ -17,8 +17,8 @@ Keep the product focused:
   administration.
 - Treat all external tool arguments and responses as untrusted data.
 - Never embed long-lived OpenAI or Hermes secrets in client code, app configuration, logs, or the
-  repository. The one deliberate exception (stage 4, landed 2026-08-02): the user may supply their
-  own OpenAI API key for Realtime, held only in platform secure storage
+  repository. The one deliberate exception: the user may supply their own OpenAI API key for
+  Realtime, held only in platform secure storage
   (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`), validated before saving, removable in Settings, sent only to
   `api.openai.com` in Authorization headers, and never logged, displayed back, cached, or shipped
   in a bundle (the production scanner rejects key-shaped literals).
@@ -30,10 +30,9 @@ Keep the product focused:
 
 If a requested change conflicts with this product contract, stop and raise the conflict.
 
-The direct-to-gateway migration (decided 2026-08-01, recorded in `docs/architecture.md` and
-staged in `docs/roadmap.md`) is complete: the app talks to the Hermes gateway directly, gateway
-sign-in replaced pairing, Hermes's server-side voice is the default voice mode, Realtime is an
-opt-in mode keyed by the user's own OpenAI key, and the Wave Companion is retired (stage 5).
+The app talks to the Hermes gateway directly. Gateway sign-in is the only connection model,
+Hermes's server-side voice is the default voice mode, Realtime is an opt-in mode keyed by the
+user's own OpenAI key, and Wave has no server-side application component.
 
 ## Expo 57 is the source of truth
 
@@ -64,7 +63,7 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   dependencies (zod is its only runtime dependency) so Metro and node tests can both consume it.
 - Do not import the official OpenAI JavaScript SDK into the React Native application; Realtime
   uses `expo/fetch` and the platform WebSocket directly.
-- The Wave Companion is retired (stage 5). Do not recreate a `companion/` workspace, server-side
+- The Wave Companion is retired. Do not recreate a `companion/` workspace, server-side
   Wave backend, or `EXPO_PUBLIC_*` credential plumbing; `npm run verify:boundaries` fails if the
   companion workspace reappears.
 - Run `npm run verify:boundaries` after changing workspace manifests, shared contracts, backend
@@ -154,7 +153,7 @@ documentation before implementing UI.
   (`WaveChatClient`, `GatewayClient`), never on Hermes protocol types. Gateway protocol shapes
   stop at `src/services/gateway`: normalize them into Wave contracts there.
 - The Hermes API key lives server-side with the gateway and never reaches the app. Realtime uses
-  the user-owned OpenAI key from Settings (stage 4): secure storage only, presence-not-value in
+  the user-owned OpenAI key from Settings: secure storage only, presence-not-value in
   the query cache, requests only to `api.openai.com`, ask_hermes bound to the initiating
   conversation through trusted call state with the rules in
   `src/features/realtime/ask-hermes-orchestrator.ts` enforced client-side.

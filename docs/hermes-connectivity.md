@@ -5,10 +5,12 @@ dashboard and desktop client. The mobile transport lives in `src/services/gatewa
 protocol shapes never leave it, and screens consume only normalized Wave contracts from
 `packages/contracts`.
 
-## Validated gateway contract
+## Current compatibility baseline
 
-The transport was validated live against gateway version `0.19.0` (2026-08-02), both a local
-instance and the private Homelab deployment:
+The shipping transport was validated live against gateway version `0.19.0` (2026-08-02), both a
+local instance and the private Homelab deployment. Hermes v0.20 support is tracked in
+[`roadmap.md`](./roadmap.md); source inspection is not treated as live compatibility proof, so the
+baseline below remains authoritative until the v0.20 probe and regression pass land.
 
 - **Sign-in**: `POST /auth/password-login` with `{provider: 'basic', username, password}`. The
   response carries an access/refresh token pair (12-hour and 30-day lifetimes). Tokens rotate:
@@ -48,9 +50,6 @@ instance and the private Homelab deployment:
   probe throws on request failure so the bounded retry policy owns recovery rather than caching
   a false "no providers". Speech calls run on a longer timeout than REST reads because both are
   model work.
-
-Wave submits no issues or changes upstream; gaps get documented client-side workarounds
-(recorded in `docs/roadmap.md` stage entries).
 
 ## Attachments
 
@@ -107,5 +106,5 @@ npm test
 ```
 
 `test/mobile/gateway-protocol.test.ts` covers sign-in, token rotation, framing, normalization,
-reattachment, cancellation, and error mapping against recorded protocol shapes; live validation
-against the private gateway is recorded per stage in `docs/roadmap.md`.
+reattachment, cancellation, and error mapping against recorded protocol shapes. A gateway
+compatibility change is incomplete until the fixtures, live behavior, and this document agree.

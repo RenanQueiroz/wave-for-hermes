@@ -1,11 +1,11 @@
 /**
  * The client surface conversation screens depend on.
  *
- * `GatewayClient` is its only implementation since the companion retired
- * (stage 5), but screens still depend on this type rather than the concrete
- * client: it is the reviewed contract of what conversation surfaces may do,
- * and gateway-specific capabilities (speech, prompts, Realtime execution)
- * stay behind an explicit `gatewayClient` ask on the connection.
+ * `GatewayClient` is its only implementation, but screens still depend on
+ * this type rather than the concrete client: it is the reviewed contract of
+ * what conversation surfaces may do, and gateway-specific capabilities
+ * (speech, prompts, Realtime execution) stay behind an explicit
+ * `gatewayClient` ask on the connection.
  */
 import type {
   WaveActiveTurnResponse,

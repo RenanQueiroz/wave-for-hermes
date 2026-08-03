@@ -1,17 +1,16 @@
 /**
  * Direct Hermes gateway client.
  *
- * Implements the same surface the mobile screens already consume from
- * `WaveBackendClient` (sessions, timeline, turn streaming, cancel) but speaks
- * the gateway's own protocol: REST + cookie tokens for finite reads and
- * lifecycle, JSON-RPC over `/api/ws` for live turns.
+ * Implements the `WaveChatClient` surface consumed by mobile screens while
+ * speaking the gateway's own protocol: REST + cookie tokens for finite reads
+ * and lifecycle, JSON-RPC over `/api/ws` for live turns.
  *
- * Boundaries kept from the companion era: gateway protocol shapes never leave
- * this module (see `gateway-normalize.ts`), tokens are opaque values held by
- * the caller's store, and errors are normalized to `WaveBackendError` so the
- * offline/retry classification keeps working unchanged.
+ * Gateway protocol shapes never leave this module (see
+ * `gateway-normalize.ts`), tokens are opaque values held by the caller's
+ * store, and errors are normalized to `WaveBackendError` so the shared
+ * offline/retry classification stays transport-neutral.
  *
- * Protocol reference: `plans/gateway-protocol-notes.md`.
+ * Protocol reference: `docs/hermes-connectivity.md`.
  */
 import type {
   WaveConversationMessage,
@@ -541,9 +540,8 @@ export class GatewayClient {
    *
    * One socket per turn keeps failure handling simple: the socket's lifetime
    * is exactly the turn's, and dropping it never disturbs another turn. The
-   * gateway keeps a running turn alive across the disconnect (verified in the
-   * stage 1 spike), so an interrupted stream reconciles from history rather
-   * than replaying frames.
+   * gateway keeps a running turn alive across the disconnect, so an
+   * interrupted stream reconciles from history rather than replaying frames.
    */
   async *streamTurn(
     sessionId: string,

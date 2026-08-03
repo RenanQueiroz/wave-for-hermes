@@ -1,8 +1,7 @@
 # WebRTC foundation
 
-Status: native Realtime path validated on simulators and physical Android; the companion-free
-direct path validated on the iOS simulator (2026-08-02); remaining production gates are tracked
-below
+Status: direct Realtime path validated on simulators and physical Android; remaining production
+gates are tracked below
 
 Validated: 2026-08-02
 
@@ -12,9 +11,8 @@ currently resolves `react-native-webrtc` `124.0.8`.
 
 The library is autolinked, configured, built, and exercised with Expo SDK 57 and React Native 0.86.
 The production mobile transport, lifecycle controller, and PanelUI voice route establish and
-explicitly terminate real Realtime calls on Radon-managed iOS and Android simulators, and — since
-stage 4 of the direct-to-gateway migration — perform the SDP exchange and sideband directly
-against OpenAI with the user-owned key (validated live on 2026-08-02).
+explicitly terminate real Realtime calls on Radon-managed iOS and Android simulators, performing
+the SDP exchange and sideband directly against OpenAI with the user-owned key.
 
 ## Native configuration
 
@@ -40,7 +38,7 @@ directory checks remain enabled.
 
 ## Development proof
 
-Paired development builds expose a temporary proof card under **Development tools**. It:
+Development builds expose a temporary proof card under **Development tools**. It:
 
 1. requests an audio-only microphone stream;
 2. creates two local `RTCPeerConnection` instances with no external ICE servers;
@@ -137,47 +135,19 @@ The foundation proof passed with:
 - generated iOS and Android permission output with microphone access and no Android camera
   permission.
 
-The production simulator path additionally passed on 2026-07-30 (via the since-retired
-companion backend):
-
-- native mobile SDP exchange;
-- a real OpenAI Realtime WebRTC connection reaching the `Listening` state;
-- microphone mute/unmute state changes;
-- explicit peer, media, data-channel, timer, and backend-call teardown;
-- return to the existing chat on both the Radon-managed iOS and Android devices.
-
-On 2026-08-02, the owner validated the direct user-keyed path end to end on the physical
-Pixel 8 Pro: a real spoken Realtime conversation, including Wave delegating work to Hermes
-mid-call through `ask_hermes`, with no companion involved.
+The direct user-keyed path passed on the iOS simulator and, on 2026-08-02, end to end on a physical
+Pixel 8 Pro: a real spoken Realtime conversation with audible bidirectional audio, barge-in,
+microphone mute/unmute, explicit teardown, return to chat, and Wave delegating work to Hermes
+mid-call through `ask_hermes`.
 
 On 2026-07-31, both Radon-managed platforms additionally passed denial and later recovery of
 microphone permission, the system-settings recovery action, a successful subsequent call reaching
 `Listening`, established-call background teardown, and another clean idle state ready to reconnect.
 
-The production path also passed on a physical Google Pixel 8 Pro on 2026-07-30 (via the
-since-retired companion backend; the `ask_hermes` rules it validated are now enforced
-client-side by the same contract):
-
-- microphone capture reached the Realtime session and produced a user turn;
-- the assistant response was clearly audible through the device;
-- the connection exposed one remote audio track;
-- a strict `ask_hermes` call completed and persisted the expected Hermes user/assistant turn;
-- speaking while the assistant voiced that Hermes result interrupted the response, preserved the
-  Realtime conversation, and produced a correct direct follow-up answer;
-- in a separate overlapping-work call, the first Hermes request remained active through the full
-  configured 120-second execution window while Wave answered a direct spoken math question;
-- a second `ask_hermes` request made during that window was accepted, waited for the first queue
-  slot to release, and then appeared with its response after the first request in canonical Hermes
-  history instead of failing with an in-flight conflict;
-- hangup immediately refreshed canonical Hermes history, including the real bounded Terminal input
-  and output behind a collapsed expandable task row;
-- microphone mute/unmute changed the live media state; and
-- explicit hangup returned to chat and removed the development state provider after cleanup.
-
-Together, these physical Android proofs establish audible bidirectional audio, conversational
-barge-in, preservation of active Hermes work through that barge-in, bounded ordered follow-up
-`ask_hermes` dispatch, and immediate post-call history refresh. They do not establish alternate
-audio routes, physical iOS behavior, or release readiness.
+Deterministic tests separately cover strict `ask_hermes` validation, trusted session binding,
+coalescing, bounded ordered dispatch, response-safe delivery, teardown, and reconnection. The
+physical and simulator evidence does not establish alternate audio routes, physical iOS behavior,
+or release readiness.
 
 ## Remaining production voice gates
 

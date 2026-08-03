@@ -1,13 +1,10 @@
-# Dependency and container security review
+# Dependency security review
 
 This is the current point-in-time review for Wave's Expo application, developer tooling, and
 shared contracts. Re-run it before the first signed release and whenever the Expo SDK or
 production dependencies change.
 
-Reviewed: 2026-08-02. The Companion image review below is retained as the historical record of
-that review; the companion workspace and its container were removed in stage 5 of the
-direct-to-gateway migration (2026-08-02), so the image, its base-image pins, and its scoped
-audit are no longer part of the release process.
+Reviewed: 2026-08-02.
 
 ## JavaScript dependency graph
 
@@ -41,24 +38,6 @@ npm audit --omit=dev --workspace @wave/contracts
 `npx expo install --check`, both native production export scans, and the normal repository gates
 remain required. Do not use `npm audit fix --force`: its proposed Expo 46 and splash-screen 55
 changes are incompatible with the SDK 57 source-of-truth graph.
-
-## Companion image (historical — removed in stage 5)
-
-The prior digest-pinned Debian slim runtime measured 91,033,033 bytes. A checksum-verified Trivy
-0.70.0 scan found 22 high/critical Debian findings without available Debian fixes plus five
-fixable findings in npm's bundled packages. The Companion does not execute a package manager in
-production.
-
-The final runtime now uses the exact official Node 24 Alpine image digest declared in
-`companion/Dockerfile` and removes npm, npx, corepack, yarn, and pnpm before application files are
-copied. Build stages remain on the separate digest-pinned Debian image. The selected Companion and
-contracts production graph contains no native `.node` binaries, and the rebuilt runtime starts on
-Node 24.18.1.
-
-The rebuilt image measured 69,389,962 bytes, a 23.8% reduction. The same Trivy database found zero
-OS or language-package vulnerabilities at any severity. This does not turn one clean scan into a
-permanent guarantee; Homelab must continue to pin the exact source and base images, and the scan
-must be repeated after either pin changes.
 
 ## Accepted residual work
 

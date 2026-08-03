@@ -5,8 +5,7 @@
  * keep consuming the normalized Wave types. Gateway payloads are untrusted
  * input — every field is validated or defaulted, never spread through.
  *
- * Protocol reference: `plans/gateway-protocol-notes.md` (verified against
- * hermes-agent 0.19.0 / v2026.7.20).
+ * Compatibility baseline: `docs/hermes-connectivity.md`.
  */
 import type {
   WaveConversationMessage,

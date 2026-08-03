@@ -45,7 +45,7 @@ interface ConnectionError {
   retryable: boolean;
 }
 
-/** The gateway is the only backend since the companion retired (stage 5). */
+/** The gateway is Wave's only production backend. */
 export type WaveConnectionKind = 'gateway';
 
 /** The non-secret identity of the signed-in gateway connection. */
@@ -328,9 +328,8 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
   );
 
   // A gateway session cannot be revoked server-side: its tokens are stateless
-  // and signed, so `/auth/logout` does not invalidate them (verified in the
-  // stage 1 spike). Deleting them locally is the whole sign-out; the tokens
-  // expire on their own schedule.
+  // and signed, so `/auth/logout` does not invalidate them. Deleting them
+  // locally is the whole sign-out; the tokens expire on their own schedule.
   const disconnect = useCallback(async () => {
     const operation = ++operationRef.current;
     setState({ phase: 'loading' });

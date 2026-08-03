@@ -1,7 +1,7 @@
 /**
- * The normalized error every Wave backend surface throws. Extracted from the
- * retired companion client (stage 5): the gateway transport and query layers
- * keep classifying failures with the same kinds and retryability semantics.
+ * The normalized error every Wave backend surface throws. The gateway
+ * transport and query layers classify failures with the same kinds and
+ * retryability semantics.
  */
 import type { WaveErrorCode } from '@wave/contracts';
 

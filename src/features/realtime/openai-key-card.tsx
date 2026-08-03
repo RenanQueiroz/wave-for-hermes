@@ -1,6 +1,6 @@
 /**
  * Settings card for the user-owned OpenAI key that unlocks Realtime live
- * voice (stage 4 of the direct-to-gateway migration).
+ * voice.
  *
  * The key is validated with one cheap authenticated call, then lives only in
  * platform secure storage. It is never displayed back, never logged, and

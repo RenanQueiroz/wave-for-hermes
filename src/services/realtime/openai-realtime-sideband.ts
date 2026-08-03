@@ -1,9 +1,8 @@
 /**
  * Sideband channel of an OpenAI Realtime call: the JSON event socket that
- * runs beside the WebRTC media connection. Ported from the retired companion for the
- * user-owned-key path (stage 4); the delivery rule it owns is response-safe
- * timing — a Hermes result is sent only when no model response and no user
- * speech is in progress, queued otherwise, exactly like the retired companion did.
+ * runs beside the WebRTC media connection. The delivery rule it owns is
+ * response-safe timing — a Hermes result is sent only when no model response
+ * and no user speech is in progress, queued otherwise.
  *
  * There is no interaction ledger: Realtime transcripts
  * are ephemeral, so no handoff metadata rides on responses.

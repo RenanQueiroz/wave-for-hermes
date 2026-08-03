@@ -1,6 +1,5 @@
 /**
- * The user's own OpenAI API key for Realtime voice (stage 4 of the
- * direct-to-gateway migration).
+ * The user's own OpenAI API key for Realtime voice.
  *
  * The key is device-only: platform secure storage, never backed up or
  * migrated (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`), never logged, and never sent

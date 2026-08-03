@@ -29,37 +29,8 @@ opt-in Realtime voice mode; it lives in platform secure storage and travels only
 Homelab owns the gateway deployment, private networks, routing, and secrets. This repository owns
 the mobile client and its normalized contracts.
 
-## The retired companion
-
-Wave originally shipped with a self-hosted Node.js middle tier (the Wave Companion) because of two
-hard external constraints: Hermes exposed a single server-wide API key with no scoped, revocable
-per-device credential, and OpenAI Realtime requires a trusted server to hold a standard key when
-that key must be hidden from the user.
-
-A review of the upstream `hermes-agent` repository (2026-08-01, desktop client plus
-`hermes_cli/web_server.py` and `tui_gateway`) found the first constraint had fallen and reframed
-the second:
-
-- The Hermes gateway implements first-class per-user authentication (native-app OAuth plus a
-  bundled password provider) and advertises supported flows through `auth_flows` on the public
-  `/api/status`.
-- The gateway runs speech server-side (`/api/audio/transcribe`, `/api/audio/speak`,
-  `/api/audio/speak-stream`) with STT/TTS providers and their keys held in server configuration.
-- Chat transport is `tui_gateway` JSON-RPC over WebSocket (`/api/ws`), with grace-windowed
-  detach/resume rather than the companion's sequence-numbered replay.
-
-**Decision (2026-08-01): retire the companion and connect Wave directly to the Hermes gateway.**
-The owner accepted the trade-offs explicitly: gateway sign-in replaces device pairing; the app
-gains the gateway's native voice mode (server-side STT/TTS) as the default voice path plus
-standalone dictation and message playback; OpenAI Realtime remains as an opt-in mode whose API
-key the user supplies and the app keeps in platform secure storage — the ephemeral-token server
-pattern exists to hide a business-owned key from end users, and in Wave the user owns the key;
-and grace-windowed resume replaces companion turn replay because a client that needs no separate
-deployment is worth that regression.
-
-The migration completed in five stages (recorded in `docs/roadmap.md`). Stage 5 removed the
-`companion/` workspace, the companion transport and credential store, the pairing flow, and the
-companion-only contracts. `npm run verify:boundaries` fails if a companion workspace reappears.
+Wave has no server-side application component of its own. `npm run verify:boundaries` fails if a
+Wave backend workspace, server-only credential plumbing, or forbidden backend import reappears.
 
 ## Workspace boundaries
 
