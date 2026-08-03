@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const IOS_BUNDLE_ID = 'com.renanqueiroz.wave';
 export const ANDROID_PACKAGE = 'com.renanqueiroz.wave';
 export const REQUIRED_NODE_MAJOR = 22;
-export const PINNED_APPIUM_MCP_VERSION = '1.90.0';
+export const PINNED_APPIUM_MCP_VERSION = '1.91.0';
 export const DEFAULT_TRACE_MAX_COUNT = 50;
 export const DEFAULT_TRACE_MAX_AGE_DAYS = 7;
 

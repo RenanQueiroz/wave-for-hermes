@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 
-import { loadConfig } from './config.js';
+import { loadConfig, PINNED_APPIUM_MCP_VERSION } from './config.js';
+
+const require = createRequire(import.meta.url);
+
+test('Appium MCP doctor pin matches the exact workspace dependency', () => {
+  const packageJson = require('../package.json') as {
+    dependencies?: Record<string, string>;
+  };
+  const declaredVersion = packageJson.dependencies?.['appium-mcp'];
+
+  assert.match(PINNED_APPIUM_MCP_VERSION, /^\d+\.\d+\.\d+$/);
+  assert.equal(PINNED_APPIUM_MCP_VERSION, declaredVersion);
+});
 
 test('loadConfig reads explicit native device selectors', () => {
   const config = loadConfig('/tmp/wave-mobile-agent-test', {
