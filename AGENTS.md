@@ -75,6 +75,12 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   streaming stays on the platform WebSocket with the gateway's JSON-RPC framing, normalized
   behind `src/services/gateway`.
 - Add analytics or crash reporting only after consent and retention are deliberately designed.
+- Open-source acknowledgements use the explicit `react-native-legal/app.plugin.js` config plugin
+  reference so Expo Tools resolves the same conventional entrypoint as Expo Prebuild. Keep its
+  scan configured with `devDepsMode: none`, `includeOptionalDeps: true`, and
+  `transitiveDepsMode: all` so native builds include runtime dependency notices without
+  development tooling. Re-run clean Prebuild and both native builds after changing the dependency
+  graph; do not replace the generated list with a hand-maintained one.
 - Install optional PanelUI peer dependencies only when an adopted component needs them.
 - PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
   version and never adopt beta/next/canary builds; the lockfile records the validated build, the

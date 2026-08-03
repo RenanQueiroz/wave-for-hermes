@@ -76,7 +76,15 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "react-native-legal/app.plugin.js",
+        {
+          "devDepsMode": "none",
+          "includeOptionalDeps": true,
+          "transitiveDepsMode": "all"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

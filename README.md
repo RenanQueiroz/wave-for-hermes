@@ -94,6 +94,8 @@ currently includes:
 - a persisted appearance setting pairing PanelUI's Panel, Moon, and Grass theme families with a
   separate system/light/dark choice, applied live across the app including native headers and the
   status bar;
+- a Settings legal card that opens native iOS and Android acknowledgements generated from the
+  production dependency graph during Prebuild;
 - automated dependency, import, configuration, and production-bundle boundary checks, including a
   production scanner that rejects key-shaped literals in shipped bundles.
 
@@ -150,9 +152,9 @@ files; the normal `npm run lint` handoff also runs `npm run format:check`, while
 The root is also the npm workspace root; `packages/contracts` builds with the root `npm run build`.
 
 Create and run a local development build when native dependencies change. The current client
-requires `react-native-webrtc`, `expo-secure-store`, `react-native-keyboard-controller`,
-`expo-image-picker`, `expo-document-picker`, and `expo-file-system`, so an older installed
-development client cannot run it:
+requires `react-native-webrtc`, `react-native-legal`, `expo-secure-store`,
+`react-native-keyboard-controller`, `expo-image-picker`, `expo-document-picker`, and
+`expo-file-system`, so an older installed development client cannot run it:
 
 ```bash
 npx expo prebuild --clean
@@ -298,6 +300,14 @@ npm test
 - [OpenAI Realtime API](https://developers.openai.com/api/docs/guides/realtime)
 - [Realtime WebRTC connection guide](https://developers.openai.com/api/docs/guides/realtime-webrtc)
 - [Realtime server-side controls](https://developers.openai.com/api/docs/guides/realtime-server-controls)
+- [React Native Legal](https://github.com/callstackincubator/react-native-legal)
 - [Wave architecture and workspace boundaries](./docs/architecture.md)
 - [Hermes connectivity contract](./docs/hermes-connectivity.md)
 - [WebRTC foundation and validation](./docs/webrtc-foundation.md)
+
+## License
+
+Wave is available under the [MIT License](./LICENSE). The license retains the copyright notices
+for Expo starter material and the official Expo skills committed in this repository. Third-party
+software included in native builds keeps its own license; users can review those acknowledgements
+from **Settings → Legal → Open-source licenses**.

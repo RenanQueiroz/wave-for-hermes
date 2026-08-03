@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import { Button, Card, Item, Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
+import { ReactNativeLegal } from 'react-native-legal';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
@@ -59,6 +60,8 @@ export function SettingsScreen() {
 
         <AppearanceCard />
 
+        <LegalCard />
+
         <DevelopmentCard
           onOpenDevelopment={() => router.push('/development')}
         />
@@ -69,6 +72,30 @@ export function SettingsScreen() {
         </Typography.Paragraph>
       </ScrollView>
     </View>
+  );
+}
+
+function LegalCard() {
+  return (
+    <Card testID="legal-card">
+      <Card.Header>
+        <Card.Title>Legal</Card.Title>
+        <Card.Description>
+          Review the open-source software and licenses included in this build.
+        </Card.Description>
+      </Card.Header>
+      <Card.Footer>
+        <Button
+          accessibilityLabel="View open-source licenses"
+          variant="outline"
+          testID="open-source-licenses"
+          onPress={() =>
+            ReactNativeLegal.launchLicenseListScreen('Open-source licenses')
+          }>
+          Open-source licenses
+        </Button>
+      </Card.Footer>
+    </Card>
   );
 }
 
