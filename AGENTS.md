@@ -85,6 +85,10 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
   version and never adopt beta/next/canary builds; the lockfile records the validated build, the
   manifest records the policy.
+- `react-native-keyboard-controller` 1.22.2 is a deliberate SDK 57 compatibility exception: Expo's
+  bundled dependency map still recommends 1.21.9, so keep the exact application version listed in
+  `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
+  and remove the exclusion once Expo's supported version catches up.
 
 ## UI system
 

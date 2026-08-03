@@ -34,11 +34,11 @@
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.1",
     "expo-system-ui": "~57.0.2",
-    "panelui-native": "^0.30.0",
+    "panelui-native": "^0.38.0",
     "react": "19.2.3",
     "react-native": "0.86.2",
     "react-native-gesture-handler": "~2.32.0",
-    "react-native-keyboard-controller": "1.21.9",
+    "react-native-keyboard-controller": "1.22.2",
     "react-native-legal": "^1.6.3",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
@@ -50,7 +50,7 @@
     "uniwind": "^1.10.0"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
+    "@types/react": "~19.2.4",
     "cross-env": "^10.1.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.1",
@@ -60,6 +60,11 @@
     "typescript": "~6.0.3"
   },
   "expo": {
+    "install": {
+      "exclude": [
+        "react-native-keyboard-controller"
+      ]
+    },
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [
