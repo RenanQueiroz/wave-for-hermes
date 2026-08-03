@@ -20,6 +20,9 @@ administration console.
   redirect, activity, event-stream, and speech behavior against v0.20.
 - Replace v0.19-only assumptions in the gateway adapter with measured capabilities and safe
   attempt-and-degrade behavior. Older gateways must continue to support the current feature set.
+- Normalize the active agent's hydrated `session.info.tools` into a small, in-memory set of
+  Wave-owned capability categories. Raw tool/skill metadata, configuration, paths, and peer details
+  never leave `src/services/gateway` or enter an OpenAI prompt.
 - Add credential-free protocol fixtures and update [`hermes-connectivity.md`](./hermes-connectivity.md)
   when the v0.20 behavior has been verified rather than inferred from source.
 
@@ -68,6 +71,13 @@ remains Wave's full-duplex mode.
 
 ### Improve OpenAI Realtime behavior
 
+- Let the user choose from Wave's explicit supported-model list:
+  `gpt-realtime-2.1-mini` (the default) or `gpt-realtime-2.1`. Wave will not dynamically fetch a
+  model catalog or accept arbitrary model ids; changing the preference applies to the next call.
+- Give Realtime a bounded, Wave-authored summary of the active Hermes agent's normalized capability
+  categories so it can route work more intelligently through `ask_hermes`. Treat the summary as
+  hints rather than guarantees, and never expose raw tools, skills, MCP/A2A metadata, or additional
+  Hermes functions directly to OpenAI.
 - Refine the Realtime prompt for unclear audio, background speech and silence, within-utterance
   self-correction, literal values, concise preambles, and tool failures.
 - Add deterministic whole-utterance Stop handling without persisting the transcript.
