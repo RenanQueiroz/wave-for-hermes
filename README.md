@@ -168,6 +168,30 @@ Native identifiers are configured in `app.json`:
 - iOS bundle identifier: `com.renanqueiroz.wave`
 - Android application ID: `com.renanqueiroz.wave`
 
+### Standalone and EAS builds
+
+The repository requires EAS CLI 21.4.0 or newer and defines three profiles in `eas.json`:
+
+| Profile       | Purpose                                                                        |
+| ------------- | ------------------------------------------------------------------------------ |
+| `development` | Installable development client; native code is included, but Metro is required |
+| `preview`     | Internally distributed release build; Android produces a standalone APK        |
+| `production`  | Store build; Android uses the default AAB output                               |
+
+Sign in to Expo once, then create a local Android preview APK:
+
+```bash
+npx eas-cli@21.4.0 login
+npx eas-cli@21.4.0 build --platform android --profile preview --local \
+  --output ./artifacts/wave-preview.apk
+```
+
+The preview profile embeds the production JavaScript bundle, so the resulting APK runs on a
+device without Metro. The first EAS invocation may prompt to create or link the Expo project and
+set up Android signing credentials. Local builds still contact EAS for project and credential
+metadata, and require the Android SDK and NDK on the build machine. Build outputs under
+`artifacts/` are intentionally ignored; credentials and signing files must never be committed.
+
 Android release builds enable R8 code minification and resource shrinking through the
 `expo-build-properties` config plugin. These optimizations intentionally do not apply to
 development clients, which include Metro and debugging infrastructure and are therefore

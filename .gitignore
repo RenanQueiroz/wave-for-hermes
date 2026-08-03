@@ -51,3 +51,6 @@ example
 
 # local mobile-agent artifacts
 /.mobile-agent/
+
+# local EAS build artifacts
+/artifacts/

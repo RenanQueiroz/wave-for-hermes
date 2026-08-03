@@ -46,6 +46,9 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   versions.
 - Run `npx expo install --check` after dependency changes.
 - Treat `app.json` as the source of truth for app configuration and native identifiers.
+- Treat `eas.json` as the source of truth for EAS build profiles: `development` is a Metro-backed
+  development client, `preview` is an internally distributed standalone APK on Android, and
+  `production` keeps the store defaults. Never commit EAS credentials or local build artifacts.
 - The generated `ios/` and `android/` directories are ignored. Make durable native changes through
   app configuration or config plugins unless the project explicitly changes that policy.
 
