@@ -48,7 +48,9 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - Treat `app.json` as the source of truth for app configuration and native identifiers.
 - Treat `eas.json` as the source of truth for EAS build profiles: `development` is a Metro-backed
   development client, `preview` is an internally distributed standalone APK on Android, and
-  `production` keeps the store defaults. Never commit EAS credentials or local build artifacts.
+  `production` keeps the store defaults. Every root package script that invokes `eas build` must
+  pass `--local`; do not add cloud-build aliases or a generic EAS wrapper that can bypass this
+  policy. Never commit EAS credentials or local build artifacts.
 - The generated `ios/` and `android/` directories are ignored. Make durable native changes through
   app configuration or config plugins unless the project explicitly changes that policy.
 
@@ -264,7 +266,7 @@ documentation before implementing UI.
 Run checks proportional to the change. The normal repository handoff is:
 
 ```bash
-npm run build
+npm run build:contracts
 npm test
 npm run lint
 npm run typecheck

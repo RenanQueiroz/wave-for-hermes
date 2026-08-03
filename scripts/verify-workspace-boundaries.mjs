@@ -38,6 +38,15 @@ const rootPackage = await readJson('package.json');
 const contractsPackage = await readJson('packages/contracts/package.json');
 const claudeGuide = await readFile(join(projectRoot, 'CLAUDE.md'), 'utf8');
 
+for (const [name, command] of Object.entries(rootPackage.scripts ?? {})) {
+  if (!/\b(?:eas|eas-cli(?:@\S+)?)\s+build\b/.test(command)) continue;
+  if (!/(?:^|\s)--local(?:\s|$)/.test(command)) {
+    throw new Error(
+      `Root EAS build script ${name} must use --local; cloud builds are not allowed.`,
+    );
+  }
+}
+
 if (claudeGuide !== '@AGENTS.md\n') {
   throw new Error(
     'CLAUDE.md must contain exactly @AGENTS.md followed by a newline.',

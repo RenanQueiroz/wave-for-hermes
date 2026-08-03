@@ -247,7 +247,7 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
 Run the complete workspace checks from the repository root:
 
 ```bash
-npm run build
+npm run build:contracts
 npm test
 npm run lint
 npm run typecheck

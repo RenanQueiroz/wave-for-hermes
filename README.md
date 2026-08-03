@@ -149,7 +149,8 @@ Repository formatting is defined by `prettier.config.js`. Run `npm run format` t
 files; the normal `npm run lint` handoff also runs `npm run format:check`, while
 `eslint-config-prettier` keeps ESLint's style rules from conflicting with Prettier.
 
-The root is also the npm workspace root; `packages/contracts` builds with the root `npm run build`.
+The root is also the npm workspace root; compile `packages/contracts` with
+`npm run build:contracts`.
 
 Create and run a local development build when native dependencies change. The current client
 requires `react-native-webrtc`, `react-native-legal`, `expo-secure-store`,
@@ -178,18 +179,22 @@ The repository requires EAS CLI 21.4.0 or newer and defines three profiles in `e
 | `preview`     | Internally distributed release build; Android produces a standalone APK        |
 | `production`  | Store build; Android uses the default AAB output                               |
 
-Sign in to Expo once, then create a local Android preview APK:
+Sign in to Expo once, then use the local-only build scripts:
 
 ```bash
 npx eas-cli@21.4.0 login
-npx eas-cli@21.4.0 build --platform android --profile preview --local \
-  --output ./artifacts/wave-preview.apk
+npm run build:preview:android:local
+npm run build:production:android:local
+npm run build:production:ios:local
 ```
 
-The preview profile embeds the production JavaScript bundle, so the resulting APK runs on a
-device without Metro. The first EAS invocation may prompt to create or link the Expo project and
-set up Android signing credentials. Local builds still contact EAS for project and credential
-metadata, and require the Android SDK and NDK on the build machine. Build outputs under
+The preview command writes an installable `artifacts/wave-preview.apk` with the production
+JavaScript bundle embedded, so it runs without Metro. The production commands write
+`artifacts/wave-production.aab` for Google Play and `artifacts/wave-production.ipa` for App Store
+distribution. Every repository EAS build command passes `--local`; there are no cloud-build
+aliases. The first invocation may prompt to create or link the Expo project and configure signing
+credentials. Local builds still contact EAS for project and credential metadata, require the
+platform toolchain on the build machine, and never use Expo's cloud builders. Build outputs under
 `artifacts/` are intentionally ignored; credentials and signing files must never be committed.
 
 Android release builds enable R8 code minification and resource shrinking through the
@@ -258,7 +263,7 @@ record, automation hooks, and remaining physical-device gates.
 Run these before handing off a change:
 
 ```bash
-npm run build
+npm run build:contracts
 npm test
 npm run lint
 npm run typecheck
