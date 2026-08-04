@@ -5,6 +5,7 @@ import { isOfflineLikeWaveError } from '../../src/services/query/offline-error.t
 import {
   createWaveQueryPersister,
   shouldPersistWaveQuery,
+  WAVE_QUERY_CACHE_BUSTER,
   type WaveQueryCacheStorage,
 } from '../../src/services/query/wave-query-persister.ts';
 import { WaveBackendError } from '../../src/services/wave/wave-backend-error.ts';
@@ -27,7 +28,7 @@ test('persists, restores, and removes the dehydrated cache', async () => {
   const { current, storage } = memoryStorage();
   const persister = createWaveQueryPersister(storage);
   const client = {
-    buster: 'wave-query-cache-v1',
+    buster: WAVE_QUERY_CACHE_BUSTER,
     // A non-empty state: an empty one is deliberately not written (see the
     // "never overwrites a cached document with an empty one" test).
     clientState: {
@@ -92,7 +93,7 @@ test('never overwrites a cached document with an empty one', async () => {
   // dehydrated state, and persisting that empty state would erase exactly the
   // conversations the cache exists to keep readable.
   const cached = JSON.stringify({
-    buster: 'wave-query-cache-v1',
+    buster: WAVE_QUERY_CACHE_BUSTER,
     clientState: { mutations: [], queries: [{ queryKey: ['wave'] }] },
     timestamp: 1,
   });
@@ -100,14 +101,14 @@ test('never overwrites a cached document with an empty one', async () => {
   const persister = createWaveQueryPersister(storage);
 
   await persister.persistClient({
-    buster: 'wave-query-cache-v1',
+    buster: WAVE_QUERY_CACHE_BUSTER,
     clientState: { mutations: [], queries: [] },
     timestamp: 2,
   });
   assert.equal(current(), cached, 'an empty persist must be a no-op');
 
   await persister.persistClient({
-    buster: 'wave-query-cache-v1',
+    buster: WAVE_QUERY_CACHE_BUSTER,
     clientState: { mutations: [], queries: [{ queryKey: ['wave', 'next'] }] },
     timestamp: 3,
   });

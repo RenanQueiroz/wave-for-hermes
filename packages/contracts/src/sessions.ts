@@ -22,12 +22,34 @@ const WaveAttachmentNameSchema = z
     'Attachment names cannot contain control characters.',
   );
 
+export const WaveSessionLiveStatusSchema = z.enum([
+  'idle',
+  'starting',
+  'waiting',
+  'working',
+]);
+
+/**
+ * Wave-owned presentation categories for Hermes's open-ended `source` field.
+ * New upstream identifiers must fall back to `other` rather than crossing the
+ * protocol boundary or disappearing from the conversation list.
+ */
+export const WaveSessionSourceSchema = z.enum([
+  'automation',
+  'chat',
+  'external',
+  'other',
+]);
+
 export const WaveSessionSummarySchema = z
   .object({
     id: WaveIdentifierSchema,
     lastActiveAt: WaveIsoDateTimeSchema.optional(),
+    liveStatus: WaveSessionLiveStatusSchema.default('idle'),
     messageCount: z.number().int().nonnegative().optional(),
+    pinned: z.boolean().default(false),
     preview: z.string().max(1_000).optional(),
+    source: WaveSessionSourceSchema.default('chat'),
     startedAt: WaveIsoDateTimeSchema.optional(),
     title: z.string().trim().min(1).max(300).optional(),
     toolCallCount: z.number().int().nonnegative().optional(),
@@ -176,13 +198,6 @@ export const WaveRedirectTurnResponseSchema = WaveResponseMetadataSchema.extend(
   },
 ).strict();
 
-export const WaveSessionLiveStatusSchema = z.enum([
-  'idle',
-  'starting',
-  'waiting',
-  'working',
-]);
-
 export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
   activeTurn: z
     .object({
@@ -223,5 +238,6 @@ export type WaveSessionListResponse = z.infer<
 export type WaveSessionResponse = z.infer<typeof WaveSessionResponseSchema>;
 export type WaveSessionSummary = z.infer<typeof WaveSessionSummarySchema>;
 export type WaveSessionLiveStatus = z.infer<typeof WaveSessionLiveStatusSchema>;
+export type WaveSessionSource = z.infer<typeof WaveSessionSourceSchema>;
 export type WaveTurnInput = z.infer<typeof WaveTurnInputSchema>;
 export type WaveTurnInputPart = z.infer<typeof WaveTurnInputPartSchema>;

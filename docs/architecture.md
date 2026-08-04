@@ -62,7 +62,8 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
 `src/services/query`, `src/services/realtime`, `src/services/sessions`, and `src/services/wave`:
 
 - `src/services/gateway` is the only production backend transport: REST for the session list,
-  timeline, rename, delete, and history; one WebSocket per turn carrying JSON-RPC for streaming;
+  timeline, pin/unpin, rename, delete, and history; one WebSocket per turn carrying JSON-RPC for
+  streaming;
   and normalization of every gateway shape into Wave contracts before it reaches a screen. It
   synthesizes the monotonic sequence numbers and turn identity the chat reducer expects, holds
   session tokens as opaque device-only values, and persists the rotated pair the gateway returns
@@ -151,9 +152,13 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   screen lives in that stack, so screens get native headers, push transitions, and swipe-back,
   while the drawer stays a conversation switcher rather than a sibling navigator. Cold launch
   and **New conversation** create a Hermes session immediately; sticky top actions provide new
-  and title search; paginated account history fills the middle; Settings and Disconnect stay
-  fixed at the bottom. Rename/delete use typed lifecycle mutations, and a deleted current
-  session routes to a new conversation.
+  and title/message search. Paginated account history fills the middle with a server-owned Pinned
+  section followed by Today / Yesterday / Previous 7 days / Older groups. Chats is the quiet
+  default; Activity includes normalized automation, messaging/A2A, and unknown future sources;
+  All makes every user-facing top-level row reachable. Hermes excludes internal child sessions.
+  Pin/unpin, rename, and delete use typed non-retrying lifecycle mutations; pinning updates every
+  paginated cache occurrence optimistically, rolls back an error, and reconciles with the server.
+  A deleted current session routes to a new conversation.
 - The PanelUI chat route renders normalized conversation data only. Tool events become bounded
   `Task` parts with a name, status, and optional raw input/output. Disclosures start collapsed
   and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs, run IDs,
@@ -185,6 +190,8 @@ automatically retries an ambiguous mutation.
 - the literal Wave API version (`v1`) and strict response metadata;
 - stable safe error codes and the normalized error shape;
 - paginated session, history, cursor-paginated unified timeline, and cancellation responses;
+  session summaries contain only Wave-owned `chat | automation | external | other` source
+  categories plus normalized pin and live-status fields;
 - attachment-aware turn input parts with strict bounds (four attachments, 4 MB decoded per
   image, 128,000 characters per text file);
 - a strict discriminated union of ordered normalized turn events, including mid-turn prompt
@@ -213,7 +220,9 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
 - The query cache is persisted to one sandboxed cache file so previously viewed sessions and
   timelines stay readable offline. Successful session-list and timeline reads plus at most 32
   accepted correction-journal rows per session dehydrate; entries expire after seven days or a
-  cache-buster bump, and sign-in and sign-out purge the file alongside the in-memory cache.
+  cache-buster bump, and sign-in and sign-out purge the file alongside the in-memory cache. The
+  session-organization contract bumped the cache generation so legacy rows without normalized
+  pin/source/live-status fields cannot hydrate into the new UI.
   Persist writes go through a sibling temp file renamed into place so an interrupted write can
   never truncate the document, and a document that fails to parse on restore is deleted rather
   than left permanently unreadable. A connectivity-shaped refetch failure over cached data

@@ -14,7 +14,9 @@ export interface WaveQueryCacheStorage {
 }
 
 /** Bump to invalidate every previously persisted cache. */
-export const WAVE_QUERY_CACHE_BUSTER = 'wave-query-cache-v1';
+// v2 invalidates rows persisted before normalized source/pin/live-status
+// fields became part of every WaveSessionSummary.
+export const WAVE_QUERY_CACHE_BUSTER = 'wave-query-cache-v2';
 export const WAVE_QUERY_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 
 /**

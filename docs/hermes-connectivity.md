@@ -42,7 +42,8 @@ absent or malformed.
   or weakens conflict checks.
 - **Cancellation** must go through the live transport sid. A user Stop is reported as a
   cancellation, not a connection loss.
-- **REST**: paginated session list, `/messages` history, rename, delete, and full-text search.
+- **REST**: paginated session list, `/messages` history, pin/unpin, rename, delete, and full-text
+  search.
   Search covers message content only — the gateway does not index titles, so Wave layers title
   matching client-side. `/messages?limit=` keeps the _oldest_ rows, so the timeline pages from
   the newest end with bounded probes when the count is unknown. v0.20 caps session pages at 100
@@ -58,8 +59,15 @@ absent or malformed.
   persist an ordinary user row; tool-time redirects use safe tool-result steering and may omit a
   distinct HTTP row, so Wave keeps only gateway-accepted text in its bounded account-scoped cache
   and restores that row after reload. It never recognizes correction text from untrusted tool
-  output. Server-owned `pinned` and `source` session-row fields remain staged for conversation
-  organization.
+  output.
+- **v0.20 organization**: `pinned` is durable server metadata changed with one non-retrying
+  `PATCH /api/sessions/{id}` and reconciled after an optimistic mobile projection. Wave requests
+  recent top-level rows, advances pagination by the server page limit so pin backfills cannot skip
+  ordinary rows, and leaves upstream-internal child sessions excluded. The open-ended `source`
+  value becomes only `chat`, `automation`, `external`, or `other`; missing v0.19 metadata defaults
+  to an unpinned idle chat, and unknown future values remain reachable in Activity/All. The legacy
+  list `is_active` heuristic means "recent and not ended", so Wave does not misreport it as a
+  running turn; only an exact reviewed phase becomes list liveness.
 - **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed
   final can replace that segment once without duplicating it. `tool.progress` updates the existing
   named Task with one bounded preview. Only reviewed compaction, goal, process, and ready states
@@ -156,3 +164,7 @@ The 2026-08-03 live probe used only uniquely titled scratch conversations, recor
 frame names rather than request payloads or identifiers, and removed each scratch row after
 verifying its exact title. It did not read ordinary conversation history, secrets, gateway
 configuration, tool/skill metadata, MCP state, or A2A data.
+
+The Stage 3 organization probe used one uniquely marked scratch conversation: iOS pinned it,
+Android observed the server-owned pin and unpinned it, and iOS reconciled that change after
+refocus. An exact account search then confirmed that the scratch conversation had been deleted.

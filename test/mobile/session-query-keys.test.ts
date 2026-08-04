@@ -104,7 +104,12 @@ test('merges title matches ahead of gateway content matches', () => {
   assert.equal(merged[0].snippet, undefined);
   assert.equal(merged[1].snippet, 'ship the deployment friday');
   // A content hit outside the loaded list still shows, with what we know.
-  assert.deepEqual(merged[2].session, { id: 's9' });
+  assert.deepEqual(merged[2].session, {
+    id: 's9',
+    liveStatus: 'idle',
+    pinned: false,
+    source: 'chat',
+  });
 
   // An empty query lists everything as-is.
   assert.deepEqual(

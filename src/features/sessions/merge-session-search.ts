@@ -62,7 +62,12 @@ export function mergeSessionSearchResults({
     claimed.add(match.sessionId);
     results.push({
       matchedOn: 'content',
-      session: byId.get(match.sessionId) ?? { id: match.sessionId },
+      session: byId.get(match.sessionId) ?? {
+        id: match.sessionId,
+        liveStatus: 'idle',
+        pinned: false,
+        source: 'chat',
+      },
       ...(match.snippet ? { snippet: match.snippet } : {}),
     });
   }

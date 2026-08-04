@@ -31,7 +31,7 @@ Trust is deliberately split:
    messages or execute content-derived behavior.
 
 A signed-in device intentionally has account-level conversation access: it can read, continue,
-rename, and delete the same top-level Hermes sessions as any other signed-in client. Sign-in is
+pin, rename, and delete the same top-level Hermes sessions as any other signed-in client. Sign-in is
 therefore equivalent to granting access to that Hermes account, not to one conversation.
 
 ### The user-owned OpenAI key
@@ -132,6 +132,9 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   policy).
 - Finite retryable reads retry at most twice with bounded exponential jitter; mutations and
   active streams never retry automatically after an ambiguous failure.
+- Pin/unpin is one fixed typed PATCH with a boolean body. The UI may project the choice
+  optimistically, but rolls it back on failure and reconciles from Hermes; it never retries an
+  ambiguous PATCH or treats the optimistic row as server confirmation.
 
 ### Sensitive-data disclosure
 
@@ -143,6 +146,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - Hermes lifecycle frames are allowlisted into short Wave-owned ephemeral states. Raw status
   payloads, hidden reasoning, and unreviewed progress fields never enter the render model or
   persisted timeline; the stale-working label is a local time-based presentation hint only.
+- Session source identifiers are open-ended untrusted metadata. The gateway boundary collapses
+  reviewed identifiers into `chat`, `automation`, or `external` and uses `other` for everything
+  else; raw source strings, peer URLs, credentials, Agent Cards, audit paths, and A2A configuration
+  never enter the render or persisted contract. Unknown sources stay reachable in Activity/All.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
   provider identifiers are persisted anywhere. Work delegated through `ask_hermes` lands as
   ordinary turns in canonical Hermes history.

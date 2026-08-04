@@ -7,23 +7,11 @@ voice with typed `ask_hermes` delegation. Current behavior and completed work be
 and the focused architecture, connectivity, security, and WebRTC documents; this roadmap tracks
 only work that remains.
 
-## Now: adopt Hermes v0.20 conversation behavior
+## Now: improve voice latency and correction
 
-[Hermes Agent v0.20](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) adds
-active-turn redirects, richer stream and liveness events, server-owned session organization,
-clause-streamed speech, signed outbound webhooks, and Agent-to-Agent support. Wave will adopt the
-conversation capabilities that improve a focused mobile client without becoming a Hermes
+[Hermes Agent v0.20](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) also adds
+clause-streamed speech and conversation capabilities Wave can adopt without becoming a Hermes
 administration console.
-
-### 1. Organize every user-facing conversation
-
-- Adopt server-owned pins, source metadata, date groups, and richer liveness.
-- Keep all user-facing top-level sources discoverable, including A2A and automation-created
-  conversations, while separating ordinary Chats from Automations and external activity.
-- Represent delegated-agent activity through the existing bounded Task model. Do not expose A2A
-  peers, credentials, Agent Cards, audit data, or configuration.
-
-## Next: improve voice latency and correction
 
 ### Stream gateway speech safely
 

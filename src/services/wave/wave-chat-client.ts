@@ -70,6 +70,13 @@ export interface WaveChatClient {
     input?: { limit?: number; offset?: number },
     signal?: AbortSignal,
   ): Promise<WaveSessionPage>;
+  setSessionPinned(
+    sessionId: string,
+    pinned: boolean,
+    signal?: AbortSignal,
+  ): Promise<
+    WaveSessionResponse | { session: { id: string; pinned: boolean } }
+  >;
   redirectTurn(
     sessionId: string,
     text: string,

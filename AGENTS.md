@@ -10,7 +10,7 @@ reasoning layer; never require the user to address them as separate entities.
 Keep the product focused:
 
 - Build conversation and live-voice experiences.
-- Let the signed-in user browse, search, rename, delete, and continue every top-level
+- Let the signed-in user browse, search, pin, rename, delete, and continue every top-level
   conversation exposed by their Hermes server.
 - Do not add generic proxying, operational status surfaces, or operational mutations.
 - Do not add Hermes configuration, provider/model management, skill administration, or server
@@ -224,6 +224,12 @@ documentation before implementing UI.
   session with an active turn or Realtime call must fail explicitly — and where the backend does
   not enforce that itself, the client does, using the backend's own liveness signal rather than
   local state alone.
+- Keep server-owned pins and source organization behind the typed client and normalized Wave
+  contracts. Raw Hermes source identifiers never reach screens: map reviewed identifiers to
+  `chat`, `automation`, or `external`, preserve `other` as the future-compatible reachable
+  fallback, and never exclude a user-facing top-level row merely because its source is unknown.
+  Pin/unpin is an ambiguous mutation: send it once, project it optimistically only with rollback,
+  and reconcile from the server.
 - Turn attachments use strict Wave parts. Mobile may send up to four bounded inline images or
   bounded text-file contents with a non-empty message. Reject unsupported binary documents before
   dispatch and never expose a generic Hermes upload or filesystem endpoint.

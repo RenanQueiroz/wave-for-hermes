@@ -1,9 +1,14 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 import type { WaveSessionSummary } from '@wave/contracts';
 import { usePathname, useRouter } from 'expo-router';
 import type { DrawerContentComponentProps } from 'expo-router/drawer';
 import {
   Alert,
+  BookmarkIcon,
   Button,
   Dialog,
   EllipsisIcon,
@@ -19,7 +24,7 @@ import {
   Typography,
 } from 'panelui-native';
 import type { ReactNode } from 'react';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,9 +42,27 @@ import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
+import { setWaveSessionPinnedInPages } from '@/features/sessions/session-page-cache';
+import {
+  organizeWaveSessions,
+  type WaveSessionFilter,
+  type WaveSessionSectionId,
+} from '@/features/sessions/session-organization';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
-import type { WaveChatClient } from '@/services/wave/wave-chat-client';
+import type {
+  WaveChatClient,
+  WaveSessionPage,
+} from '@/services/wave/wave-chat-client';
+
+type DrawerSessionListItem =
+  | {
+      id: string;
+      kind: 'section';
+      label: string;
+      sectionId: WaveSessionSectionId;
+    }
+  | { id: string; kind: 'session'; session: WaveSessionSummary };
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
   const connection = useWaveConnection();
@@ -96,6 +119,29 @@ function ConnectedWaveDrawerContent({
     () => flattenWaveSessions(sessionsQuery.data),
     [sessionsQuery.data],
   );
+  const [sessionFilter, setSessionFilter] =
+    useState<WaveSessionFilter>('chats');
+  const organizedSessions = useMemo(
+    () => organizeWaveSessions(sessions, sessionFilter),
+    [sessionFilter, sessions],
+  );
+  const sessionListItems = useMemo<DrawerSessionListItem[]>(
+    () =>
+      organizedSessions.flatMap((section) => [
+        {
+          id: `section-${section.id}`,
+          kind: 'section' as const,
+          label: section.label,
+          sectionId: section.id,
+        },
+        ...section.sessions.map((session) => ({
+          id: `session-${session.id}`,
+          kind: 'session' as const,
+          session,
+        })),
+      ]),
+    [organizedSessions],
+  );
   const [localError, setLocalError] = useState<string>();
   const [renameSession, setRenameSession] = useState<WaveSessionSummary>();
   const [renameTitle, setRenameTitle] = useState('');
@@ -137,6 +183,42 @@ function ConnectedWaveDrawerContent({
       }
     },
   });
+  const pinMutation = useMutation({
+    mutationFn: ({
+      pinned,
+      sessionId,
+    }: {
+      pinned: boolean;
+      sessionId: string;
+    }) => client.setSessionPinned(sessionId, pinned),
+    onMutate: async ({ pinned, sessionId }) => {
+      await queryClient.cancelQueries({ queryKey: sessionsKey });
+      const previous =
+        queryClient.getQueryData<InfiniteData<WaveSessionPage>>(sessionsKey);
+      queryClient.setQueryData<InfiniteData<WaveSessionPage>>(
+        sessionsKey,
+        (current) => setWaveSessionPinnedInPages(current, sessionId, pinned),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(sessionsKey, context.previous);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionsKey });
+    },
+  });
+  const pinningSessionId = pinMutation.isPending
+    ? pinMutation.variables?.sessionId
+    : undefined;
+  const mutatePin = pinMutation.mutate;
+  const toggleSessionPin = useCallback(
+    (session: WaveSessionSummary) =>
+      mutatePin({ pinned: !session.pinned, sessionId: session.id }),
+    [mutatePin],
+  );
   const disconnectMutation = useMutation({
     mutationFn: disconnect,
     onSuccess: (disconnected) => {
@@ -174,18 +256,42 @@ function ConnectedWaveDrawerContent({
     setRenameSession(session);
     setRenameTitle(sessionTitle(session));
   }, []);
-  const renderSession = useCallback(
-    ({ item }: { item: WaveSessionSummary }) => (
-      <DrawerSessionItem
-        session={item}
-        onDelete={setDeleteSession}
-        onOpen={openSession}
-        onRename={startRename}
-      />
-    ),
-    [openSession, startRename],
+  // A page can contain only sources outside the selected filter. Keep paging
+  // an actually empty filtered list so an older matching conversation cannot
+  // become unreachable just because no row exists to trigger onEndReached.
+  useEffect(() => {
+    if (
+      sessionListItems.length === 0 &&
+      sessionsQuery.hasNextPage &&
+      !sessionsQuery.isFetchingNextPage
+    ) {
+      void sessionsQuery.fetchNextPage();
+    }
+  }, [sessionListItems.length, sessionsQuery]);
+  const renderSessionListItem = useCallback(
+    ({ item }: { item: DrawerSessionListItem }) =>
+      item.kind === 'section' ? (
+        <Typography.Paragraph
+          muted
+          className="px-3 pb-1 pt-3 text-xs uppercase"
+          testID={`drawer-section-${item.sectionId}`}>
+          {item.label}
+        </Typography.Paragraph>
+      ) : (
+        <DrawerSessionItem
+          pinning={pinningSessionId === item.session.id}
+          selected={pathname.includes(item.session.id)}
+          session={item.session}
+          onDelete={setDeleteSession}
+          onOpen={openSession}
+          onPin={toggleSessionPin}
+          onRename={startRename}
+        />
+      ),
+    [openSession, pathname, pinningSessionId, startRename, toggleSessionPin],
   );
-  const mutationError = renameMutation.error ?? deleteMutation.error;
+  const mutationError =
+    renameMutation.error ?? deleteMutation.error ?? pinMutation.error;
   const errorMessage =
     localError ??
     (mutationError ? drawerErrorMessage(mutationError) : undefined);
@@ -243,8 +349,9 @@ function ConnectedWaveDrawerContent({
           className="flex-1"
           contentContainerClassName="px-2 py-3"
           contentInsetAdjustmentBehavior="automatic"
-          data={sessions}
-          keyExtractor={(session) => session.id}
+          data={sessionListItems}
+          getItemType={(item) => item.kind}
+          keyExtractor={(item) => item.id}
           ListEmptyComponent={
             sessionsQuery.isPending ? (
               <View className="items-center py-8">
@@ -252,20 +359,19 @@ function ConnectedWaveDrawerContent({
               </View>
             ) : (
               <Typography.Paragraph muted className="px-3 py-6">
-                No previous conversations.
+                {emptySessionFilterMessage(sessionFilter)}
               </Typography.Paragraph>
             )
           }
           ListHeaderComponent={
             <>
-              <Typography.Paragraph
-                muted
-                className="px-3 pb-2 text-xs uppercase">
-                Chats
-              </Typography.Paragraph>
+              <DrawerSessionFilters
+                value={sessionFilter}
+                onChange={setSessionFilter}
+              />
               {showingCachedSessions ? (
                 <OfflineNotice
-                  label="Offline — showing cached chats"
+                  label="Offline — showing cached conversations"
                   testID="drawer-offline-notice"
                 />
               ) : null}
@@ -281,7 +387,7 @@ function ConnectedWaveDrawerContent({
           }}
           onEndReachedThreshold={0.5}
           refreshing={sessionsQuery.isRefetching}
-          renderItem={renderSession}
+          renderItem={renderSessionListItem}
           onRefresh={() => void sessionsQuery.refetch()}
         />
       </ScrollFade>
@@ -423,14 +529,20 @@ function ConnectedWaveDrawerContent({
 // Memoized because the drawer re-renders on every dialog keystroke and
 // mutation, and an inline row would rebuild the whole visible list each time.
 const DrawerSessionItem = memo(function DrawerSessionItem({
+  pinning,
+  selected,
   session,
   onDelete,
   onOpen,
+  onPin,
   onRename,
 }: {
+  pinning: boolean;
+  selected: boolean;
   session: WaveSessionSummary;
   onDelete: (session: WaveSessionSummary) => void;
   onOpen: (sessionId: string) => Promise<void>;
+  onPin: (session: WaveSessionSummary) => void;
   onRename: (session: WaveSessionSummary) => void;
 }) {
   // Resets when the recycled row is reused for another session, so an open
@@ -438,10 +550,11 @@ const DrawerSessionItem = memo(function DrawerSessionItem({
   const [menuOpen, setMenuOpen] = useRecyclingState(false);
 
   return (
-    <Item size="sm">
+    <Item size="sm" variant={selected ? 'muted' : 'default'}>
       <Pressable
         accessibilityLabel={`Open conversation ${sessionTitle(session)}`}
         accessibilityRole="button"
+        accessibilityState={{ selected }}
         className="min-w-0 flex-1"
         testID={`drawer-session-${session.id}`}
         onPress={() => void onOpen(session.id)}>
@@ -452,6 +565,14 @@ const DrawerSessionItem = memo(function DrawerSessionItem({
           </Item.Description>
         </Item.Content>
       </Pressable>
+      {session.pinned ? (
+        <Item.Media
+          variant="icon"
+          accessibilityLabel="Pinned conversation"
+          testID={`drawer-session-pinned-${session.id}`}>
+          <BookmarkIcon size={15} />
+        </Item.Media>
+      ) : null}
       <Item.Actions>
         <Menu haptics open={menuOpen} onOpenChange={setMenuOpen}>
           <Menu.Trigger>
@@ -466,12 +587,21 @@ const DrawerSessionItem = memo(function DrawerSessionItem({
           <Menu.Content align="end" scrollable={false} width={200}>
             <Menu.Item
               icon={<PencilIcon size={16} />}
+              testID={`drawer-session-rename-${session.id}`}
               onSelect={() => onRename(session)}>
               Rename
+            </Menu.Item>
+            <Menu.Item
+              disabled={pinning}
+              icon={<BookmarkIcon size={16} />}
+              testID={`drawer-session-pin-${session.id}`}
+              onSelect={() => onPin(session)}>
+              {session.pinned ? 'Unpin' : 'Pin'}
             </Menu.Item>
             <Menu.Separator />
             <Menu.Item
               icon={<TrashIcon size={16} />}
+              testID={`drawer-session-delete-${session.id}`}
               variant="destructive"
               onSelect={() => onDelete(session)}>
               Delete
@@ -482,6 +612,64 @@ const DrawerSessionItem = memo(function DrawerSessionItem({
     </Item>
   );
 });
+
+const SESSION_FILTERS: readonly {
+  accessibilityLabel: string;
+  label: string;
+  value: WaveSessionFilter;
+}[] = [
+  { accessibilityLabel: 'Show chats', label: 'Chats', value: 'chats' },
+  {
+    accessibilityLabel: 'Show automations and external activity',
+    label: 'Activity',
+    value: 'activity',
+  },
+  {
+    accessibilityLabel: 'Show all conversations',
+    label: 'All',
+    value: 'all',
+  },
+];
+
+function DrawerSessionFilters({
+  onChange,
+  value,
+}: {
+  onChange(value: WaveSessionFilter): void;
+  value: WaveSessionFilter;
+}) {
+  return (
+    <View className="gap-2 px-1 pb-2">
+      <Typography.Paragraph muted className="px-2 text-xs uppercase">
+        Conversations
+      </Typography.Paragraph>
+      <View
+        accessibilityLabel="Conversation filters"
+        accessibilityRole="tablist"
+        className="flex-row rounded-lg bg-muted p-1">
+        {SESSION_FILTERS.map((filter) => {
+          const selected = value === filter.value;
+          return (
+            <View className="flex-1" key={filter.value}>
+              <Button
+                fullWidth
+                accessibilityLabel={filter.accessibilityLabel}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                className="px-1"
+                size="sm"
+                testID={`drawer-filter-${filter.value}`}
+                variant={selected ? 'secondary' : 'ghost'}
+                onPress={() => onChange(filter.value)}>
+                {filter.label}
+              </Button>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 function DrawerAction({
   description,
@@ -518,7 +706,29 @@ function sessionTitle(session: WaveSessionSummary) {
 }
 
 function sessionDescription(session: WaveSessionSummary) {
-  if (session.preview) return session.preview;
+  const liveLabel =
+    session.liveStatus === 'starting'
+      ? 'Starting'
+      : session.liveStatus === 'waiting'
+        ? 'Waiting for input'
+        : session.liveStatus === 'working'
+          ? 'Working'
+          : undefined;
+  if (liveLabel) return liveLabel;
+  const sourceLabel =
+    session.source === 'automation'
+      ? 'Automation'
+      : session.source === 'external'
+        ? 'External activity'
+        : session.source === 'other'
+          ? 'Other activity'
+          : undefined;
+  if (session.preview) {
+    return sourceLabel
+      ? `${sourceLabel} · ${session.preview}`
+      : session.preview;
+  }
+  if (sourceLabel) return sourceLabel;
   if (session.lastActiveAt) {
     return new Date(session.lastActiveAt).toLocaleDateString();
   }
@@ -526,6 +736,14 @@ function sessionDescription(session: WaveSessionSummary) {
     return `${session.messageCount} message${session.messageCount === 1 ? '' : 's'}`;
   }
   return 'Hermes conversation';
+}
+
+function emptySessionFilterMessage(filter: WaveSessionFilter) {
+  if (filter === 'activity') {
+    return 'No automations or external activity.';
+  }
+  if (filter === 'chats') return 'No previous chats.';
+  return 'No previous conversations.';
 }
 
 function drawerErrorMessage(error: unknown) {

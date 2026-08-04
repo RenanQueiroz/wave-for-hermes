@@ -20,7 +20,8 @@ Wave is intended to support:
 
 - text chat with a Hermes agent;
 - text-only correction of a running response without discarding completed work;
-- browsing, searching, continuing, renaming, and deleting the user's Hermes conversation history;
+- browsing, searching, pinning, continuing, renaming, and deleting the user's Hermes conversation
+  history;
 - sending bounded images and text-based files with a message;
 - a natural, interruptible live voice conversation;
 - automatic typed delegation from the Realtime session to Hermes when work requires it;
@@ -69,7 +70,9 @@ currently includes:
   reload ordering, shows a quiet offline notice for connectivity-shaped failures, and purges
   itself on sign-in and sign-out;
 - a ChatGPT-style chat-first shell that creates a new conversation on connected launch, opens
-  account-wide history from a side drawer, searches titles, renames/deletes sessions, and keeps
+  account-wide history from a side drawer, keeps server-owned pins above Today / Yesterday /
+  Previous 7 days / Older groups, separates Chats from Automations and external activity without
+  hiding unknown future sources, searches titles and messages, renames/deletes sessions, and keeps
   Settings and Disconnect fixed at the bottom;
 - TanStack Query-backed paginated session/timeline state plus PanelUI conversation and chat routes
   with batched assistant deltas, lifecycle-safe prompt cancellation, coherent grouped turns,
@@ -102,8 +105,9 @@ currently includes:
   production scanner that rejects key-shaped literals in shipped bundles.
 
 The visible app begins with the sign-in flow, then opens a newly created Hermes conversation. The
-hamburger drawer provides the full top-level Hermes history, title search, conversation lifecycle
-actions, Settings, and Disconnect. The composer can attach bounded images and supported text
+hamburger drawer provides the full top-level Hermes history, title/message search, server-backed
+pinning, conversation lifecycle actions, Settings, and Disconnect. The composer can attach bounded
+images and supported text
 files. Its trailing action changes between Send and a live-wave control based on whether trimmed
 text is present, so both are never shown together. From an active chat, the live-wave control
 opens the voice route: gateway voice by default, or — when the user has saved an OpenAI key and
@@ -227,8 +231,11 @@ tokens cannot be revoked individually and expire when the gateway's token secret
 example on gateway restart), which signs out every client at once.
 
 After sign-in, Wave creates and opens a new Hermes conversation. The drawer pages through every
-top-level session returned by the Hermes account and supports title search, continue, rename, and
-delete. Hermes remains canonical for conversation history; Realtime speech is ephemeral, and only
+top-level session returned by the Hermes account, groups server-backed pins and recent dates, and
+offers Chats, Activity, and All filters. Activity includes automations, external activity, and
+unknown future source identifiers instead of hiding them. Pin/unpin, rename, and delete are typed
+single-attempt mutations; search covers local titles and server-indexed message content. Hermes
+remains canonical for conversation history; Realtime speech is ephemeral, and only
 the work Wave hands to Hermes through `ask_hermes` lands as ordinary turns. Opening a deleted
 session returns the app to a new conversation. Tool calls are collapsed by default. A user can
 expand one to inspect bounded raw input and output as inert, copyable text; Wave does not parse it

@@ -17,12 +17,41 @@ import {
   WaveRedirectTurnResponseSchema,
   WaveActiveTurnResponseSchema,
   WaveSessionHistoryResponseSchema,
+  WaveSessionSummarySchema,
   WaveStartRealtimeCallResponseSchema,
   WaveToolDetailSchema,
   WaveTurnEventSchema,
   WaveTurnInputSchema,
   WaveTimelineResponseSchema,
 } from '../src/index.ts';
+
+test('session summaries own strict source, pin, and live-status fields', () => {
+  assert.deepEqual(WaveSessionSummarySchema.parse({ id: 'legacy-session' }), {
+    id: 'legacy-session',
+    liveStatus: 'idle',
+    pinned: false,
+    source: 'chat',
+  });
+  assert.equal(
+    WaveSessionSummarySchema.safeParse({
+      id: 'session-1',
+      liveStatus: 'working',
+      pinned: true,
+      rawSource: 'a2a',
+      source: 'external',
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveSessionSummarySchema.safeParse({
+      id: 'session-1',
+      liveStatus: 'running',
+      pinned: false,
+      source: 'future-source',
+    }).success,
+    false,
+  );
+});
 
 test('rejects malformed normalized errors', () => {
   assert.equal(

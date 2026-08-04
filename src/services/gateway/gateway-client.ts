@@ -277,11 +277,32 @@ export class GatewayClient {
     const limit = Math.min(Math.max(input.limit ?? 50, 1), SESSION_PAGE_LIMIT);
     const offset = Math.max(input.offset ?? 0, 0);
     const body = await this.request(
-      `/api/sessions?limit=${limit}&offset=${offset}`,
+      `/api/sessions?limit=${limit}&offset=${offset}&include_children=false&order=recent`,
       { signal },
     );
     const sessions = normalizeSessionRows(body);
-    return { hasMore: sessions.length >= limit, limit, offset, sessions };
+    const response = body as {
+      data?: unknown;
+      has_more?: unknown;
+      sessions?: unknown;
+      total?: unknown;
+    };
+    const rawRows = Array.isArray(response?.sessions)
+      ? response.sessions
+      : Array.isArray(response?.data)
+        ? response.data
+        : [];
+    const total =
+      typeof response?.total === 'number' && Number.isFinite(response.total)
+        ? Math.max(0, Math.floor(response.total))
+        : undefined;
+    const hasMore =
+      typeof response?.has_more === 'boolean'
+        ? response.has_more
+        : total === undefined
+          ? rawRows.length >= limit
+          : offset + limit < total;
+    return { hasMore, limit, offset, sessions };
   }
 
   /**
@@ -533,7 +554,12 @@ export class GatewayClient {
     void signal;
     return {
       apiVersion: 'v1',
-      session: { id: `${PENDING_SESSION_PREFIX}${Date.now()}` },
+      session: {
+        id: `${PENDING_SESSION_PREFIX}${Date.now()}`,
+        liveStatus: 'idle',
+        pinned: false,
+        source: 'chat',
+      },
     };
   }
 
@@ -550,7 +576,42 @@ export class GatewayClient {
     });
     return {
       apiVersion: 'v1',
-      session: { id: sessionId, title: input.title },
+      session: {
+        id: sessionId,
+        liveStatus: 'idle',
+        pinned: false,
+        source: 'chat',
+        title: input.title,
+      },
+    };
+  }
+
+  async setSessionPinned(
+    sessionId: string,
+    pinned: boolean,
+    signal?: AbortSignal,
+  ): Promise<{
+    apiVersion: 'v1';
+    session: { id: string; pinned: boolean };
+  }> {
+    sessionId = this.resolveSessionId(sessionId);
+    if (isPendingSessionId(sessionId)) {
+      throw new WaveBackendError(
+        'Send a message before pinning this conversation.',
+        { kind: 'bad_request' },
+      );
+    }
+    // A metadata mutation is sent exactly once. TanStack mutations are also
+    // configured with retry:false, so an ambiguous network failure never
+    // duplicates or silently reverses the user's choice.
+    await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      body: { pinned },
+      method: 'PATCH',
+      signal,
+    });
+    return {
+      apiVersion: 'v1',
+      session: { id: sessionId, pinned },
     };
   }
 

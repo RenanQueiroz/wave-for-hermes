@@ -9,6 +9,8 @@
  */
 import type {
   WaveConversationMessage,
+  WaveSessionLiveStatus,
+  WaveSessionSource,
   WaveSessionSummary,
   WaveTimelineEntry,
 } from '@wave/contracts';
@@ -23,6 +25,10 @@ export interface GatewaySessionRow {
   last_active?: unknown;
   ended_at?: unknown;
   preview?: unknown;
+  pinned?: unknown;
+  source?: unknown;
+  is_active?: unknown;
+  status?: unknown;
 }
 
 /** Message row from `GET /api/sessions/{id}/messages`. */
@@ -42,6 +48,42 @@ const MAX_CONTENT_CHARS = 1_000_000;
 const MAX_TOOL_NAME_CHARS = 100;
 const MAX_TOOL_DETAIL_CHARS = 4_000;
 
+// Mirrors the source families in Hermes Desktop v2026.8.3, but collapses
+// them into stable Wave-owned presentation categories. The upstream field is
+// deliberately open-ended; unknown future sources stay reachable as `other`.
+const CHAT_SESSION_SOURCES = new Set([
+  'cli',
+  'codex',
+  'desktop',
+  'gateway',
+  'local',
+  'tui',
+]);
+const AUTOMATION_SESSION_SOURCES = new Set(['cron', 'kanban']);
+const EXTERNAL_SESSION_SOURCES = new Set([
+  'a2a',
+  'api_server',
+  'bluebubbles',
+  'dingtalk',
+  'discord',
+  'email',
+  'feishu',
+  'homeassistant',
+  'matrix',
+  'mattermost',
+  'photon',
+  'qqbot',
+  'signal',
+  'slack',
+  'sms',
+  'telegram',
+  'webhook',
+  'wecom',
+  'weixin',
+  'whatsapp',
+  'yuanbao',
+]);
+
 function text(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -53,6 +95,36 @@ function count(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.floor(value)
     : undefined;
+}
+
+export function normalizeSessionSource(value: unknown): WaveSessionSource {
+  // Missing source is the compatibility path for v0.19 and for Wave-created
+  // gateway chats that predate source persistence.
+  if (value === undefined || value === null || value === '') return 'chat';
+  if (typeof value !== 'string') return 'other';
+  const source = value.trim().toLocaleLowerCase();
+  if (!source) return 'chat';
+  if (CHAT_SESSION_SOURCES.has(source)) return 'chat';
+  if (AUTOMATION_SESSION_SOURCES.has(source)) return 'automation';
+  if (EXTERNAL_SESSION_SOURCES.has(source)) return 'external';
+  return 'other';
+}
+
+function normalizeSessionLiveStatus(
+  row: GatewaySessionRow,
+): WaveSessionLiveStatus {
+  if (
+    row.status === 'idle' ||
+    row.status === 'starting' ||
+    row.status === 'waiting' ||
+    row.status === 'working'
+  ) {
+    return row.status;
+  }
+  // Hermes's legacy `is_active` list field means "recent and not ended", not
+  // "a turn is executing". Mapping it to working would fabricate liveness.
+  // Exact phases are adopted when the list exposes them; older rows are idle.
+  return 'idle';
 }
 
 /**
@@ -91,8 +163,11 @@ export function normalizeSessionRow(
   return {
     id,
     ...(lastActiveAt ? { lastActiveAt } : {}),
+    liveStatus: normalizeSessionLiveStatus(row),
     ...(messageCount === undefined ? {} : { messageCount }),
+    pinned: row.pinned === true || row.pinned === 1,
     ...(preview ? { preview } : {}),
+    source: normalizeSessionSource(row.source),
     ...(startedAt ? { startedAt } : {}),
     ...(title ? { title } : {}),
     ...(toolCallCount === undefined ? {} : { toolCallCount }),
@@ -100,9 +175,13 @@ export function normalizeSessionRow(
 }
 
 export function normalizeSessionRows(value: unknown): WaveSessionSummary[] {
-  const rows = Array.isArray((value as { sessions?: unknown })?.sessions)
-    ? ((value as { sessions: unknown[] }).sessions as GatewaySessionRow[])
-    : [];
+  const record = value as { data?: unknown; sessions?: unknown } | null;
+  const rawRows = Array.isArray(record?.sessions)
+    ? record.sessions
+    : Array.isArray(record?.data)
+      ? record.data
+      : [];
+  const rows = rawRows as GatewaySessionRow[];
   const seen = new Set<string>();
   const sessions: WaveSessionSummary[] = [];
   for (const row of rows) {

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   normalizeMessageRow,
+  normalizeSessionSource,
   normalizeSessionRows,
   normalizeTimelineEntries,
   toIsoTimestamp,
@@ -106,6 +107,9 @@ test('normalizes gateway session rows and drops unusable ones', () => {
         tool_call_count: 3,
         started_at: 1785642618.063404,
         ended_at: 1785642700,
+        pinned: 1,
+        source: 'a2a',
+        status: 'working',
       },
       { id: '', title: 'no id' },
       { title: 'missing id entirely' },
@@ -117,11 +121,31 @@ test('normalizes gateway session rows and drops unusable ones', () => {
   assert.equal(sessions[0].title, 'Long fixture conversation');
   assert.equal(sessions[0].messageCount, 130);
   assert.equal(sessions[0].toolCallCount, 3);
+  assert.equal(sessions[0].liveStatus, 'working');
+  assert.equal(sessions[0].pinned, true);
+  assert.equal(sessions[0].source, 'external');
   assert.match(sessions[0].startedAt ?? '', /^2026-/);
   assert.match(sessions[0].lastActiveAt ?? '', /^2026-/);
 
   assert.deepEqual(normalizeSessionRows({}), []);
   assert.deepEqual(normalizeSessionRows(null), []);
+});
+
+test('normalizes open-ended sources without leaking raw identifiers', () => {
+  assert.equal(normalizeSessionSource(undefined), 'chat');
+  assert.equal(normalizeSessionSource('gateway'), 'chat');
+  assert.equal(normalizeSessionSource('cron'), 'automation');
+  assert.equal(normalizeSessionSource('a2a'), 'external');
+  assert.equal(normalizeSessionSource('telegram'), 'external');
+  assert.equal(normalizeSessionSource('future_mcp_origin'), 'other');
+  assert.deepEqual(normalizeSessionRows({ data: [{ id: 'api-row' }] }), [
+    {
+      id: 'api-row',
+      liveStatus: 'idle',
+      pinned: false,
+      source: 'chat',
+    },
+  ]);
 });
 
 test('converts epoch seconds and rejects unusable timestamps', () => {
@@ -634,6 +658,46 @@ test('caps session pages at the v0.19/v0.20 shared limit', async () => {
   const page = await client.listSessions({ limit: 200 });
   assert.equal(page.limit, 100);
   assert.equal(new URL(requestedUrl).searchParams.get('limit'), '100');
+  assert.equal(
+    new URL(requestedUrl).searchParams.get('include_children'),
+    'false',
+  );
+  assert.equal(new URL(requestedUrl).searchParams.get('order'), 'recent');
+});
+
+test('pins a persisted session with one non-retrying PATCH', async () => {
+  const requests: { body?: string; method: string; path: string }[] = [];
+  const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+    requests.push({
+      body: typeof init?.body === 'string' ? init.body : undefined,
+      method: init?.method ?? 'GET',
+      path: new URL(String(url)).pathname,
+    });
+    return jsonResponse({ ok: true, pinned: true });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+
+  const result = await client.setSessionPinned('session-1', true);
+  assert.equal(result.session.pinned, true);
+  assert.deepEqual(requests, [
+    {
+      body: '{"pinned":true}',
+      method: 'PATCH',
+      path: '/api/sessions/session-1',
+    },
+  ]);
+  await assert.rejects(
+    client.setSessionPinned('wave-pending-1', true),
+    /Send a message before pinning/,
+  );
+  assert.equal(requests.length, 1);
 });
 
 function jsonResponse(body: unknown): Response {

@@ -6,6 +6,7 @@ import type {
   WaveSessionPage,
 } from '@/services/wave/wave-chat-client';
 
+import { nextWaveSessionPageOffset } from './session-page-cache';
 import { waveSessionQueryKey } from './session-query-keys';
 
 const SESSION_PAGE_SIZE = 50;
@@ -26,8 +27,7 @@ export function useWaveSessions({
     ReturnType<typeof waveSessionQueryKey>,
     number
   >({
-    getNextPageParam: (lastPage) =>
-      lastPage.hasMore ? lastPage.offset + lastPage.sessions.length : undefined,
+    getNextPageParam: nextWaveSessionPageOffset,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       client.listSessions(
