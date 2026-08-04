@@ -203,6 +203,9 @@ documentation before implementing UI.
 - Gateway sign-in authorizes the user's Hermes account; it does not create per-device copies or
   allowlists of Hermes sessions. Session IDs must still be validated and resolved by Hermes, and
   active turn/call conflicts must be enforced before destructive changes.
+- For `session.active_list`, treat `starting`, `working`, and `waiting` as active (`running` remains
+  a defensive legacy alias); `idle` is the measured inactive state. Do not fabricate an active
+  turn from an unknown status or let it override a locally registered turn channel.
 - Keep conversation listing paginated. Rename and delete through the typed client; deleting a
   session with an active turn or Realtime call must fail explicitly — and where the backend does
   not enforce that itself, the client does, using the backend's own liveness signal rather than

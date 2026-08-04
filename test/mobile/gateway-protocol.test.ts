@@ -14,7 +14,9 @@ import {
 } from '../../src/services/gateway/gateway-rpc.ts';
 import {
   GatewayClient,
+  isGatewaySessionActive,
   isPendingSessionId,
+  normalizeGatewayCompatibilityStatus,
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
@@ -25,6 +27,51 @@ import {
   parseGatewaySetCookies,
   toCookieHeader,
 } from '../../src/services/gateway/gateway-tokens.ts';
+import {
+  GATEWAY_V019_FIXTURE,
+  GATEWAY_V020_FIXTURE,
+} from '../fixtures/gateway-compatibility.ts';
+
+test('normalizes a bounded gateway version for diagnostics only', () => {
+  assert.deepEqual(
+    normalizeGatewayCompatibilityStatus(GATEWAY_V019_FIXTURE.status),
+    { version: '0.19.0' },
+  );
+  assert.deepEqual(
+    normalizeGatewayCompatibilityStatus(GATEWAY_V020_FIXTURE.status),
+    { version: '0.20.0' },
+  );
+  assert.deepEqual(normalizeGatewayCompatibilityStatus(null), {});
+  assert.deepEqual(normalizeGatewayCompatibilityStatus({ version: 20 }), {});
+  assert.deepEqual(
+    normalizeGatewayCompatibilityStatus({ version: `0.${'2'.repeat(100)}` }),
+    {},
+  );
+  assert.deepEqual(
+    normalizeGatewayCompatibilityStatus({ version: '0.20.0\nsecret' }),
+    {},
+  );
+});
+
+test('treats every measured non-idle live-session phase as active', () => {
+  for (const entry of GATEWAY_V019_FIXTURE.activeList.sessions) {
+    assert.equal(
+      isGatewaySessionActive(entry),
+      entry.status !== 'idle',
+      `unexpected v0.19 status handling for ${entry.status}`,
+    );
+  }
+  for (const entry of GATEWAY_V020_FIXTURE.activeList.sessions) {
+    assert.equal(
+      isGatewaySessionActive(entry),
+      entry.status !== 'idle',
+      `unexpected v0.20 status handling for ${entry.status}`,
+    );
+  }
+  assert.equal(isGatewaySessionActive({ running: true }), true);
+  assert.equal(isGatewaySessionActive({ status: 'future-state' }), false);
+  assert.equal(isGatewaySessionActive(undefined), false);
+});
 
 test('normalizes gateway session rows and drops unusable ones', () => {
   const sessions = normalizeSessionRows({
@@ -224,6 +271,13 @@ test('correlates JSON-RPC responses and routes event frames', async () => {
       params: { type: 'message.delta', payload: { text: 'hi' } },
     }),
   );
+  rpc.handleMessage(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'event',
+      params: GATEWAY_V020_FIXTURE.gatewayReady,
+    }),
+  );
   rpc.handleMessage('not json at all');
   rpc.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 999, result: {} }));
   rpc.handleMessage(
@@ -235,8 +289,9 @@ test('correlates JSON-RPC responses and routes event frames', async () => {
   );
 
   assert.deepEqual(await call, { sessions: [] });
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
   assert.equal(events[0].type, 'message.delta');
+  assert.deepEqual(events[1], GATEWAY_V020_FIXTURE.gatewayReady);
 
   const failing = rpc.call('session.resume', {});
   const secondId = JSON.parse(sent[1]).id;
@@ -280,6 +335,13 @@ test('translates gateway turn frames into Wave turn events', () => {
     translator.translate({ type: 'thinking.delta', payload: { text: '…' } }),
     [],
   );
+  for (const frame of GATEWAY_V020_FIXTURE.turnFrames) {
+    assert.deepEqual(
+      translator.translate(frame),
+      [],
+      `${frame.type} must degrade safely until it has a Wave projection`,
+    );
+  }
 
   // The first delta implies assistant.started.
   const first = translator.translate({
@@ -421,6 +483,52 @@ test('a new conversation keeps its route while its real session is created', asy
     'POST /api/auth/ws-ticket',
     'DELETE /api/sessions/20260802_000000_abcdef',
   ]);
+});
+
+test('reads the public compatibility version without exposing raw status', async () => {
+  const requests: string[] = [];
+  const fetchImpl = (async (url: string | URL) => {
+    requests.push(new URL(String(url)).pathname);
+    return jsonResponse({
+      ...GATEWAY_V020_FIXTURE.status,
+      auth_providers: ['fixture-provider'],
+      gateway_platforms: { fixture: { configured: true } },
+      unrelated_future_field: { nested: true },
+    });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+
+  assert.deepEqual(await client.getCompatibilityBaseline(), {
+    version: '0.20.0',
+  });
+  assert.deepEqual(requests, ['/api/status']);
+});
+
+test('caps session pages at the v0.19/v0.20 shared limit', async () => {
+  let requestedUrl = '';
+  const fetchImpl = (async (url: string | URL) => {
+    requestedUrl = String(url);
+    return jsonResponse({ sessions: [] });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+
+  const page = await client.listSessions({ limit: 200 });
+  assert.equal(page.limit, 100);
+  assert.equal(new URL(requestedUrl).searchParams.get('limit'), '100');
 });
 
 function jsonResponse(body: unknown): Response {

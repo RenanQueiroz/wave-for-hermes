@@ -7,13 +7,10 @@
  * both: it owns a monotonic counter per turn and stamps the Wave-side turn id
  * it was constructed with.
  *
- * Frame types observed live on 0.19.0 (see `docs/hermes-connectivity.md`):
- * `session.info`, `message.start`, `thinking.delta`, `message.delta`,
- * `tool.generating`, `tool.start`, `tool.complete`, `approval.request`,
- * `clarify.request`, `reasoning.available`, `message.complete` (the
- * turn-final frame), `session.title`, `turn.error`. Unknown frames are
- * ignored rather than surfaced — a new gateway frame type must never break a
- * turn in progress.
+ * The v0.19/v0.20 baseline includes the original chat lifecycle plus optional
+ * `message.interim`, `tool.progress`, and `status.update` frames. Until a frame
+ * has a reviewed Wave-owned projection, it is ignored rather than surfaced;
+ * optional or future gateway events must never break a turn in progress.
  */
 import type { WaveTurnEvent } from '@wave/contracts';
 
@@ -206,8 +203,8 @@ export class GatewayTurnTranslator {
       case 'message.end':
       case 'message.complete':
       case 'turn.end':
-        // Only message.complete is observed on 0.19.0; the others are
-        // defensive aliases for future gateways.
+        // message.complete is canonical on the measured baseline; the others
+        // remain harmless aliases for compatible gateways.
         return this.finish({ interrupted: false });
       case 'turn.interrupted':
         return this.finish({ interrupted: true });
@@ -230,8 +227,9 @@ export class GatewayTurnTranslator {
         ];
       }
       default:
-        // session.info, thinking.delta, tool.generating, reasoning.available,
-        // session.title, and any future frame: not part of the transcript.
+        // session.info (including tools/skills), thinking/reasoning details,
+        // message.interim, tool.progress, status.update, session.title, and any
+        // future frame have no Stage 0 transcript projection.
         return [];
     }
   }

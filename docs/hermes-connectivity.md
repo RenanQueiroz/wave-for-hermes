@@ -7,33 +7,55 @@ protocol shapes never leave it, and screens consume only normalized Wave contrac
 
 ## Current compatibility baseline
 
-The shipping transport was validated live against gateway version `0.19.0` (2026-08-02), both a
-local instance and the private Homelab deployment. Hermes v0.20 support is tracked in
-[`roadmap.md`](./roadmap.md); source inspection is not treated as live compatibility proof, so the
-baseline below remains authoritative until the v0.20 probe and regression pass land.
+The shipping transport was validated live against the private Homelab gateway running `0.20.0`
+on 2026-08-03 from the existing Radon-managed iOS and Android development runtimes. The
+compatibility floor remains the sanitized `0.19.0` protocol fixture and the behavior Wave already
+shipped against that release. Wave does not branch product behavior on a version string: optional
+methods and fields are attempted only by features that need them and must degrade safely when
+absent or malformed.
 
 - **Sign-in**: `POST /auth/password-login` with `{provider: 'basic', username, password}`. The
-  response carries an access/refresh token pair (12-hour and 30-day lifetimes). Tokens rotate:
-  responses can carry a refreshed pair, and the client persists whichever pair it saw last.
-  Native PKCE does not exist at this version, so no browser flow or redirect URI is involved.
+  response carries an access/refresh token pair. Tokens rotate: responses can carry a refreshed
+  pair, and the client persists whichever pair it saw last. Neither measured release exposes a
+  native PKCE flow, so no browser flow or redirect URI is involved.
 - **Tokens are stateless and signed.** Logout cannot revoke them server-side; they die at
   expiry or when the gateway's signing secret rotates (for example on restart), which signs out
   every client at once. Wave's Disconnect is therefore local token deletion and says so.
+- **Compatibility diagnostics**: `/api/status` currently reports `0.20.0`. Development builds
+  project only that bounded public version into the repository-local mobile state bridge. It is
+  evidence for live validation, not a feature flag, and no other status/configuration metadata is
+  normalized.
 - **Chat transport**: JSON-RPC over WebSocket. Each connect first redeems a single-use
   30-second ticket, then the socket carries `prompt.submit`, streamed turn frames, mid-turn
-  prompt requests, and cancellation. The client normalizes frames into the strict Wave
-  turn-event union and synthesizes the monotonic sequence numbers the chat reducer expects.
+  prompt requests, and cancellation. The v0.20 `gateway.ready` frame may include
+  `change_events: true`; Wave treats that field as optional. The client normalizes only reviewed
+  frames into the strict Wave turn-event union and synthesizes the monotonic sequence numbers the
+  chat reducer expects.
 - **Resilience**: an in-flight turn runs to completion through a disconnect and can be
   reattached by session with full history; only idle sessions are reaped (about 20 seconds).
   Reattaching is a read of the same execution — the prompt itself is never re-sent.
-- **Cancellation** must go through the live transport sid; a stored id fails silently with a 4001. A user Stop is reported as a cancellation, not a connection loss.
+- **Live state**: `session.active_list` can report `starting`, `working`, `waiting`, or `idle`.
+  Wave treats all but `idle` as active for conflict checks; a legacy `running: true` or `running`
+  status remains a defensive alias. Missing and unknown states do not claim that a turn is active.
+- **Cancellation** must go through the live transport sid. A user Stop is reported as a
+  cancellation, not a connection loss.
 - **REST**: paginated session list, `/messages` history, rename, delete, and full-text search.
   Search covers message content only — the gateway does not index titles, so Wave layers title
   matching client-side. `/messages?limit=` keeps the _oldest_ rows, so the timeline pages from
-  the newest end with bounded probes when the count is unknown.
+  the newest end with bounded probes when the count is unknown. v0.20 caps session pages at 100
+  rows and message pages at 500; Wave uses the shared 100-row session limit and keeps its
+  200-row timeline window bounded across both releases.
 - **Deletes are not guarded upstream**: the gateway accepts deleting a session with a running
   turn and lets the conversation reappear. Wave refuses the delete client-side while the turn's
-  RPC channel is registered or `session.active_list` reports a running turn.
+  RPC channel is registered or `session.active_list` reports any known active phase.
+- **v0.20 conversation extensions**: live probes confirmed `session.redirect` (including the
+  `queued` build-window result), server-owned `pinned` and `source` session-row fields, and
+  pin/unpin through the existing session PATCH route. Their product UI remains staged in the
+  roadmap; the compatibility probe does not expose a generic gateway mutation surface.
+- **New event frames**: v0.20 may send `message.interim`, `tool.progress`, and `status.update`.
+  Until their Wave-owned projections land, the turn translator ignores them exactly like any
+  unknown optional frame, so their presence cannot break a turn. Sanitized fixtures lock that
+  behavior without storing real payloads or identifiers.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from
@@ -48,8 +70,10 @@ baseline below remains authoritative until the v0.20 probe and regression pass l
 - **Speech**: `POST /api/audio/transcribe` and `POST /api/audio/speak`, with STT/TTS providers
   and their keys held in server configuration. Wave probes capability once and caches it; the
   probe throws on request failure so the bounded retry policy owns recovery rather than caching
-  a false "no providers". Speech calls run on a longer timeout than REST reads because both are
-  model work.
+  a false "no providers". v0.20 also accepts an authenticated
+  `/api/audio/speak-stream` WebSocket and returned the protocol's safe `fallback` control frame in
+  the live Homelab probe. Native PCM playback remains behind the roadmap's physical-device gate.
+  Speech calls run on a longer timeout than REST reads because both are model work.
 
 ## Attachments
 
@@ -106,5 +130,19 @@ npm test
 ```
 
 `test/mobile/gateway-protocol.test.ts` covers sign-in, token rotation, framing, normalization,
-reattachment, cancellation, and error mapping against recorded protocol shapes. A gateway
-compatibility change is incomplete until the fixtures, live behavior, and this document agree.
+reattachment, cancellation, active-state handling, and error mapping against sanitized v0.19 and
+v0.20 protocol shapes. A gateway compatibility change is incomplete until the fixtures, live
+behavior, and this document agree.
+
+For the two Radon runtimes, bind the mobile doctor to each platform's own Metro server rather than
+letting target discovery choose between them:
+
+```bash
+MOBILE_AGENT_METRO_URL=http://127.0.0.1:<ios-metro-port> npm run mobile:doctor
+MOBILE_AGENT_METRO_URL=http://127.0.0.1:<android-metro-port> npm run mobile:doctor
+```
+
+The 2026-08-03 live probe used only uniquely titled scratch conversations, recorded booleans and
+frame names rather than request payloads or identifiers, and removed each scratch row after
+verifying its exact title. It did not read ordinary conversation history, secrets, gateway
+configuration, tool/skill metadata, MCP state, or A2A data.

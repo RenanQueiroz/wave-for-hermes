@@ -2,7 +2,7 @@
  * Gateway sign-in. Pure transport + parsing so node tests cover the failure
  * shapes; the caller owns storage.
  *
- * Verified against hermes-agent 0.19.0: `POST /auth/password-login` with
+ * Verified against the Hermes v0.19/v0.20 baseline: `POST /auth/password-login` with
  * `{provider, username, password}` returns 200 plus the session cookies, 401
  * for bad credentials (deliberately generic — never distinguish unknown user
  * from wrong password in the UI either), 404 for an unknown provider, 429

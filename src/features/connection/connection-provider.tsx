@@ -17,6 +17,7 @@ import { signInWithPassword } from '@/services/gateway/gateway-auth';
 import {
   GatewayClient,
   normalizeGatewayBaseUrl,
+  type GatewayCompatibilityBaseline,
 } from '@/services/gateway/gateway-client';
 import {
   createGatewayConnectionRecord,
@@ -109,6 +110,10 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
   const [gatewayClient, setGatewayClient] = useState<
     GatewayClient | undefined
   >();
+  const [compatibilityDiagnostic, setCompatibilityDiagnostic] = useState<{
+    baseline: GatewayCompatibilityBaseline;
+    client: GatewayClient;
+  }>();
   const gatewayRecordRef = useRef<GatewayConnectionRecord | undefined>(
     undefined,
   );
@@ -257,6 +262,34 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     });
   }, [queryClient, reverifyOffline, state.phase]);
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (state.phase !== 'connected' || !gatewayClient) return;
+    let cancelled = false;
+    void gatewayClient.getCompatibilityBaseline().then(
+      (baseline) => {
+        if (!cancelled) {
+          setCompatibilityDiagnostic({ baseline, client: gatewayClient });
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setCompatibilityDiagnostic({ baseline: {}, client: gatewayClient });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [gatewayClient, state.phase]);
+
+  const compatibilityVersion =
+    state.phase === 'connected' &&
+    compatibilityDiagnostic &&
+    compatibilityDiagnostic.client === gatewayClient
+      ? compatibilityDiagnostic.baseline.version
+      : undefined;
+
   /**
    * Sign in to a Hermes gateway. The cached reads of any previous connection
    * are purged so a new identity never inherits another's conversations.
@@ -370,6 +403,9 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       name: 'wave-connection',
       read: () => ({
         phase: state.phase,
+        ...(compatibilityVersion
+          ? { gatewayVersion: compatibilityVersion }
+          : {}),
         ...(state.phase === 'connected' ||
         state.phase === 'offline' ||
         state.phase === 'error'
@@ -385,7 +421,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
           : {}),
       }),
     });
-  }, [state]);
+  }, [compatibilityVersion, state]);
 
   const value = useMemo<WaveConnectionContextValue>(() => {
     const usable = state.phase === 'connected' || state.phase === 'offline';

@@ -105,8 +105,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 
 - Deleting a session with a running turn or an active Realtime call is refused client-side using
   the gateway's own liveness signals (the turn's registered RPC channel and
-  `session.active_list`), because the gateway itself accepts a mid-turn delete and lets the
-  conversation reappear.
+  `session.active_list`, where `starting`, `working`, and `waiting` are all active), because the
+  gateway itself accepts a mid-turn delete and lets the conversation reappear. An unknown status
+  is not fabricated as active and cannot override the registered turn channel, which remains the
+  primary signal for work Wave started locally.
 - Realtime calls are bounded to one per conversation surface, expire client-side after 30
   minutes, and are hung up explicitly on stop, error, backgrounding, and unmount.
 

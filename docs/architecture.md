@@ -73,8 +73,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   full-text search, which covers message content only (the gateway does not index titles).
   A turn that is streaming keeps its RPC channel registered so mid-turn agent prompts can be
   answered on the socket bound to its live session, and a delete is refused while that channel
-  or the gateway's own `session.active_list` reports a running turn — the gateway accepts a
-  mid-turn delete and lets the conversation reappear, so Wave enforces the contract itself.
+  or the gateway's own `session.active_list` reports `starting`, `working`, or `waiting` (with a
+  defensive legacy running alias) — the gateway accepts a mid-turn delete and lets the
+  conversation reappear, so Wave enforces the contract itself. The public gateway version is a
+  bounded development diagnostic only; optional protocol behavior uses attempt-and-degrade rather
+  than version gates.
 - The base-URL scheme policy (`src/services/wave/base-url-policy.ts`) requires HTTPS by default,
   allows HTTP for localhost and Tailscale CGNAT addresses where the transport is already private,
   and accepts an explicitly typed `http://` URL to a private LAN host as a deliberate opt-in.

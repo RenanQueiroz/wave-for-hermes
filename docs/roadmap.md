@@ -14,19 +14,7 @@ clause-streamed speech, signed outbound webhooks, and Agent-to-Agent support. Wa
 conversation capabilities that improve a focused mobile client without becoming a Hermes
 administration console.
 
-### 1. Establish the compatibility baseline
-
-- Live-probe Wave's authentication, chat, resume, cancellation, prompt, session-list, pin,
-  redirect, activity, event-stream, and speech behavior against v0.20.
-- Replace v0.19-only assumptions in the gateway adapter with measured behavior and safe
-  attempt-and-degrade behavior. Older gateways must continue to support the current feature set.
-- Keep Hermes tool, skill, MCP, A2A, system-prompt, and other agent-configuration metadata outside
-  Wave's product model and OpenAI prompts. Feature compatibility comes from explicit protocol
-  contracts and safe attempt-and-degrade behavior, not agent capability inference.
-- Add credential-free protocol fixtures and update [`hermes-connectivity.md`](./hermes-connectivity.md)
-  when the v0.20 behavior has been verified rather than inferred from source.
-
-### 2. Correct a running Hermes turn
+### 1. Correct a running Hermes turn
 
 - While a turn is active, a non-empty text composer becomes a correction action backed by
   `session.redirect`; an empty composer remains Stop.
@@ -36,7 +24,7 @@ administration console.
   message, reconcile from Hermes history, and never automatically retry after an ambiguous
   transport failure.
 
-### 3. Preserve narration and bounded live progress
+### 2. Preserve narration and bounded live progress
 
 - Preserve `message.interim` narration as sealed assistant segments so final completion cannot
   replace or duplicate it.
@@ -46,7 +34,7 @@ administration console.
 - Keep streaming updates confined to memoized active-tail rows so cost stays independent of
   transcript length.
 
-### 4. Organize every user-facing conversation
+### 3. Organize every user-facing conversation
 
 - Adopt server-owned pins, source metadata, date groups, and richer liveness.
 - Keep all user-facing top-level sources discoverable, including A2A and automation-created

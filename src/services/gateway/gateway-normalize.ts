@@ -147,7 +147,7 @@ export function toToolDetail(value: unknown) {
 }
 
 // The gateway prepends an annotation pair to the stored user prompt for every
-// attached image (verified live on 0.19.0, including the two-image layout —
+// attached image (verified on the v0.19/v0.20 baseline, including the two-image layout —
 // one pair per image, each followed by a blank line, then the typed text):
 //   [The user attached an image:\n<vision description>]\n
 //   [You can examine it with vision_analyze using image_url: <server path>]

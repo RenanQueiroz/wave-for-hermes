@@ -48,9 +48,13 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const TURN_IDLE_TIMEOUT_MS = 120_000;
 const WS_CONNECT_TIMEOUT_MS = 20_000;
 const TIMELINE_PAGE_LIMIT = 200;
-// `/messages` returns rows oldest-first and `limit` keeps the OLDEST rows
-// (verified live on 0.19.0), so an uncapped limit is how "from this offset to
-// the end" is expressed. The offset bounds the actual payload.
+// v0.20 caps GET /api/sessions at 100 rows. Keeping Wave at the shared lower
+// bound also remains valid against v0.19, whose route accepted larger values.
+const SESSION_PAGE_LIMIT = 100;
+// `/messages` returns rows oldest-first and `limit` keeps the OLDEST rows on
+// both measured compatibility versions. A very large requested limit means
+// "from this offset toward the end" on v0.19; v0.20 clamps the response to 500
+// rows, which still covers Wave's at-most-200-row requested window.
 const FETCH_TO_END_LIMIT = 100_000;
 // When the count probe cannot answer, histories at or under this row count
 // are fetched whole in one bounded request; anything larger is located with
@@ -67,6 +71,14 @@ const MAX_SPEAK_CHARS = 4_000;
 // milliseconds.
 const AUDIO_REQUEST_TIMEOUT_MS = 90_000;
 const MAX_SEARCH_SNIPPET_CHARS = 300;
+const MAX_GATEWAY_VERSION_CHARS = 64;
+const ACTIVE_GATEWAY_SESSION_STATUSES = new Set([
+  'starting',
+  'waiting',
+  'working',
+  // Defensive alias retained for gateways that reported a generic state.
+  'running',
+]);
 
 export interface GatewayTokenSink {
   (tokens: GatewayTokens): void;
@@ -80,6 +92,16 @@ export interface GatewayClientOptions {
   requestTimeoutMs?: number;
   socketFactory?: (url: string) => WebSocket;
   tokens: GatewayTokens;
+}
+
+/**
+ * Safe diagnostic projection of the public gateway status response.
+ *
+ * The version is evidence for compatibility testing, never a feature gate:
+ * optional methods and fields still use attempt-and-degrade behavior.
+ */
+export interface GatewayCompatibilityBaseline {
+  version?: string;
 }
 
 interface GatewayRequestOptions {
@@ -126,6 +148,33 @@ export function normalizeGatewayBaseUrl(
   return url.toString().replace(/\/$/, '');
 }
 
+export function normalizeGatewayCompatibilityStatus(
+  value: unknown,
+): GatewayCompatibilityBaseline {
+  if (typeof value !== 'object' || value === null) return {};
+  const raw = (value as Record<string, unknown>).version;
+  if (typeof raw !== 'string') return {};
+  const version = raw.trim();
+  if (
+    !version ||
+    version.length > MAX_GATEWAY_VERSION_CHARS ||
+    /[\u0000-\u001f\u007f]/.test(version)
+  ) {
+    return {};
+  }
+  return { version };
+}
+
+export function isGatewaySessionActive(
+  value: Record<string, unknown> | undefined,
+): boolean {
+  return (
+    value?.running === true ||
+    (typeof value?.status === 'string' &&
+      ACTIVE_GATEWAY_SESSION_STATUSES.has(value.status))
+  );
+}
+
 export class GatewayClient {
   readonly baseUrl: string;
   private readonly fetchImpl: typeof globalThis.fetch;
@@ -145,8 +194,8 @@ export class GatewayClient {
   /**
    * Stored session id → the live transport sid from this client's last
    * `session.create`/`session.resume`. `session.interrupt` only accepts live
-   * sids (the stored id earns a 4001, verified live on 0.19.0), so cancelling
-   * a turn needs the sid the turn was started under.
+   * sids on both baseline versions, so cancelling a turn needs the sid the
+   * turn was started under.
    */
   private readonly liveSessions = new Map<string, string>();
   /**
@@ -185,6 +234,14 @@ export class GatewayClient {
     return { userId };
   }
 
+  async getCompatibilityBaseline(
+    signal?: AbortSignal,
+  ): Promise<GatewayCompatibilityBaseline> {
+    return normalizeGatewayCompatibilityStatus(
+      await this.request('/api/status', { signal }),
+    );
+  }
+
   async listSessions(
     input: { limit?: number; offset?: number } = {},
     signal?: AbortSignal,
@@ -194,7 +251,7 @@ export class GatewayClient {
     offset: number;
     sessions: WaveSessionSummary[];
   }> {
-    const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+    const limit = Math.min(Math.max(input.limit ?? 50, 1), SESSION_PAGE_LIMIT);
     const offset = Math.max(input.offset ?? 0, 0);
     const body = await this.request(
       `/api/sessions?limit=${limit}&offset=${offset}`,
@@ -207,10 +264,9 @@ export class GatewayClient {
   /**
    * Full-text search across message CONTENT and session ids.
    *
-   * Verified live on 0.19.0: titles are NOT indexed — renaming a session and
-   * searching its new title returns nothing — so a title search stays a
-   * client-side filter over the loaded session list and this covers what that
-   * cannot see. Results carry a highlighted snippet using `>>>term<<<`
+   * The v0.19/v0.20 search contract indexes ids and message content, not
+   * titles, so title matching stays a client-side filter over the loaded
+   * session list. Results carry a highlighted snippet using `>>>term<<<`
    * markers, which are normalized away here.
    */
   async searchSessions(
@@ -386,7 +442,7 @@ export class GatewayClient {
    * there). `/messages` keeps the OLDEST rows when `limit` truncates, so the
    * tail can only be addressed through an offset near the true count — locate
    * that count with bounded single-row probes (a row exists at `offset` iff
-   * the count exceeds it, verified live on 0.19.0) instead of transferring
+   * the count exceeds it on both baseline versions) instead of transferring
    * the entire history from offset 0.
    */
   private async fetchNewestWindow(
@@ -479,11 +535,9 @@ export class GatewayClient {
    * Delete a conversation, refusing while a turn is still running.
    *
    * Wave's contract requires an active-turn delete to fail explicitly. The
-   * gateway does not enforce that: a mid-turn `DELETE` answers `{"ok":true}`
-   * while the turn runs to completion and re-persists the session, so it
-   * silently reappears in the list (verified live on 0.19.0). Wave therefore
-   * enforces it here, using the gateway's own `session.active_list` status
-   * as the signal rather than trusting local state.
+   * REST delete is not coordinated with the gateway's live session registry,
+   * so a running turn can persist the row again. Wave enforces the contract
+   * using `session.active_list`, not local UI state.
    */
   async deleteSession(
     sessionId: string,
@@ -564,8 +618,8 @@ export class GatewayClient {
       for (const attachment of attachments) {
         try {
           // Queues the image on the live session; the next prompt.submit
-          // consumes it (verified live on 0.19.0, including the 25 MiB cap
-          // and unsupported-extension rejections).
+          // consumes it on the measured baseline, including the 25 MiB cap
+          // and unsupported-extension rejections.
           await rpc.call('image.attach_bytes', {
             content_base64: attachment.base64,
             filename: attachment.name,
@@ -712,12 +766,10 @@ export class GatewayClient {
           ((entry as Record<string, unknown>).session_key === sessionId ||
             (entry as Record<string, unknown>).id === sessionId),
       ) as Record<string, unknown> | undefined;
-      // 0.19.0 reports `working` while a turn runs and `idle` otherwise
-      // (verified live); `running` is kept as a defensive alias.
-      const running =
-        match?.status === 'working' ||
-        match?.status === 'running' ||
-        match?.running === true;
+      // Both v0.19 and v0.20 can report the pre-agent-build and prompt-wait
+      // phases as active. Treating only `working` as live makes delete and
+      // reattach race those two phases.
+      const running = isGatewaySessionActive(match);
       return {
         activeTurn: running
           ? { latestSequence: -1, turnId: `gw-active-${sessionId}` }
@@ -768,9 +820,9 @@ export class GatewayClient {
   }
 
   /**
-   * Synthesize speech through the gateway's configured TTS provider. 0.19.0
-   * answers with a buffered data URL (no streaming endpoint at this version),
-   * which is fine for message-length playback.
+   * Synthesize speech through the gateway's configured TTS provider. This
+   * buffered endpoint is shared by v0.19 and v0.20; v0.20's separate streaming
+   * WebSocket remains behind the native playback feasibility gate.
    */
   async speakText(
     text: string,
@@ -809,9 +861,9 @@ export class GatewayClient {
   }
 
   /**
-   * Which speech capabilities this gateway has configured. There is no public
-   * capability flag on 0.19.0, so this reads the authenticated config; the
-   * caller's query layer owns retries and caching.
+   * Which speech capabilities this gateway has configured. Neither measured
+   * compatibility version exposes a narrow public STT/TTS flag, so this reads
+   * the authenticated config; the caller's query layer owns retries/caching.
    */
   async getAudioCapabilities(
     signal?: AbortSignal,
@@ -840,11 +892,10 @@ export class GatewayClient {
       // caller's local abort ends the streaming request.
       return { apiVersion: 'v1', status: 'cancellation_requested', turnId };
     }
-    // `session.interrupt` accepts only live transport sids — the stored id
-    // earns a 4001 "session not found" (verified live on 0.19.0). Interrupt
-    // through the sid this client learned when it started or resumed the
-    // turn; without one the stored id still goes out and the resulting
-    // not_found tells the caller to fall back to its local abort.
+    // `session.interrupt` accepts only live transport sids on both baseline
+    // versions. Interrupt through the sid learned when the turn started or
+    // resumed; without one, the not-found result tells the caller to use its
+    // local abort.
     const liveSessionId = this.liveSessions.get(sessionId) ?? sessionId;
     const connection = await this.openSocket(signal);
     try {
