@@ -8,11 +8,15 @@
  * are ephemeral, so no handoff metadata rides on responses.
  */
 import {
-  WaveAskHermesToolResultSchema,
-  type WaveAskHermesToolResult,
+  WaveRealtimeToolResultSchema,
+  type WaveRealtimeToolResult,
 } from '@wave/contracts';
 
 import { WAVE_MAX_REALTIME_EVENT_BYTES } from './realtime-transport.ts';
+import {
+  RealtimeToolSurfaceController,
+  type RealtimeToolSurfaceSnapshot,
+} from './realtime-tool-surface-controller.ts';
 
 export interface SidebandFunctionCall {
   arguments: string;
@@ -46,10 +50,20 @@ export class OpenAiRealtimeSideband {
   private responseInProgress = false;
   private readonly responseUserItems = new Map<string, string>();
   private readonly socket: WebSocket;
+  private readonly toolSurface: RealtimeToolSurfaceController;
   private userSpeaking = false;
 
-  constructor(socket: WebSocket) {
+  constructor(
+    socket: WebSocket,
+    options: { toolUpdateTimeoutMs?: number } = {},
+  ) {
     this.socket = socket;
+    this.toolSurface = new RealtimeToolSurfaceController({
+      send: (serializedEvent) => this.socket.send(serializedEvent),
+      ...(options.toolUpdateTimeoutMs === undefined
+        ? {}
+        : { timeoutMs: options.toolUpdateTimeoutMs }),
+    });
     socket.addEventListener('message', (event) => {
       this.handleMessage((event as { data?: unknown }).data);
     });
@@ -87,15 +101,25 @@ export class OpenAiRealtimeSideband {
     this.functionCallListeners.add(listener);
   }
 
+  /** Request the complete active/idle tool snapshot. Updates are serialized. */
+  setHermesExecutionActive(active: boolean) {
+    this.toolSurface.request(active);
+  }
+
+  /** Bounded state exposed for deterministic tests, never provider metadata. */
+  getToolSurfaceSnapshot(): RealtimeToolSurfaceSnapshot {
+    return this.toolSurface.getSnapshot();
+  }
+
   /**
    * Queue a Hermes result. It reaches the model only when no response and no
    * user speech is in progress; a completed response flushes the queue.
    */
-  sendFunctionResult(callId: string, result: WaveAskHermesToolResult) {
+  sendFunctionResult(callId: string, result: WaveRealtimeToolResult) {
     if (this.closed) return false;
     this.pendingResults.push({
       callId,
-      output: JSON.stringify(WaveAskHermesToolResultSchema.parse(result)),
+      output: JSON.stringify(WaveRealtimeToolResultSchema.parse(result)),
     });
     return this.flushResults();
   }
@@ -240,6 +264,9 @@ export class OpenAiRealtimeSideband {
           }
         }
         return;
+      case 'session.updated':
+        this.toolSurface.handleSessionUpdated(event.session);
+        return;
       case 'response.done': {
         if (!isRecord(event.response)) return;
         this.responseInProgress = false;
@@ -284,6 +311,7 @@ export class OpenAiRealtimeSideband {
   private markClosed() {
     if (this.closed) return;
     this.closed = true;
+    this.toolSurface.close();
     for (const listener of this.closeListeners) listener();
   }
 }

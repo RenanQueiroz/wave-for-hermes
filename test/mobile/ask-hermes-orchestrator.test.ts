@@ -1,29 +1,39 @@
 /**
- * One test per ported ask_hermes contract rule (stage 4). The rule numbers
- * mirror the orchestrator's doc comment: R1 tool-call cap, R2 unknown tool,
- * R3 strict arguments (incl. no model-controlled session ids), R4 trusted
- * binding, R5 exact-instruction coalescing, R6 concurrency bound,
- * R7 serialization.
+ * Ported ask_hermes rules plus the Stage 5b active-execution correction
+ * boundary: global cap, unknown tools, strict arguments, trusted binding,
+ * ask coalescing/concurrency/serialization, and correction gating/races.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { WaveAskHermesToolResult } from '@wave/contracts';
+import type {
+  WaveAskHermesToolResult,
+  WaveCorrectHermesToolResult,
+  WaveRealtimeToolResult,
+} from '@wave/contracts';
 
 import {
   AskHermesOrchestrator,
+  type HermesExecutionLifecycle,
+  MAX_OUTSTANDING_CORRECTIONS,
   MAX_OUTSTANDING_TOOL_CALLS,
   MAX_TOOL_CALLS_PER_REALTIME_CALL,
 } from '../../src/features/realtime/ask-hermes-orchestrator.ts';
 
 function harness(options?: {
   authorized?: () => boolean;
+  executeCorrection?: (
+    instruction: string,
+    signal: AbortSignal,
+  ) => Promise<WaveCorrectHermesToolResult>;
   execute?: (
     instruction: string,
     signal: AbortSignal,
+    lifecycle: HermesExecutionLifecycle,
   ) => Promise<WaveAskHermesToolResult>;
 }) {
-  const delivered: { callId: string; result: WaveAskHermesToolResult }[] = [];
+  const activeChanges: boolean[] = [];
+  const delivered: { callId: string; result: WaveRealtimeToolResult }[] = [];
   const orchestrator = new AskHermesOrchestrator({
     deliver: (callId, result) => delivered.push({ callId, result }),
     execute:
@@ -33,15 +43,21 @@ function harness(options?: {
         ok: true,
         truncated: false,
       })),
+    executeCorrection: options?.executeCorrection,
     isAuthorized: options?.authorized ?? (() => true),
+    onActiveExecutionChange: (active) => activeChanges.push(active),
   });
-  return { delivered, orchestrator };
+  return { activeChanges, delivered, orchestrator };
 }
 
 const args = (instruction: string) => JSON.stringify({ instruction });
 
-function errorCode(result: WaveAskHermesToolResult) {
-  return result.ok ? undefined : result.error.code;
+function errorCode(result: WaveRealtimeToolResult) {
+  return !result.ok && 'error' in result ? result.error.code : undefined;
+}
+
+function correctionStatus(result: WaveRealtimeToolResult) {
+  return 'status' in result ? result.status : undefined;
 }
 
 async function settled() {
@@ -69,7 +85,7 @@ test('R1: refuses further tool calls past the per-call cap', async () => {
   assert.equal(errorCode(over!.result), 'busy');
 });
 
-test('R2: refuses tools other than ask_hermes', async () => {
+test('R2: refuses tools outside the Wave-owned Realtime surface', async () => {
   const { delivered, orchestrator } = harness();
   orchestrator.handleToolCall({
     arguments: args('irrelevant'),
@@ -242,4 +258,357 @@ test('abort cancels in-flight work and stops all delivery', async () => {
   orchestrator.abort();
   await settled();
   assert.equal(delivered.length, 0);
+});
+
+test('correct_hermes is strict and targets only the live trusted execution', async () => {
+  let finishAsk!: () => void;
+  const corrected: string[] = [];
+  const { activeChanges, delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: async (instruction) => {
+      corrected.push(instruction);
+      return { ok: true, status: 'redirected' };
+    },
+  });
+
+  orchestrator.handleToolCall({
+    arguments: args('work for a while'),
+    callId: 'ask-1',
+    name: 'ask_hermes',
+  });
+  await settled();
+  assert.deepEqual(activeChanges, [true]);
+
+  for (const [callId, payload] of [
+    ['injected-id', { instruction: 'change it', sessionId: 'model-session' }],
+    ['injected-mode', { instruction: 'change it', mode: 'replace' }],
+    ['oversized', { instruction: 'x'.repeat(8_001) }],
+  ] as const) {
+    orchestrator.handleToolCall({
+      arguments: JSON.stringify(payload),
+      callId,
+      name: 'correct_hermes',
+    });
+  }
+  orchestrator.handleToolCall({
+    arguments: args('Use SQLite instead'),
+    callId: 'correct-1',
+    name: 'correct_hermes',
+  });
+  await settled();
+  assert.deepEqual(corrected, ['Use SQLite instead']);
+  for (const callId of ['injected-id', 'injected-mode', 'oversized']) {
+    assert.equal(
+      correctionStatus(
+        delivered.find((entry) => entry.callId === callId)!.result,
+      ),
+      'rejected',
+    );
+  }
+  assert.equal(
+    correctionStatus(
+      delivered.find((entry) => entry.callId === 'correct-1')!.result,
+    ),
+    'redirected',
+  );
+
+  finishAsk();
+  await settled();
+  assert.deepEqual(activeChanges, [true, false]);
+});
+
+test('correct_hermes fails closed before activation and after authorization loss', async () => {
+  let authorized = true;
+  let finishAsk!: () => void;
+  const { delivered, orchestrator } = harness({
+    authorized: () => authorized,
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: async () => ({ ok: true, status: 'redirected' }),
+  });
+  orchestrator.handleToolCall({
+    arguments: args('too early'),
+    callId: 'before',
+    name: 'correct_hermes',
+  });
+  assert.equal(correctionStatus(delivered[0]!.result), 'nothing_active');
+
+  orchestrator.handleToolCall({
+    arguments: args('start work'),
+    callId: 'ask',
+    name: 'ask_hermes',
+  });
+  await settled();
+  authorized = false;
+  orchestrator.handleToolCall({
+    arguments: args('stale correction'),
+    callId: 'unauthorized',
+    name: 'correct_hermes',
+  });
+  assert.equal(
+    correctionStatus(
+      delivered.find((entry) => entry.callId === 'unauthorized')!.result,
+    ),
+    'rejected',
+  );
+  finishAsk();
+  await settled();
+});
+
+test('corrections serialize against one active execution', async () => {
+  let finishAsk!: () => void;
+  let releaseFirst!: () => void;
+  const started: string[] = [];
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: (instruction) => {
+      started.push(instruction);
+      if (instruction === 'first correction') {
+        return new Promise((resolve) => {
+          releaseFirst = () => resolve({ ok: true, status: 'queued' });
+        });
+      }
+      return Promise.resolve({ ok: true, status: 'redirected' });
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('active task'),
+    callId: 'ask',
+    name: 'ask_hermes',
+  });
+  await settled();
+  for (const [callId, instruction] of [
+    ['correct-a', 'first correction'],
+    ['correct-b', 'second correction'],
+  ]) {
+    orchestrator.handleToolCall({
+      arguments: args(instruction),
+      callId,
+      name: 'correct_hermes',
+    });
+  }
+  await settled();
+  assert.deepEqual(started, ['first correction']);
+  releaseFirst();
+  await settled();
+  assert.deepEqual(started, ['first correction', 'second correction']);
+  assert.deepEqual(
+    delivered
+      .filter((entry) => entry.callId.startsWith('correct-'))
+      .map((entry) => correctionStatus(entry.result)),
+    ['queued', 'redirected'],
+  );
+  finishAsk();
+  await settled();
+});
+
+test('completion wins a correction race and never creates new work', async () => {
+  let finishAsk!: () => void;
+  let finishCorrection!: () => void;
+  let asks = 0;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) => {
+      asks += 1;
+      return new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      });
+    },
+    executeCorrection: () =>
+      new Promise((resolve) => {
+        finishCorrection = () => resolve({ ok: true, status: 'redirected' });
+      }),
+  });
+  orchestrator.handleToolCall({
+    arguments: args('active task'),
+    callId: 'ask',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('late change'),
+    callId: 'correct',
+    name: 'correct_hermes',
+  });
+  await settled();
+  finishAsk();
+  await settled();
+  finishCorrection();
+  await settled();
+  assert.equal(asks, 1);
+  assert.equal(
+    correctionStatus(
+      delivered.find((entry) => entry.callId === 'correct')!.result,
+    ),
+    'nothing_active',
+  );
+});
+
+test('queued corrections never retarget later queued ask work', async () => {
+  const finishAsks: (() => void)[] = [];
+  let releaseFirstCorrection!: () => void;
+  let correctionExecutions = 0;
+  const { delivered, orchestrator } = harness({
+    execute: (instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsks.push(() =>
+          resolve({
+            answer: `done: ${instruction}`,
+            ok: true,
+            truncated: false,
+          }),
+        );
+      }),
+    executeCorrection: () => {
+      correctionExecutions += 1;
+      return new Promise((resolve) => {
+        releaseFirstCorrection = () =>
+          resolve({ ok: true, status: 'redirected' });
+      });
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('first task'),
+    callId: 'ask-first',
+    name: 'ask_hermes',
+  });
+  orchestrator.handleToolCall({
+    arguments: args('second distinct task'),
+    callId: 'ask-second',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('first change'),
+    callId: 'correct-first',
+    name: 'correct_hermes',
+  });
+  orchestrator.handleToolCall({
+    arguments: args('second change'),
+    callId: 'correct-second',
+    name: 'correct_hermes',
+  });
+  await settled();
+  assert.equal(correctionExecutions, 1);
+
+  finishAsks[0]!();
+  await settled();
+  assert.equal(finishAsks.length, 2, 'the second ask is now the active work');
+  releaseFirstCorrection();
+  await settled();
+  assert.equal(
+    correctionExecutions,
+    1,
+    'the queued correction never executes against the later ask',
+  );
+  for (const callId of ['correct-first', 'correct-second']) {
+    assert.equal(
+      correctionStatus(
+        delivered.find((entry) => entry.callId === callId)!.result,
+      ),
+      'nothing_active',
+    );
+  }
+  finishAsks[1]!();
+  await settled();
+});
+
+test('correction failures are safe, bounded, and never retried', async () => {
+  let finishAsk!: () => void;
+  let attempts = 0;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: async () => {
+      attempts += 1;
+      throw new Error('sensitive upstream failure');
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('active task'),
+    callId: 'ask',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('one correction'),
+    callId: 'correct',
+    name: 'correct_hermes',
+  });
+  await settled();
+  assert.equal(attempts, 1);
+  const result = delivered.find((entry) => entry.callId === 'correct')!.result;
+  assert.equal(correctionStatus(result), 'rejected');
+  assert.doesNotMatch(JSON.stringify(result), /sensitive upstream/);
+  finishAsk();
+  await settled();
+});
+
+test('correction queue is rate bounded and call teardown stops delivery', async () => {
+  let finishAsk!: () => void;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: (_instruction, signal) =>
+      new Promise((resolve) => {
+        signal.addEventListener('abort', () =>
+          resolve({
+            message: 'There is no active Hermes work to correct.',
+            ok: false,
+            retryable: false,
+            status: 'nothing_active',
+          }),
+        );
+      }),
+  });
+  orchestrator.handleToolCall({
+    arguments: args('active task'),
+    callId: 'ask',
+    name: 'ask_hermes',
+  });
+  await settled();
+  for (let index = 0; index < MAX_OUTSTANDING_CORRECTIONS + 1; index += 1) {
+    orchestrator.handleToolCall({
+      arguments: args(`correction ${index}`),
+      callId: `correct-${index}`,
+      name: 'correct_hermes',
+    });
+  }
+  const overflow = delivered.find(
+    (entry) => entry.callId === `correct-${MAX_OUTSTANDING_CORRECTIONS}`,
+  );
+  assert.equal(correctionStatus(overflow!.result), 'rejected');
+  assert.equal(
+    'retryable' in overflow!.result ? overflow!.result.retryable : undefined,
+    true,
+  );
+  const deliveredBeforeAbort = delivered.length;
+  orchestrator.abort();
+  finishAsk();
+  await settled();
+  assert.equal(delivered.length, deliveredBeforeAbort);
 });

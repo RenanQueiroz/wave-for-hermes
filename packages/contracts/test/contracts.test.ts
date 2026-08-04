@@ -6,11 +6,14 @@ import { z } from 'zod';
 import {
   WAVE_TOOL_DETAIL_MAX_CHARS,
   WAVE_MAX_REDIRECT_CHARS,
+  WAVE_MAX_CORRECT_HERMES_INSTRUCTION_LENGTH,
   WAVE_MAX_IMAGE_ATTACHMENT_BYTES,
   WAVE_API_VERSION,
   WaveAssistantDeltaEventSchema,
   WaveAskHermesArgumentsSchema,
   WaveAskHermesToolResultSchema,
+  WaveCorrectHermesArgumentsSchema,
+  WaveCorrectHermesToolResultSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveErrorSchema,
   WaveRedirectTurnRequestSchema,
@@ -446,6 +449,54 @@ test('generates a strict ask_hermes JSON Schema from the dispatch schema', () =>
       jsonSchema.properties.instruction.maxLength,
     8_000,
   );
+});
+
+test('accepts only strict bounded active-execution corrections', () => {
+  assert.deepEqual(
+    WaveCorrectHermesArgumentsSchema.parse({
+      instruction: '  use SQLite instead  ',
+    }),
+    { instruction: 'use SQLite instead' },
+  );
+  for (const injected of [
+    { instruction: 'change it', sessionId: 'model-session' },
+    { instruction: 'change it', turnId: 'model-turn' },
+    { callId: 'model-call', instruction: 'change it' },
+    { instruction: 'change it', mode: 'replace' },
+    { attachments: [], instruction: 'change it' },
+  ]) {
+    assert.equal(
+      WaveCorrectHermesArgumentsSchema.safeParse(injected).success,
+      false,
+    );
+  }
+  assert.equal(
+    WaveCorrectHermesArgumentsSchema.safeParse({
+      instruction: 'x'.repeat(WAVE_MAX_CORRECT_HERMES_INSTRUCTION_LENGTH + 1),
+    }).success,
+    false,
+  );
+  for (const result of [
+    { ok: true, status: 'redirected' },
+    { ok: true, status: 'queued' },
+    {
+      message: 'There is no active Hermes work to correct.',
+      ok: false,
+      retryable: false,
+      status: 'nothing_active',
+    },
+    {
+      message: 'Hermes rejected that correction.',
+      ok: false,
+      retryable: false,
+      status: 'rejected',
+    },
+  ] as const) {
+    assert.equal(
+      WaveCorrectHermesToolResultSchema.safeParse(result).success,
+      true,
+    );
+  }
 });
 
 test('accepts only small structured ask_hermes results', () => {

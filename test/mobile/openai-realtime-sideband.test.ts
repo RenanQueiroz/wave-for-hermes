@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { OpenAiRealtimeSideband } from '../../src/services/realtime/openai-realtime-sideband.ts';
+import { createRealtimeToolSurfaceSessionUpdate } from '../../src/services/realtime/realtime-prompt.ts';
 
 type Listener = (event: { data?: unknown }) => void;
 
@@ -120,6 +121,59 @@ test('two fast completions cannot race into overlapping responses', () => {
     sent.filter((entry) => entry.includes('response.create')).length,
     2,
   );
+});
+
+test('integrates acknowledged tool-surface updates and correction results', () => {
+  const { receive, sent, socket } = fakeSocket();
+  const sideband = new OpenAiRealtimeSideband(socket);
+  sideband.setHermesExecutionActive(true);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sideband.getToolSurfaceSnapshot(), {
+    acknowledged: 'idle',
+    desired: 'active',
+    updatePending: true,
+  });
+  receive({
+    session: createRealtimeToolSurfaceSessionUpdate('active'),
+    type: 'session.updated',
+  });
+  assert.deepEqual(sideband.getToolSurfaceSnapshot(), {
+    acknowledged: 'active',
+    desired: 'active',
+    updatePending: false,
+  });
+
+  sideband.sendFunctionResult('correction-1', {
+    ok: true,
+    status: 'redirected',
+  });
+  assert.equal(sent.length, 3);
+  assert.match(sent[1]!, /function_call_output/);
+  assert.match(sent[1]!, /redirected/);
+  assert.match(sent[2]!, /response\.create/);
+  sideband.close();
+});
+
+test('tool-surface updates can converge while a model response is in flight', () => {
+  const { receive, sent, socket } = fakeSocket();
+  const sideband = new OpenAiRealtimeSideband(socket);
+  receive({ response: { id: 'speaking' }, type: 'response.created' });
+  sideband.setHermesExecutionActive(true);
+  assert.equal(JSON.parse(sent[0]!).type, 'session.update');
+  receive({
+    session: createRealtimeToolSurfaceSessionUpdate('active'),
+    type: 'session.updated',
+  });
+  assert.equal(sideband.getToolSurfaceSnapshot().acknowledged, 'active');
+
+  sideband.sendFunctionResult('correction-while-speaking', {
+    ok: true,
+    status: 'queued',
+  });
+  assert.equal(sent.length, 1, 'tool results still wait for response safety');
+  receive({ response: { id: 'speaking' }, type: 'response.done' });
+  assert.equal(sent.length, 3);
+  sideband.close();
 });
 
 test('ignores oversized, binary, and malformed events without dying', () => {

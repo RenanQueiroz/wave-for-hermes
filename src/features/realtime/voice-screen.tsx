@@ -15,6 +15,7 @@ import { AppState, ScrollView, View } from 'react-native';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import { createGatewayAskHermesExecutor } from '@/features/realtime/gateway-ask-hermes-executor';
+import { createGatewayCorrectHermesExecutor } from '@/features/realtime/gateway-correct-hermes-executor';
 import {
   WaveRealtimeController,
   type RealtimeBackend,
@@ -109,6 +110,10 @@ function KeyedRealtimeVoiceScreenReady({
       new OpenAiRealtimeBackend({
         apiKey,
         executeAskHermes: createGatewayAskHermesExecutor({
+          client,
+          sessionId,
+        }),
+        executeCorrectHermes: createGatewayCorrectHermesExecutor({
           client,
           sessionId,
         }),

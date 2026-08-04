@@ -117,14 +117,15 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   call. Voice choice remains a separate preference.
 - `OpenAiRealtimeBackend` performs the SDP exchange directly against
   `POST /v1/realtime/calls`, attaches the authenticated WebSocket sideband, and wires
-  `ask_hermes` dispatch through `AskHermesOrchestrator`: strict schema validation, trusted
-  binding to the initiating conversation's session, serialization, at most eight
-  active-or-waiting requests, a 128-request per-call cap, exact-instruction coalescing within
-  one initiating user turn, and response-safe delivery that holds completed results while the
-  user is speaking or a model response is active. Validated instructions execute as ordinary
-  turns on the gateway connection, so their side effects land in canonical Hermes history. Its
-  pure prompt/config builder takes only the app-validated model and voice: no gateway version,
-  tool, skill, MCP, A2A, Agent Card, or configuration metadata can enter the OpenAI session.
+  dispatch through `AskHermesOrchestrator`: strict schemas, trusted binding to the initiating
+  conversation, ask serialization/coalescing, bounded queues, and response-safe result delivery.
+  Validated `ask_hermes` instructions execute as ordinary gateway turns, so their side effects
+  land in canonical history. Once that turn's live redirect lane is registered, the sideband sends
+  one complete `[ask_hermes, correct_hermes]` session snapshot and waits for a matching full
+  `session.updated`; settlement restores the complete ask-only snapshot. Update failures never
+  retry automatically or change trusted authority. The pure prompt/config builders take only
+  app-owned state: no gateway version, tool, skill, MCP, A2A, Agent Card, or configuration metadata
+  can enter the OpenAI session.
 - `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
   native peer and data channel, remote audio tracks, and cleanup. `WaveRealtimeController` owns
   call lifecycle, cancellation/expiry, bounded reconnection (grace for ICE self-recovery, then
@@ -241,18 +242,21 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
   activity renders as collapsed named status rows with the Wave avatar aligned to the last item.
   Expanding a row lazily renders bounded raw input and output as copyable plain code, never
   Markdown.
-- The only Realtime tool is the strict `ask_hermes({ instruction: string })` operation. A
-  model-controlled session ID is forbidden by construction — the schema has no such field, and
-  the executor is bound to the initiating conversation. Its fixed generic description names the
-  classes of work worth delegating but never mirrors Hermes capabilities. An execution preference
-  is retained only when the user explicitly states it; Hermes otherwise chooses its own tools,
+- Realtime begins with the strict `ask_hermes({ instruction: string })` operation. While exactly
+  one ask execution has a registered live gateway lane, a complete acknowledged session snapshot
+  also advertises strict `correct_hermes({ instruction: string })`. Neither schema contains a
+  session, turn, call, run, mode, attachment, or arbitrary-options field. The trusted orchestrator
+  rechecks the same execution immediately before and after the one non-retrying redirect, so a
+  stale advertised tool or completion race returns `nothing_active` and can never target queued
+  work. Its fixed descriptions never mirror Hermes capabilities. An execution preference is
+  retained only when the user explicitly states it; Hermes otherwise chooses its own tools,
   skills, and plan.
 - Wave owns the spoken interaction. The user addresses Wave naturally, and Wave selects and
   phrases a Hermes handoff when backend work is needed; successful voice responses do not
   require the user to understand or manage that boundary.
-- Wave does not add an extra approval dialog before that narrow tool. The orchestrator
-  dispatches it automatically only after strict argument validation, trusted call-state
-  authorization, and rate/concurrency checks; Hermes's own tool safety policy still applies.
+- Wave does not add an extra approval dialog before these narrow tools. The orchestrator dispatches
+  only after strict argument validation, trusted call/execution authorization, and rate/concurrency
+  checks; Hermes's own tool safety policy still applies.
 
 ## Verification
 

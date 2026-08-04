@@ -10,8 +10,9 @@ import {
   type WaveAskHermesToolResult,
 } from '@wave/contracts';
 
-import type { GatewayClient } from '@/services/gateway/gateway-client';
-import { WaveBackendError } from '@/services/wave/wave-backend-error';
+import type { HermesExecutionLifecycle } from './ask-hermes-orchestrator.ts';
+import type { GatewayClient } from '../../services/gateway/gateway-client.ts';
+import { WaveBackendError } from '../../services/wave/wave-backend-error.ts';
 
 export function createGatewayAskHermesExecutor({
   client,
@@ -23,7 +24,9 @@ export function createGatewayAskHermesExecutor({
   return async (
     instruction: string,
     signal: AbortSignal,
+    lifecycle: HermesExecutionLifecycle,
   ): Promise<WaveAskHermesToolResult> => {
+    let active = false;
     let answer = '';
     let truncated = false;
     try {
@@ -32,6 +35,12 @@ export function createGatewayAskHermesExecutor({
         instruction,
         signal,
       )) {
+        // streamTurn yields only after it has registered the live gateway RPC
+        // lane. Before this point a correction must fail closed.
+        if (!active) {
+          active = true;
+          lifecycle.activate();
+        }
         if (event.type === 'assistant.completed') {
           if (answer.length >= WAVE_MAX_ASK_HERMES_ANSWER_LENGTH) {
             truncated = true;
@@ -64,6 +73,8 @@ export function createGatewayAskHermesExecutor({
         },
         ok: false,
       };
+    } finally {
+      if (active) lifecycle.deactivate();
     }
     const trimmed = answer.trim();
     return {

@@ -5,6 +5,7 @@ import { WaveIdentifierSchema, WaveResponseMetadataSchema } from './common.ts';
 export const WAVE_MAX_REALTIME_SDP_LENGTH = 48_000;
 export const WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH = 8_000;
 export const WAVE_MAX_ASK_HERMES_ANSWER_LENGTH = 24_000;
+export const WAVE_MAX_CORRECT_HERMES_INSTRUCTION_LENGTH = 8_000;
 export const WAVE_REALTIME_VOICE_IDS = [
   'alloy',
   'ash',
@@ -90,6 +91,46 @@ export const WaveAskHermesToolResultSchema = z.discriminatedUnion('ok', [
     .strict(),
 ]);
 
+/**
+ * A correction for the one Hermes execution already bound to trusted Wave
+ * call state. Model-selected identifiers and redirect modes are deliberately
+ * absent, and strict parsing rejects them as extra fields.
+ */
+export const WaveCorrectHermesArgumentsSchema = z
+  .object({
+    instruction: z
+      .string()
+      .trim()
+      .min(1)
+      .max(WAVE_MAX_CORRECT_HERMES_INSTRUCTION_LENGTH),
+  })
+  .strict();
+
+export const WaveCorrectHermesToolResultSchema = z.discriminatedUnion(
+  'status',
+  [
+    z
+      .object({
+        ok: z.literal(true),
+        status: z.enum(['queued', 'redirected']),
+      })
+      .strict(),
+    z
+      .object({
+        message: z.string().trim().min(1).max(300),
+        ok: z.literal(false),
+        retryable: z.boolean(),
+        status: z.enum(['nothing_active', 'rejected']),
+      })
+      .strict(),
+  ],
+);
+
+export const WaveRealtimeToolResultSchema = z.union([
+  WaveAskHermesToolResultSchema,
+  WaveCorrectHermesToolResultSchema,
+]);
+
 export type WaveAskHermesArguments = z.infer<
   typeof WaveAskHermesArgumentsSchema
 >;
@@ -99,11 +140,20 @@ export type WaveAskHermesToolErrorCode = z.infer<
 export type WaveAskHermesToolResult = z.infer<
   typeof WaveAskHermesToolResultSchema
 >;
+export type WaveCorrectHermesArguments = z.infer<
+  typeof WaveCorrectHermesArgumentsSchema
+>;
+export type WaveCorrectHermesToolResult = z.infer<
+  typeof WaveCorrectHermesToolResultSchema
+>;
 export type WaveEndRealtimeCallResponse = z.infer<
   typeof WaveEndRealtimeCallResponseSchema
 >;
 export type WaveRealtimeCall = z.infer<typeof WaveRealtimeCallSchema>;
 export type WaveRealtimeVoiceId = z.infer<typeof WaveRealtimeVoiceIdSchema>;
+export type WaveRealtimeToolResult = z.infer<
+  typeof WaveRealtimeToolResultSchema
+>;
 export type WaveStartRealtimeCallResponse = z.infer<
   typeof WaveStartRealtimeCallResponseSchema
 >;

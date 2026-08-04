@@ -10,23 +10,24 @@
  */
 import {
   type WaveAskHermesToolResult,
+  type WaveCorrectHermesToolResult,
   type WaveEndRealtimeCallResponse,
   type WaveRealtimeVoiceId,
   type WaveStartRealtimeCallResponse,
 } from '@wave/contracts';
 import { fetch as expoFetch } from 'expo/fetch';
 
-import { AskHermesOrchestrator } from '../../features/realtime/ask-hermes-orchestrator.ts';
+import {
+  AskHermesOrchestrator,
+  type HermesExecutionLifecycle,
+} from '../../features/realtime/ask-hermes-orchestrator.ts';
 import type { RealtimeBackend } from '../../features/realtime/realtime-controller.ts';
 import {
   isWaveRealtimeModelId,
   WAVE_REALTIME_DEFAULT_MODEL,
   type WaveRealtimeModelId,
 } from './realtime-model-preference-record.ts';
-import {
-  buildWaveRealtimeInstructions,
-  createAskHermesToolDefinition,
-} from './realtime-prompt.ts';
+import { createRealtimeToolSurfaceSessionUpdate } from './realtime-prompt.ts';
 import { OpenAiRealtimeSideband } from './openai-realtime-sideband.ts';
 
 const OPENAI_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
@@ -55,7 +56,12 @@ export interface OpenAiRealtimeBackendOptions {
   executeAskHermes(
     instruction: string,
     signal: AbortSignal,
+    lifecycle: HermesExecutionLifecycle,
   ): Promise<WaveAskHermesToolResult>;
+  executeCorrectHermes(
+    instruction: string,
+    signal: AbortSignal,
+  ): Promise<WaveCorrectHermesToolResult>;
   fetchImpl?: typeof globalThis.fetch;
   model?: WaveRealtimeModelId;
   socketFactory?: (url: string, apiKey: string) => WebSocket;
@@ -70,6 +76,7 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
   private readonly apiKey: string;
   private readonly calls = new Map<string, ActiveCall>();
   private readonly executeAskHermes: OpenAiRealtimeBackendOptions['executeAskHermes'];
+  private readonly executeCorrectHermes: OpenAiRealtimeBackendOptions['executeCorrectHermes'];
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly model: WaveRealtimeModelId;
   private readonly socketFactory: (url: string, apiKey: string) => WebSocket;
@@ -77,6 +84,7 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
   constructor(options: OpenAiRealtimeBackendOptions) {
     this.apiKey = options.apiKey;
     this.executeAskHermes = options.executeAskHermes;
+    this.executeCorrectHermes = options.executeCorrectHermes;
     this.fetchImpl =
       options.fetchImpl ?? (expoFetch as unknown as typeof globalThis.fetch);
     const model = options.model ?? WAVE_REALTIME_DEFAULT_MODEL;
@@ -200,7 +208,11 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
         sideband.sendFunctionResult(toolCallId, result);
       },
       execute: this.executeAskHermes,
+      executeCorrection: this.executeCorrectHermes,
       isAuthorized: () => this.calls.has(callId),
+      onActiveExecutionChange: (active) => {
+        sideband.setHermesExecutionActive(active);
+      },
     });
     // The session binding is trusted call state: tool calls run against the
     // conversation this call was started from, never a model-chosen session.
@@ -279,15 +291,12 @@ export function createOpenAiRealtimeSessionConfig(
       },
       output: { voice },
     },
-    instructions: buildWaveRealtimeInstructions(),
+    ...createRealtimeToolSurfaceSessionUpdate('idle'),
     max_output_tokens: 1_024,
     model,
     output_modalities: ['audio'],
     parallel_tool_calls: true,
     reasoning: { effort: 'low' },
-    tool_choice: 'auto',
-    tools: [createAskHermesToolDefinition()],
     tracing: null,
-    type: 'realtime',
   };
 }

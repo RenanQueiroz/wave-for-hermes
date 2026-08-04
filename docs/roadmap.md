@@ -3,11 +3,11 @@
 Wave already supports authenticated gateway chat, account-wide conversation history, bounded
 attachments, inline approval and clarify prompts, mid-turn correction, sealed interim narration,
 bounded live progress, offline reading, half-duplex gateway speech, and opt-in OpenAI Realtime
-voice with typed `ask_hermes` delegation. Current behavior and completed work belong in the README
-and the focused architecture, connectivity, security, and WebRTC documents; this roadmap tracks
-only work that remains.
+voice with typed `ask_hermes` delegation and active-only `correct_hermes` steering. Current
+behavior and completed work belong in the README and the focused architecture, connectivity,
+security, and WebRTC documents; this roadmap tracks only work that remains.
 
-## Now: improve voice latency and correction
+## Now: improve voice latency
 
 [Hermes Agent v0.20](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) also adds
 clause-streamed speech and conversation capabilities Wave can adopt without becoming a Hermes
@@ -25,26 +25,6 @@ keeps an explicit interrupt control. Full-duplex gateway voice requires a separa
 covering simultaneous capture/playback, echo cancellation, pre-roll capture, phase-aware VAD,
 speaker and Bluetooth routing, interruption, and cleanup. If that proof is not reliable, Realtime
 remains Wave's full-duplex mode.
-
-### Correct active Hermes work from Realtime
-
-- Build on the stable chat-redirect contract by deliberately extending the current one-tool
-  contract with a strict `correct_hermes({ instruction })` operation. It may target only the one
-  active Hermes execution
-  bound to trusted call state, accepts no model-controlled identifiers, is rate-bounded, and never
-  retries automatically.
-- Use Realtime's dynamic session-update flow to keep the complete tool list at `[ask_hermes]` while
-  idle and `[ask_hermes, correct_hermes]` only after one bound Hermes execution becomes active;
-  restore the ask-only list when it settles. Serialize updates and confirm `session.updated`, but
-  keep controller validation authoritative when an update races or fails.
-- Keep the semantics distinct: speech barge-in stops Wave's audio; a change to the current
-  deliverable uses `correct_hermes`; distinct work that leaves it unchanged uses `ask_hermes` and
-  the bounded queue; ordinary conversation uses neither. Clarify ambiguous add-versus-replace
-  intent. A raced completion must not silently become a new request.
-
-Adding `correct_hermes` changes a security-sensitive product contract. Its implementation is not
-complete until the shared schema, controller, prompt, tests, [`architecture.md`](./architecture.md),
-[`security.md`](./security.md), and `AGENTS.md` agree.
 
 ## Later: deliberate native and notification options
 

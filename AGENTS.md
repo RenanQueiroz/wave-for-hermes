@@ -190,22 +190,38 @@ documentation before implementing UI.
   conflicts.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
-- Wave does not add a separate user-approval prompt before `ask_hermes`. Dispatch it automatically
-  only after strict schema validation, trusted session binding, and rate/concurrency checks;
-  Hermes's own tool safety policy remains authoritative.
+- Wave does not add a separate user-approval prompt before `ask_hermes` or `correct_hermes`.
+  Dispatch either automatically only after strict schema validation, trusted binding, and
+  rate/concurrency checks; Hermes's own tool safety policy remains authoritative.
 - Bind the active Hermes session to trusted call state owned by the app. Do not accept a
-  model-controlled Hermes session ID in `ask_hermes` arguments.
+  model-controlled Hermes session ID in either Realtime tool's arguments.
+- Realtime starts ask-only. Advertise strict `correct_hermes({ instruction })` only while exactly
+  one `ask_hermes` execution has registered its live gateway redirect lane; queued work is never a
+  correction target. The correction schema has no session, turn, call, run, mode, attachment, or
+  arbitrary-options field. Capture the trusted execution object and recheck it immediately before
+  and after one non-retrying `session.redirect`; a completion race returns `nothing_active` and
+  never becomes new work or targets the next queued ask.
+- Treat Realtime tool surfaces as complete `idle` (`[ask_hermes]`) and `active`
+  (`[ask_hermes, correct_hermes]`) snapshots. Serialize `session.update`, coalesce to the latest
+  desired state, and acknowledge a snapshot only after a matching full `session.updated`; neither
+  model nor voice belongs in an update. Failed/timed-out updates do not retry until a later real
+  execution transition, never end the call, and never override the trusted correction gate.
 - Treat Hermes work as background work relative to the live voice conversation. Barge-in interrupts
   Realtime playback, not the active Hermes run. Serialize and bound additional `ask_hermes` calls
-  for the trusted session, and deliver completed results only when no user speech or default
-  Realtime response is in progress.
+  for the trusted session; serialize and bound corrections against their captured active execution;
+  and deliver completed results only when no user speech or default Realtime response is in
+  progress. Corrections/constraints to the active deliverable use `correct_hermes`, distinct work
+  uses `ask_hermes`, speech-only interruption uses neither, and unclear add-versus-replace intent
+  requires one concise clarification. Answers to explicit Hermes approval/clarify prompts remain on
+  the existing prompt-response path, not either Realtime tool.
 - Coalesce an exact normalized `ask_hermes` instruction within one initiating Realtime user turn.
   Distinct tool-call IDs for that instruction must share one Hermes execution and each receive the
   same structured result; model retries must not duplicate work, while a later user turn may
   deliberately repeat the request.
 - Realtime transcripts are ephemeral: store no raw audio, no partial or final transcripts, no
   provider identifiers, and no hidden reasoning. Work Wave hands to Hermes through `ask_hermes`
-  lands as ordinary turns in the bound session, and Hermes remains canonical for its own turns.
+  lands as ordinary turns in the bound session; accepted corrections use that turn's ordinary
+  redirect lane, and Hermes remains canonical for its own turns.
 - Realtime model choice is an app-owned allowlist containing exactly `gpt-realtime-2.1-mini` and
   `gpt-realtime-2.1`; mini is the default. Persist it separately from the key and voice in a strict
   versioned device record, reject free-form ids, and snapshot it into the initial call — never

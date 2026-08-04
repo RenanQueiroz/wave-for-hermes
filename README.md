@@ -11,8 +11,10 @@ credentials. The opt-in live voice mode is backed by the OpenAI Realtime API usi
 user supplies in Settings: the Realtime model is the user's Wave assistant — it answers
 lightweight conversation directly and automatically delegates requests that need tools, private
 context, current information, durable work, or substantial reasoning to Hermes through a typed
-tool. Wave validates the call, forwards an intent-preserving instruction, and presents the
-confirmed result naturally as its own response. The user never has to address Hermes separately.
+tool. While that delegated execution is active, Wave can also steer it through a second narrowly
+scoped typed correction. Wave validates every call, forwards an intent-preserving instruction,
+and presents the confirmed result naturally as its own response. The user never has to address
+Hermes separately.
 
 ## Product scope
 
@@ -25,6 +27,7 @@ Wave is intended to support:
 - sending bounded images and text-based files with a message;
 - a natural, interruptible live voice conversation;
 - automatic typed delegation from the Realtime session to Hermes when work requires it;
+- natural correction of the one active Realtime-delegated Hermes execution;
 - iOS and Android, with shared behavior where the platforms allow it.
 
 Wave is not intended to manage Hermes configuration, providers, models, skills, or server
@@ -60,7 +63,7 @@ currently includes:
   platform WebSocket with the gateway's JSON-RPC framing, normalizes every protocol shape into
   Wave contracts at the boundary, and never logs tokens, URLs, or conversation content;
 - runtime-neutral normalized Wave error, turn-event, session, unified timeline, attachment,
-  Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
+  Realtime call, and strict `ask_hermes`/`correct_hermes` schemas in `@wave/contracts`;
 - resumable turn streams: a dropped connection, backgrounding, or app restart no longer cancels a
   running Hermes turn — the chat screen resumes the live session and reconciles from authoritative
   Hermes history, restores the server's starting/working/waiting state and last-activity time,
@@ -91,9 +94,11 @@ currently includes:
   `POST /v1/realtime/calls`, the authenticated WebSocket sideband, an audio-only native
   `RealtimeTransport` and focused lifecycle controller with bounded reconnection, strictly
   validated `ask_hermes` dispatch executed as ordinary turns on the gateway connection with
-  serialization, coalescing, and response-safe delivery enforced client-side, a fixed
-  metadata-free delegation prompt, exact whole-utterance stop handling, ephemeral in-call
-  transcripts, and unified-timeline refresh before returning to text chat;
+  serialization and coalescing, dynamically advertised `correct_hermes` steering of only the one
+  trusted active execution, serialized and acknowledged Realtime tool-surface updates,
+  response-safe result delivery, a fixed metadata-free delegation prompt, exact whole-utterance
+  stop handling, ephemeral in-call transcripts, and unified-timeline refresh before returning to
+  text chat;
 - an OpenAI key card in Settings that validates the key before saving, stores it with
   `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, exposes presence (never the value) to the UI, can remove it,
   plus separate per-device Realtime model and voice pickers. The model picker accepts only
@@ -121,7 +126,11 @@ self-contained Hermes instruction, but it must preserve the user's intent, scope
 identifiers, quoted text, literal values, and any explicitly named execution preference. It does
 not receive a catalog of Hermes tools, skills, MCP servers, peers, or configuration; Hermes chooses
 how to execute the generic instruction. It then summarizes or confirms only the result Hermes
-actually returned, without making the user manage the internal handoff. A final bare Stop phrase
+actually returned, without making the user manage the internal handoff. While exactly one
+delegated execution is live, Wave advertises `correct_hermes({ instruction })`: corrections and
+constraints steer only that active work, while distinct new work still uses the bounded
+`ask_hermes` queue. The correction accepts no model-controlled identifier, never retries, and
+fails as `nothing_active` rather than jumping to queued or completed work. A final bare Stop phrase
 ends the Realtime call locally and is not stored. Physical iOS
 (including barge-in), audio-route, interruption, release-build, and realistic network validation
 remain before Realtime voice is production-ready. See the tracked
@@ -316,12 +325,15 @@ components can coexist.
   secure storage. The production bundle scanner rejects key-shaped literals.
 - Treat Realtime tool arguments and Hermes responses as untrusted input. Validate them at the
   boundary.
-- Realtime may dispatch the narrow `ask_hermes({ instruction })` tool without an additional Wave
-  confirmation dialog after strict schema validation and trusted session binding. This does not
-  bypass Hermes's own tool safety policy or broaden the tool into administration access.
-- Realtime receives one fixed Wave-authored delegation tool, never a reflected catalog of Hermes
-  tools, skills, MCP/A2A metadata, Agent Cards, or configuration. Preserve an execution preference
-  only when the user states it explicitly; otherwise Hermes chooses its own plan.
+- Realtime may dispatch narrow `ask_hermes({ instruction })` and active-only
+  `correct_hermes({ instruction })` tools without an additional Wave confirmation dialog after
+  strict schema validation and trusted binding. This does not bypass Hermes's own tool safety
+  policy or broaden either tool into administration access.
+- Realtime receives fixed Wave-authored tool definitions, never a reflected catalog of Hermes
+  tools, skills, MCP/A2A metadata, Agent Cards, or configuration. The correction tool is advertised
+  only while the app has one registered live Hermes execution and still rechecks that trusted
+  execution when called. Preserve an execution preference only when the user states it explicitly;
+  otherwise Hermes chooses its own plan.
 - Store only the gateway's rotating session tokens (and the user's optional OpenAI key) in Expo
   SecureStore. Never expose them through UI, development state, logs, screenshots, or traces.
 - Keep Wave's Hermes access limited to chat and explicit conversational tools; do not quietly add

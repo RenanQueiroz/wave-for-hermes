@@ -67,7 +67,8 @@ The production boundary is split across:
 - `src/features/realtime/realtime-controller.ts` for call ownership, cancellation, expiry,
   bounded reconnection, safe UI state, transcript bounds, and explicit backend call termination;
 - `src/services/realtime/openai-realtime-backend.ts` for the direct SDP exchange, the
-  authenticated sideband, and `ask_hermes` orchestration on the user-owned key;
+  authenticated sideband, `ask_hermes` orchestration, and active-only `correct_hermes` steering on
+  the user-owned key;
 - `src/features/realtime/voice-screen.tsx` for the PanelUI state renderer and accessible controls.
 
 React components never own raw WebRTC resources. Leaving the focused route, backgrounding an
@@ -88,11 +89,14 @@ Settings without exposing the response body.
 
 The live transcript shown during a call is transient controller state and is not persisted
 anywhere — Realtime speech is ephemeral, and the call screen says so. Work Wave hands to Hermes
-through `ask_hermes` lands as ordinary turns in the bound session. Successful route exit
-refreshes the active unified timeline query before text chat is shown again, so completed
-voice-triggered Hermes work appears without closing and reopening the conversation. A final exact
-whole-utterance stop command closes locally before the phrase enters transcript state; speech that
-merely contains a stop word remains conversation.
+through `ask_hermes` lands as ordinary turns in the bound session. Only while one such turn has a
+registered live redirect lane does the sideband advertise `correct_hermes`; it restores ask-only
+tools on settlement, and the trusted execution gate remains authoritative if an OpenAI
+`session.update` is delayed, rejected, or lost. Successful route exit refreshes the active unified
+timeline query before text chat is shown again, so completed voice-triggered Hermes work appears
+without closing and reopening the conversation. A final exact whole-utterance stop command closes
+locally before the phrase enters transcript state; speech that merely contains a stop word remains
+conversation.
 
 ### Run the proof
 
@@ -155,10 +159,18 @@ and established then explicitly ended one real WebRTC call with each supported m
 the updated bundle and Settings route without a Realtime key on that emulator, so model-specific
 Android and all physical-device acceptance remain release gates.
 
+The Stage 5b bundle then reloaded on both Radon platforms, and iOS established and explicitly ended
+another real call using the new ask-only initial session snapshot; it reached `Listening` with one
+remote audio track, proving OpenAI accepted the updated initial prompt/tool configuration. No
+ordinary conversation or delegated work was generated during that smoke. Spoken correction and
+dynamic live update behavior remain covered deterministically until the physical-device gate.
+
 Deterministic tests separately cover strict `ask_hermes` validation, trusted session binding,
-coalescing, bounded ordered dispatch, response-safe delivery, teardown, and reconnection. The
-physical and simulator evidence does not establish alternate audio routes, physical iOS behavior,
-or release readiness.
+coalescing, bounded ordered dispatch, response-safe delivery, dynamic acknowledged tool snapshots,
+strict active-execution correction, completion/queued-work races, update failures/timeouts,
+teardown, and reconnection. Simulator bundle/runtime checks cover the code path, but natural spoken
+correction remains a physical-device acceptance gate. The existing physical and simulator evidence
+does not establish alternate audio routes, physical iOS behavior, or release readiness.
 
 ## Remaining production voice gates
 
@@ -168,8 +180,10 @@ Before declaring voice production-ready, validate:
 - full-duplex barge-in and assistant-audio interruption on physical iOS;
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
-- release builds and realistic network transitions.
-- a real call and `ask_hermes` delegation with each supported model on physical iOS and Android.
+- release builds and realistic network transitions;
+- a real call and `ask_hermes` delegation with each supported model on physical iOS and Android;
+- spoken `correct_hermes` steering during model generation and a Hermes tool, a distinct
+  overlapping request, speech-only barge-in, and exact stop on physical iOS and Android.
 
 The local proof should remain a small development-only native diagnostic even though the
 production controller now exists.

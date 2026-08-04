@@ -52,10 +52,11 @@ one deliberate exception to "the mobile process never holds an upstream key."
   `gpt-realtime-2.1-mini`, and the selected id is snapshotted for the call. A setup rejection is
   attempted once and becomes bounded model-setting guidance without parsing or displaying the
   OpenAI response body.
-- ask_hermes tool calls from a keyed Realtime call are validated client-side (strict schema,
-  trusted session binding, coalescing, serialization, bounded concurrency, response-safe
-  delivery), then run as ordinary turns on the gateway connection under the gateway's own
-  authentication.
+- Realtime tool calls are validated client-side. `ask_hermes` uses strict arguments, trusted
+  session binding, coalescing, serialization, bounded concurrency, and response-safe delivery,
+  then runs as an ordinary turn under the gateway's own authentication. `correct_hermes` exists
+  only as an advertised tool while that turn has one registered live redirect lane and still
+  rechecks that trusted execution at dispatch.
 - Revocation story: removing the key in Settings deletes it from secure storage and downgrades
   voice mode to the keyless server-side voice; the key itself should also be revoked at OpenAI
   when a device is lost — which is why Settings recommends a dedicated project-scoped key whose
@@ -89,18 +90,28 @@ switch.
 
 ### Realtime tool abuse and prompt injection
 
-- The Realtime session exposes exactly `ask_hermes({ instruction })`. Its JSON Schema is
-  generated from the same strict Zod schema used at dispatch; unknown tools, keys, and
-  model-selected session IDs fail closed (the schema has no session field at all).
-- The prompt and tool description are fixed Wave-owned values and accept no capability metadata.
+- The Realtime session starts with exactly `ask_hermes({ instruction })`. While one trusted Hermes
+  execution is active it may expose `correct_hermes({ instruction })`; both JSON Schemas match the
+  strict Zod dispatch schemas. Unknown tools, keys, identifiers, modes, attachments, and arbitrary
+  options fail closed.
+- The prompt and tool descriptions are fixed Wave-owned values and accept no capability metadata.
   Wave does not fetch or reflect Hermes tools, skills, MCP servers, A2A peers, Agent Cards,
   configuration, or descriptions into OpenAI. The model may preserve a user-explicit execution
   preference inside the ordinary instruction, but cannot invoke that capability directly.
 - The orchestrator binds dispatch to the initiating conversation's session through trusted call
-  state and refuses tool calls from a call it no longer tracks.
+  state and refuses tool calls from a call it no longer tracks. Correction additionally captures
+  the one live execution object and rechecks it before and after one non-retrying
+  `session.redirect`; queued work is never a target, and a completion race returns
+  `nothing_active` rather than creating or redirecting later work.
 - Per-call tool count (128), outstanding queue size (8), execution serialization, output length,
-  and call lifetime are bounded. Duplicate normalized instructions within one initiating user
-  turn share one execution.
+  correction queue size (8), and call lifetime are bounded. Corrections serialize on their own
+  lane against the captured active execution. Duplicate normalized ask instructions within one
+  initiating user turn share one execution.
+- Tool-surface updates contain complete Wave-owned instructions and tool lists but no model or
+  voice. Only one update may be in flight; Wave records it as acknowledged only after inspecting a
+  matching full `session.updated` configuration. A send failure or timeout leaves server state
+  unknown and is not retried until a later real active/idle transition. Regardless of advertised
+  state, trusted execution checks remain authoritative and call teardown cancels pending state.
 - Tool results are structured, bounded, and returned only through the originating call's
   sideband, deferred while the user is speaking or a model response is active.
 - Wave does not add a second user-approval prompt; Hermes's own tool safety policy remains the
@@ -160,9 +171,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   else; raw source strings, peer URLs, credentials, Agent Cards, audit paths, and A2A configuration
   never enter the render or persisted contract. Unknown sources stay reachable in Activity/All.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
-  provider identifiers are persisted anywhere. Work delegated through `ask_hermes` lands as
-  ordinary turns in canonical Hermes history. A final exact stop utterance is consumed as local
-  call control before it enters even the ephemeral transcript state.
+  provider identifiers are persisted anywhere. Work delegated through `ask_hermes` and accepted
+  corrections land through ordinary Hermes turn/redirect lanes in canonical history. A final exact
+  stop utterance is consumed as local call control before it enters even the ephemeral transcript
+  state.
 - The mobile offline read cache stores normalized session-list/timeline responses and up to 32
   gateway-accepted correction rows per session as one JSON file in the app sandbox (platform
   encryption at rest, no credentials or provider identifiers), expires after seven days, and is
