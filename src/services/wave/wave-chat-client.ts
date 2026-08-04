@@ -51,7 +51,11 @@ export interface WaveChatClient {
     signal?: AbortSignal,
   ): Promise<
     | WaveActiveTurnResponse
-    | { activeTurn: { latestSequence: number; turnId: string } | null }
+    | {
+        activeTurn: { latestSequence: number; turnId: string } | null;
+        lastActiveAt?: string;
+        liveStatus?: 'idle' | 'starting' | 'waiting' | 'working';
+      }
   >;
   getSessionHistory(
     sessionId: string,

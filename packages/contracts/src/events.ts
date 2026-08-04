@@ -41,6 +41,16 @@ export const WaveAssistantDeltaEventSchema = z
   })
   .strict();
 
+/** A completed assistant segment within a turn that is still running. */
+export const WaveAssistantInterimEventSchema = z
+  .object({
+    ...WaveTurnEventBaseShape,
+    content: z.string().trim().min(1).max(1_000_000),
+    messageId: WaveIdentifierSchema,
+    type: z.literal('assistant.interim'),
+  })
+  .strict();
+
 export const WaveToolStatusEventSchema = z
   .object({
     ...WaveTurnEventBaseShape,
@@ -61,6 +71,8 @@ export const WaveAssistantCompletedEventSchema = z
     interrupted: z.boolean(),
     messageId: WaveIdentifierSchema,
     partial: z.boolean(),
+    /** The final text replaces the latest sealed preview segment. */
+    replacesLastInterim: z.boolean().optional(),
     type: z.literal('assistant.completed'),
   })
   .strict();
@@ -103,6 +115,22 @@ export const WavePromptResolvedEventSchema = z
   })
   .strict();
 
+/** A reviewed, Wave-owned projection of an ephemeral Hermes lifecycle event. */
+export const WaveActivityStatusEventSchema = z
+  .object({
+    ...WaveTurnEventBaseShape,
+    status: z.enum([
+      'compacting',
+      'goal-complete',
+      'goal-continuing',
+      'goal-paused',
+      'process-updated',
+      'ready',
+    ]),
+    type: z.literal('activity.status'),
+  })
+  .strict();
+
 export const WaveTurnCompletedEventSchema = z
   .object({
     ...WaveTurnEventBaseShape,
@@ -123,9 +151,11 @@ export const WaveTurnEventSchema = z.discriminatedUnion('type', [
   WaveTurnStartedEventSchema,
   WaveAssistantStartedEventSchema,
   WaveAssistantDeltaEventSchema,
+  WaveAssistantInterimEventSchema,
   WaveToolStatusEventSchema,
   WavePromptRequestEventSchema,
   WavePromptResolvedEventSchema,
+  WaveActivityStatusEventSchema,
   WaveAssistantCompletedEventSchema,
   WaveTurnCompletedEventSchema,
   WaveTurnErrorEventSchema,

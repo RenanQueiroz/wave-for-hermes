@@ -176,6 +176,13 @@ export const WaveRedirectTurnResponseSchema = WaveResponseMetadataSchema.extend(
   },
 ).strict();
 
+export const WaveSessionLiveStatusSchema = z.enum([
+  'idle',
+  'starting',
+  'waiting',
+  'working',
+]);
+
 export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
   activeTurn: z
     .object({
@@ -184,6 +191,8 @@ export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
     })
     .strict()
     .nullable(),
+  lastActiveAt: WaveIsoDateTimeSchema.optional(),
+  liveStatus: WaveSessionLiveStatusSchema,
   sessionId: WaveIdentifierSchema,
 }).strict();
 
@@ -213,5 +222,6 @@ export type WaveSessionListResponse = z.infer<
 >;
 export type WaveSessionResponse = z.infer<typeof WaveSessionResponseSchema>;
 export type WaveSessionSummary = z.infer<typeof WaveSessionSummarySchema>;
+export type WaveSessionLiveStatus = z.infer<typeof WaveSessionLiveStatusSchema>;
 export type WaveTurnInput = z.infer<typeof WaveTurnInputSchema>;
 export type WaveTurnInputPart = z.infer<typeof WaveTurnInputPartSchema>;

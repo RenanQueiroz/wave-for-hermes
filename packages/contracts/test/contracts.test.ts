@@ -15,6 +15,7 @@ import {
   WaveErrorSchema,
   WaveRedirectTurnRequestSchema,
   WaveRedirectTurnResponseSchema,
+  WaveActiveTurnResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveToolDetailSchema,
@@ -283,6 +284,67 @@ test('validates each normalized turn event variant strictly', () => {
     WaveTurnEventSchema.safeParse({
       ...delta,
       type: 'hermes.run.started',
+    }).success,
+    false,
+  );
+});
+
+test('validates bounded v0.20 stream projections and live state', () => {
+  const base = {
+    apiVersion: WAVE_API_VERSION,
+    eventId: 'event-v020',
+    sequence: 2,
+    sessionId: 'session-v020',
+    timestamp: '2026-08-03T00:00:00.000Z',
+    turnId: 'turn-v020',
+  };
+  assert.equal(
+    WaveTurnEventSchema.parse({
+      ...base,
+      content: 'A sealed segment.',
+      messageId: 'message-v020',
+      type: 'assistant.interim',
+    }).type,
+    'assistant.interim',
+  );
+  assert.equal(
+    WaveTurnEventSchema.safeParse({
+      ...base,
+      content: 'x'.repeat(1_000_001),
+      messageId: 'message-v020',
+      type: 'assistant.interim',
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveTurnEventSchema.parse({
+      ...base,
+      status: 'compacting',
+      type: 'activity.status',
+    }).type,
+    'activity.status',
+  );
+  assert.equal(
+    WaveTurnEventSchema.safeParse({
+      ...base,
+      status: 'raw-reasoning',
+      type: 'activity.status',
+    }).success,
+    false,
+  );
+
+  const active = WaveActiveTurnResponseSchema.parse({
+    activeTurn: { latestSequence: -1, turnId: 'turn-v020' },
+    apiVersion: WAVE_API_VERSION,
+    lastActiveAt: '2026-08-03T00:00:00.000Z',
+    liveStatus: 'waiting',
+    sessionId: 'session-v020',
+  });
+  assert.equal(active.liveStatus, 'waiting');
+  assert.equal(
+    WaveActiveTurnResponseSchema.safeParse({
+      ...active,
+      liveStatus: 'future-raw-status',
     }).success,
     false,
   );

@@ -28,16 +28,19 @@ export const GATEWAY_V020_FIXTURE = {
     sessions: [
       {
         id: 'live-starting',
+        last_active: 1_785_642_618,
         session_key: 'stored-starting',
         status: 'starting',
       },
       {
         id: 'live-working',
+        last_active: 1_785_642_619,
         session_key: 'stored-working',
         status: 'working',
       },
       {
         id: 'live-waiting',
+        last_active: 1_785_642_620,
         session_key: 'stored-waiting',
         status: 'waiting',
       },
@@ -66,15 +69,15 @@ export const GATEWAY_V020_FIXTURE = {
   status: { release_date: 'fixture-date', version: '0.20.0' },
   turnFrames: [
     {
-      payload: {},
+      payload: { already_streamed: true, text: 'Synthetic interim.' },
       type: 'message.interim',
     },
     {
-      payload: {},
+      payload: { name: 'search', preview: 'Synthetic progress.' },
       type: 'tool.progress',
     },
     {
-      payload: {},
+      payload: { kind: 'compacting', text: 'Synthetic lifecycle.' },
       type: 'status.update',
     },
   ],

@@ -16,6 +16,7 @@ import {
   WaveRedirectTurnRequestSchema,
   type WaveConversationMessage,
   type WaveRedirectTurnResponse,
+  type WaveSessionLiveStatus,
   type WaveSessionSummary,
   type WaveTimelineResponse,
   type WaveTurnEvent,
@@ -26,6 +27,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import {
   normalizeSessionRows,
   normalizeTimelineEntries,
+  toIsoTimestamp,
 } from './gateway-normalize.ts';
 import { GatewayRpc, GatewayRpcError } from './gateway-rpc.ts';
 import {
@@ -177,6 +179,23 @@ export function isGatewaySessionActive(
     (typeof value?.status === 'string' &&
       ACTIVE_GATEWAY_SESSION_STATUSES.has(value.status))
   );
+}
+
+export function normalizeGatewaySessionLiveState(
+  value: Record<string, unknown> | undefined,
+): { lastActiveAt?: string; liveStatus: WaveSessionLiveStatus } {
+  const rawStatus = value?.status;
+  const liveStatus: WaveSessionLiveStatus =
+    rawStatus === 'idle' ||
+    rawStatus === 'starting' ||
+    rawStatus === 'waiting' ||
+    rawStatus === 'working'
+      ? rawStatus
+      : value?.running === true || rawStatus === 'running'
+        ? 'working'
+        : 'idle';
+  const lastActiveAt = toIsoTimestamp(value?.last_active);
+  return { ...(lastActiveAt ? { lastActiveAt } : {}), liveStatus };
 }
 
 export class GatewayClient {
@@ -807,11 +826,18 @@ export class GatewayClient {
   ): Promise<{
     activeTurn: { latestSequence: number; turnId: string } | null;
     apiVersion: 'v1';
+    lastActiveAt?: string;
+    liveStatus: WaveSessionLiveStatus;
     sessionId: string;
   }> {
     sessionId = this.resolveSessionId(sessionId);
     if (isPendingSessionId(sessionId)) {
-      return { activeTurn: null, apiVersion: 'v1', sessionId };
+      return {
+        activeTurn: null,
+        apiVersion: 'v1',
+        liveStatus: 'idle',
+        sessionId,
+      };
     }
     let connection:
       Awaited<ReturnType<GatewayClient['openSocket']>> | undefined;
@@ -830,15 +856,22 @@ export class GatewayClient {
       // phases as active. Treating only `working` as live makes delete and
       // reattach race those two phases.
       const running = isGatewaySessionActive(match);
+      const liveState = normalizeGatewaySessionLiveState(match);
       return {
         activeTurn: running
           ? { latestSequence: -1, turnId: `gw-active-${sessionId}` }
           : null,
         apiVersion: 'v1',
+        ...liveState,
         sessionId,
       };
     } catch {
-      return { activeTurn: null, apiVersion: 'v1', sessionId };
+      return {
+        activeTurn: null,
+        apiVersion: 'v1',
+        liveStatus: 'idle',
+        sessionId,
+      };
     } finally {
       connection?.close();
     }

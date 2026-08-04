@@ -10,6 +10,7 @@ export type WaveChatTaskStatus = 'complete' | 'error' | 'pending' | 'running';
 
 export type WaveChatPart =
   | {
+      sealed?: boolean;
       text: string;
       type: 'text';
     }
@@ -31,6 +32,9 @@ export interface WaveChatMessage {
 
 export type WaveChatStatus =
   'cancelling' | 'error' | 'idle' | 'streaming' | 'submitting';
+
+export type WaveChatLiveStatus = 'idle' | 'starting' | 'waiting' | 'working';
+export const WAVE_CHAT_ACTIVITY_STALE_MS = 8 * 60_000;
 
 /** A mid-turn prompt from the agent, blocking the active turn until answered. */
 export interface WaveChatPrompt {
@@ -60,6 +64,9 @@ export interface WaveChatState {
     message: string;
     retryable: boolean;
   };
+  activity?: Extract<WaveTurnEvent, { type: 'activity.status' }>['status'];
+  lastActivityAt?: string;
+  liveStatus: WaveChatLiveStatus;
   messages: WaveChatMessage[];
   status: WaveChatStatus;
 }
@@ -73,11 +80,14 @@ export type WaveChatAction =
     }
   | {
       assistantId: string;
+      lastActivityAt?: string;
+      liveStatus: WaveChatLiveStatus;
       turnId: string;
       type: 'resume';
     }
   | {
       delta: string;
+      timestamp: string;
       type: 'assistant.delta';
     }
   | {
@@ -111,6 +121,7 @@ export type WaveChatAction =
   | { type: 'settled' };
 
 export const initialWaveChatState: WaveChatState = {
+  liveStatus: 'idle',
   messages: [],
   status: 'idle',
 };
@@ -122,6 +133,7 @@ export function waveChatReducer(
   switch (action.type) {
     case 'send':
       return {
+        liveStatus: 'starting',
         messages: [
           {
             id: action.userId,
@@ -142,6 +154,10 @@ export function waveChatReducer(
       // assistant placeholder is seeded locally.
       return {
         activeTurnId: action.turnId,
+        ...(action.lastActivityAt
+          ? { lastActivityAt: action.lastActivityAt }
+          : {}),
+        liveStatus: action.liveStatus,
         messages: [
           {
             id: action.assistantId,
@@ -154,6 +170,9 @@ export function waveChatReducer(
     case 'assistant.delta':
       return {
         ...state,
+        activity: undefined,
+        lastActivityAt: action.timestamp,
+        liveStatus: 'working',
         messages: updateAssistant(state.messages, (message) => ({
           ...message,
           parts: appendAssistantText(message.parts, action.delta),
@@ -170,6 +189,8 @@ export function waveChatReducer(
         ...state,
         activePrompt: undefined,
         activeTurnId: undefined,
+        activity: undefined,
+        liveStatus: 'idle',
         status: 'cancelling',
       };
     case 'correction.requested':
@@ -221,10 +242,12 @@ export function waveChatReducer(
         ...state,
         activePrompt: undefined,
         activeTurnId: undefined,
+        activity: undefined,
         error: {
           message: action.message,
           retryable: action.retryable,
         },
+        liveStatus: 'idle',
         status: 'error',
       };
     case 'timeline.reconciled':
@@ -239,11 +262,43 @@ export function waveChatReducer(
             ...state,
             activePrompt: undefined,
             activeTurnId: undefined,
+            activity: undefined,
             error: undefined,
+            liveStatus: 'idle',
             status: 'idle',
           };
     case 'event':
       return applyEvent(state, action.event);
+  }
+}
+
+export function isWaveChatActivityStale(
+  state: Pick<WaveChatState, 'lastActivityAt' | 'liveStatus'>,
+  now = Date.now(),
+) {
+  if (state.liveStatus !== 'working' || !state.lastActivityAt) return false;
+  const lastActivityAt = Date.parse(state.lastActivityAt);
+  return (
+    Number.isFinite(lastActivityAt) &&
+    now - lastActivityAt >= WAVE_CHAT_ACTIVITY_STALE_MS
+  );
+}
+
+export function waveChatActivityLabel(state: WaveChatState) {
+  switch (state.activity) {
+    case 'compacting':
+      return 'Summarizing conversation…';
+    case 'goal-complete':
+      return 'Goal complete';
+    case 'goal-continuing':
+      return 'Goal continuing…';
+    case 'goal-paused':
+      return 'Goal paused';
+    case 'process-updated':
+      return 'Background work updated';
+    case 'ready':
+    case undefined:
+      return undefined;
   }
 }
 
@@ -354,25 +409,49 @@ function applyEvent(
       return {
         ...state,
         activeTurnId: event.turnId,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'working',
         status: 'streaming',
       };
     case 'assistant.started':
       return {
         ...state,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'working',
+        status: 'streaming',
+      };
+    case 'assistant.interim':
+      return {
+        ...state,
+        activity: undefined,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'working',
+        messages: updateAssistant(state.messages, (message) => ({
+          ...message,
+          parts: sealAssistantText(message.parts, event.content),
+        })),
         status: 'streaming',
       };
     case 'assistant.completed':
       return {
         ...state,
+        activity: undefined,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'working',
         messages: updateAssistant(state.messages, (message) => ({
           ...message,
-          parts: replaceAssistantText(message.parts, event.content),
+          parts: event.replacesLastInterim
+            ? replaceLastInterimText(message.parts, event.content)
+            : replaceAssistantText(message.parts, event.content),
         })),
         status: 'streaming',
       };
     case 'tool.status':
       return {
         ...state,
+        activity: undefined,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'working',
         messages: updateAssistant(state.messages, (message) => ({
           ...message,
           parts: updateTaskPart(message.parts, event),
@@ -392,17 +471,35 @@ function applyEvent(
           ...(event.question ? { question: event.question } : {}),
           turnId: event.turnId,
         },
+        lastActivityAt: event.timestamp,
+        liveStatus: 'waiting',
         status: 'streaming',
       };
     case 'prompt.resolved':
       return state.activePrompt?.promptId === event.promptId
-        ? { ...state, activePrompt: undefined }
+        ? {
+            ...state,
+            activePrompt: undefined,
+            lastActivityAt: event.timestamp,
+            liveStatus: 'working',
+          }
         : state;
+    case 'activity.status':
+      return {
+        ...state,
+        activity: event.status === 'ready' ? undefined : event.status,
+        lastActivityAt: event.timestamp,
+        liveStatus: state.activePrompt ? 'waiting' : 'working',
+        status: 'streaming',
+      };
     case 'turn.completed':
       return {
         ...state,
         activePrompt: undefined,
         activeTurnId: undefined,
+        activity: undefined,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'idle',
         status: 'streaming',
       };
     case 'turn.error':
@@ -411,7 +508,10 @@ function applyEvent(
           ...state,
           activePrompt: undefined,
           activeTurnId: undefined,
+          activity: undefined,
           error: undefined,
+          lastActivityAt: event.timestamp,
+          liveStatus: 'idle',
           status: 'cancelling',
         };
       }
@@ -419,10 +519,13 @@ function applyEvent(
         ...state,
         activePrompt: undefined,
         activeTurnId: undefined,
+        activity: undefined,
         error: {
           message: event.error.message,
           retryable: event.error.retryable,
         },
+        lastActivityAt: event.timestamp,
+        liveStatus: 'idle',
         status: 'error',
       };
   }
@@ -473,14 +576,34 @@ function removeMessage(messages: WaveChatMessage[], messageId: string) {
 
 function appendAssistantText(parts: WaveChatPart[], delta: string) {
   const last = parts.at(-1);
-  if (last?.type === 'text') {
+  if (last?.type === 'text' && !last.sealed) {
     return [...parts.slice(0, -1), { ...last, text: `${last.text}${delta}` }];
   }
   return [...parts, { text: delta, type: 'text' as const }];
 }
 
+function sealAssistantText(parts: WaveChatPart[], content: string) {
+  const textIndex = parts.findLastIndex(
+    (part) => part.type === 'text' && !part.sealed,
+  );
+  if (textIndex < 0) {
+    return [...parts, { sealed: true, text: content, type: 'text' as const }];
+  }
+  return parts.map((part, index) =>
+    index === textIndex && part.type === 'text'
+      ? {
+          ...part,
+          sealed: true,
+          text: reconcileSegmentText(part.text, content),
+        }
+      : part,
+  );
+}
+
 function replaceAssistantText(parts: WaveChatPart[], content: string) {
-  const textIndex = parts.findLastIndex((part) => part.type === 'text');
+  const textIndex = parts.findLastIndex(
+    (part) => part.type === 'text' && !part.sealed,
+  );
   if (textIndex < 0) {
     return content
       ? [...parts, { text: content, type: 'text' as const }]
@@ -491,6 +614,25 @@ function replaceAssistantText(parts: WaveChatPart[], content: string) {
       ? { ...part, text: content }
       : part,
   );
+}
+
+function replaceLastInterimText(parts: WaveChatPart[], content: string) {
+  const textIndex = parts.findLastIndex(
+    (part) => part.type === 'text' && part.sealed,
+  );
+  if (textIndex < 0) return replaceAssistantText(parts, content);
+  return parts.map((part, index) =>
+    index === textIndex && part.type === 'text'
+      ? { text: content, type: 'text' as const }
+      : part,
+  );
+}
+
+function reconcileSegmentText(streamed: string, completed: string) {
+  if (streamed === completed) return streamed;
+  if (completed.startsWith(streamed)) return completed;
+  if (streamed.startsWith(completed)) return streamed;
+  return completed;
 }
 
 function updateTaskPart(
@@ -513,17 +655,7 @@ function updateTaskPart(
   ) {
     return parts.map((part, partIndex) =>
       partIndex === index && part.type === 'task'
-        ? {
-            ...part,
-            ...(event.toolInput ? { input: event.toolInput } : {}),
-            ...(event.toolOutput ? { output: event.toolOutput } : {}),
-            ...(event.toolOutputIsPreview === undefined
-              ? {}
-              : {
-                  outputIsPreview: event.toolOutputIsPreview,
-                }),
-            status,
-          }
+        ? mergeTaskPart(part, event, status)
         : part,
     );
   }
@@ -541,6 +673,29 @@ function updateTaskPart(
       type: 'task' as const,
     },
   ];
+}
+
+function mergeTaskPart(
+  part: Extract<WaveChatPart, { type: 'task' }>,
+  event: Extract<WaveTurnEvent, { type: 'tool.status' }>,
+  status: WaveChatTaskStatus,
+) {
+  const next = {
+    ...part,
+    ...(event.toolInput ? { input: event.toolInput } : {}),
+    ...(event.toolOutput ? { output: event.toolOutput } : {}),
+    ...(event.toolOutputIsPreview === undefined
+      ? {}
+      : { outputIsPreview: event.toolOutputIsPreview }),
+    status,
+  };
+  if (
+    event.toolOutputIsPreview === undefined &&
+    (event.status === 'completed' || event.status === 'failed')
+  ) {
+    delete next.outputIsPreview;
+  }
+  return next;
 }
 
 function boundedLegacyToolOutput(content: string): WaveToolDetail {

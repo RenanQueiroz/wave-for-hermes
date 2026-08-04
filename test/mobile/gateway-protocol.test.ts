@@ -17,6 +17,7 @@ import {
   isGatewaySessionActive,
   isPendingSessionId,
   normalizeGatewayCompatibilityStatus,
+  normalizeGatewaySessionLiveState,
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
@@ -71,6 +72,28 @@ test('treats every measured non-idle live-session phase as active', () => {
   assert.equal(isGatewaySessionActive({ running: true }), true);
   assert.equal(isGatewaySessionActive({ status: 'future-state' }), false);
   assert.equal(isGatewaySessionActive(undefined), false);
+});
+
+test('normalizes live-session phases and freshness without exposing raw rows', () => {
+  for (const entry of GATEWAY_V020_FIXTURE.activeList.sessions) {
+    const normalized = normalizeGatewaySessionLiveState(entry);
+    assert.equal(normalized.liveStatus, entry.status);
+    if ('last_active' in entry)
+      assert.match(normalized.lastActiveAt ?? '', /Z$/);
+  }
+  assert.deepEqual(normalizeGatewaySessionLiveState({ running: true }), {
+    liveStatus: 'working',
+  });
+  assert.deepEqual(normalizeGatewaySessionLiveState({ status: 'running' }), {
+    liveStatus: 'working',
+  });
+  assert.deepEqual(
+    normalizeGatewaySessionLiveState({
+      last_active: 'invalid',
+      status: 'future-state',
+    }),
+    { liveStatus: 'idle' },
+  );
 });
 
 test('normalizes gateway session rows and drops unusable ones', () => {
@@ -335,13 +358,10 @@ test('translates gateway turn frames into Wave turn events', () => {
     translator.translate({ type: 'thinking.delta', payload: { text: '…' } }),
     [],
   );
-  for (const frame of GATEWAY_V020_FIXTURE.turnFrames) {
-    assert.deepEqual(
-      translator.translate(frame),
-      [],
-      `${frame.type} must degrade safely until it has a Wave projection`,
-    );
-  }
+  assert.deepEqual(
+    translator.translate({ type: 'message.interim', payload: {} }),
+    [],
+  );
 
   // The first delta implies assistant.started.
   const first = translator.translate({
@@ -390,6 +410,91 @@ test('translates gateway turn frames into Wave turn events', () => {
     [],
   );
   assert.deepEqual(translator.finish({ interrupted: false }), []);
+});
+
+test('projects v0.20 interim, progress, and reviewed lifecycle frames', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-v020',
+    now: () => new Date('2026-08-03T00:00:00.000Z'),
+    sessionId: 'session-v020',
+    turnId: 'turn-v020',
+  });
+  const emitted = [translator.start()];
+  emitted.push(
+    ...translator.translate({
+      payload: { text: 'Synthetic interim.' },
+      type: 'message.delta',
+    }),
+  );
+  const interim = translator.translate(GATEWAY_V020_FIXTURE.turnFrames[0]);
+  assert.equal(interim.at(-1)?.type, 'assistant.interim');
+  assert.equal(interim.at(-1)?.content, 'Synthetic interim.');
+  emitted.push(...interim);
+
+  const toolStart = translator.translate({
+    payload: { name: 'search' },
+    type: 'tool.start',
+  });
+  const progress = translator.translate({
+    payload: { preview: 'x'.repeat(5_000) },
+    type: 'tool.progress',
+  });
+  assert.equal(progress[0]?.type, 'tool.status');
+  assert.equal(progress[0]?.status, 'progress');
+  assert.equal(progress[0]?.toolName, 'search');
+  assert.equal(progress[0]?.toolOutput?.text.length, 4_000);
+  assert.equal(progress[0]?.toolOutput?.truncated, true);
+  assert.equal(progress[0]?.toolOutputIsPreview, true);
+  emitted.push(...toolStart, ...progress);
+
+  const compacting = translator.translate(GATEWAY_V020_FIXTURE.turnFrames[2]);
+  assert.equal(compacting[0]?.type, 'activity.status');
+  assert.equal(compacting[0]?.status, 'compacting');
+  emitted.push(...compacting);
+  const goal = translator.translate({
+    payload: { kind: 'goal', text: '✓ Synthetic goal complete' },
+    type: 'status.update',
+  });
+  assert.equal(goal[0]?.type, 'activity.status');
+  assert.equal(goal[0]?.status, 'goal-complete');
+  emitted.push(...goal);
+  assert.deepEqual(
+    translator.translate({
+      payload: { kind: 'reasoning', text: 'must stay hidden' },
+      type: 'status.update',
+    }),
+    [],
+  );
+
+  const ended = translator.translate({
+    payload: { response_previewed: true, text: 'Synthetic interim. Extended.' },
+    type: 'message.complete',
+  });
+  assert.equal(ended[0]?.type, 'assistant.completed');
+  assert.equal(ended[0]?.content, 'Synthetic interim. Extended.');
+  assert.equal(ended[0]?.replacesLastInterim, true);
+  emitted.push(...ended);
+  assert.deepEqual(
+    emitted.map((event) => event.sequence),
+    emitted.map((_, index) => index),
+  );
+
+  const distinct = new GatewayTurnTranslator({
+    messageId: 'assistant-distinct',
+    sessionId: 'session-v020',
+    turnId: 'turn-distinct',
+  });
+  distinct.start();
+  distinct.translate({
+    payload: { already_streamed: true, text: 'Same words.' },
+    type: 'message.interim',
+  });
+  const distinctEnd = distinct.translate({
+    payload: { text: 'Same words.' },
+    type: 'message.complete',
+  });
+  assert.equal(distinctEnd[0]?.type, 'assistant.completed');
+  assert.equal(distinctEnd[0]?.replacesLastInterim, undefined);
 });
 
 test('marks an interrupted turn partial and reports gateway turn errors', () => {
@@ -1311,7 +1416,12 @@ test('refuses to delete a conversation whose turn is still running', async () =>
             jsonrpc: '2.0',
             result: {
               sessions: [
-                { id: 'live-1', session_key: 'busy-1', status: 'working' },
+                {
+                  id: 'live-1',
+                  last_active: 1_785_642_618,
+                  session_key: 'busy-1',
+                  status: 'working',
+                },
                 { id: 'live-2', session_key: 'calm-1', status: 'idle' },
               ],
             },
@@ -1359,6 +1469,9 @@ test('refuses to delete a conversation whose turn is still running', async () =>
   // getActiveTurn recognizes 0.19.0's "working" status.
   const active = await client.getActiveTurn('busy-1');
   assert.ok(active.activeTurn);
+  assert.equal(active.liveStatus, 'working');
+  assert.match(active.lastActiveAt ?? '', /Z$/);
   const idle = await client.getActiveTurn('calm-1');
   assert.equal(idle.activeTurn, null);
+  assert.equal(idle.liveStatus, 'idle');
 });

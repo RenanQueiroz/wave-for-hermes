@@ -1,10 +1,11 @@
 # Wave roadmap
 
 Wave already supports authenticated gateway chat, account-wide conversation history, bounded
-attachments, inline approval and clarify prompts, offline reading, half-duplex gateway speech, and
-opt-in OpenAI Realtime voice with typed `ask_hermes` delegation. Current behavior and completed
-work belong in the README and the focused architecture, connectivity, security, and WebRTC
-documents; this roadmap tracks only work that remains.
+attachments, inline approval and clarify prompts, mid-turn correction, sealed interim narration,
+bounded live progress, offline reading, half-duplex gateway speech, and opt-in OpenAI Realtime
+voice with typed `ask_hermes` delegation. Current behavior and completed work belong in the README
+and the focused architecture, connectivity, security, and WebRTC documents; this roadmap tracks
+only work that remains.
 
 ## Now: adopt Hermes v0.20 conversation behavior
 
@@ -14,17 +15,7 @@ clause-streamed speech, signed outbound webhooks, and Agent-to-Agent support. Wa
 conversation capabilities that improve a focused mobile client without becoming a Hermes
 administration console.
 
-### 1. Preserve narration and bounded live progress
-
-- Preserve `message.interim` narration as sealed assistant segments so final completion cannot
-  replace or duplicate it.
-- Normalize `tool.progress` and selected lifecycle statuses into bounded Wave-owned activity.
-- Show useful live states such as starting, working, and waiting for input while continuing to
-  hide provider reasoning, raw protocol payloads, call/run identifiers, and unbounded logs.
-- Keep streaming updates confined to memoized active-tail rows so cost stays independent of
-  transcript length.
-
-### 2. Organize every user-facing conversation
+### 1. Organize every user-facing conversation
 
 - Adopt server-owned pins, source metadata, date groups, and richer liveness.
 - Keep all user-facing top-level sources discoverable, including A2A and automation-created

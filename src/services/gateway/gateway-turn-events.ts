@@ -7,10 +7,10 @@
  * both: it owns a monotonic counter per turn and stamps the Wave-side turn id
  * it was constructed with.
  *
- * The v0.19/v0.20 baseline includes the original chat lifecycle plus optional
- * `message.interim`, `tool.progress`, and `status.update` frames. Until a frame
- * has a reviewed Wave-owned projection, it is ignored rather than surfaced;
- * optional or future gateway events must never break a turn in progress.
+ * The v0.20 extensions are projected narrowly: interim assistant text becomes
+ * a sealed segment, tool progress updates one bounded Task preview, and only
+ * reviewed lifecycle kinds become Wave-owned activity states. Optional or
+ * future gateway events must never break a turn in progress.
  */
 import type { WaveTurnEvent } from '@wave/contracts';
 
@@ -52,8 +52,10 @@ function stringField(payload: Record<string, unknown>, key: string) {
 export class GatewayTurnTranslator {
   private sequence = -1;
   private assistantStarted = false;
+  private activeToolName?: string;
   private completed = false;
   private content = '';
+  private lastInterimContent?: string;
   /** The prompt currently blocking the turn, until any later frame proves it settled. */
   private pendingPromptId?: string;
   private readonly messageId: string;
@@ -85,7 +87,7 @@ export class GatewayTurnTranslator {
           ...this.resolvePendingPrompt(),
           ...this.ensureAssistantStarted(),
         ];
-        this.content += text;
+        this.content = `${this.content}${text}`.slice(0, MAX_CONTENT_CHARS);
         events.push({
           ...this.base('assistant.delta'),
           delta: text.slice(0, MAX_DELTA_CHARS),
@@ -93,9 +95,29 @@ export class GatewayTurnTranslator {
         } as WaveTurnEvent);
         return events;
       }
+      case 'message.interim': {
+        const text = stringField(frame.payload, 'text')?.trim();
+        if (!text) return [];
+        const events = [
+          ...this.resolvePendingPrompt(),
+          ...this.ensureAssistantStarted(),
+          {
+            ...this.base('assistant.interim'),
+            content: text.slice(0, MAX_CONTENT_CHARS),
+            messageId: this.messageId,
+          } as WaveTurnEvent,
+        ];
+        // The sealed text was already streamed through message.delta on the
+        // normal v0.20 path. A later delta belongs to a fresh segment, and the
+        // final completion may replace only that fresh tail.
+        this.content = '';
+        this.lastInterimContent = text.slice(0, MAX_CONTENT_CHARS);
+        return events;
+      }
       case 'tool.start': {
         // {tool_id, name, context} — args arrive with tool.complete.
         const toolName = stringField(frame.payload, 'name');
+        this.activeToolName = toolName?.slice(0, MAX_TOOL_NAME_CHARS);
         return [
           {
             ...this.base('tool.status'),
@@ -112,7 +134,8 @@ export class GatewayTurnTranslator {
         // (verified live). A truthy result.error is the failure signal — a
         // denied or timed-out approval lands here as a BLOCKED error.
         const events = this.resolvePendingPrompt();
-        const toolName = stringField(frame.payload, 'name');
+        const toolName =
+          stringField(frame.payload, 'name') ?? this.activeToolName;
         const result = frame.payload.result;
         const resultRecord =
           typeof result === 'object' && result !== null
@@ -137,6 +160,24 @@ export class GatewayTurnTranslator {
             : {}),
           ...(toolInput ? { toolInput } : {}),
           ...(toolOutput ? { toolOutput } : {}),
+        } as WaveTurnEvent);
+        this.activeToolName = undefined;
+        return events;
+      }
+      case 'tool.progress': {
+        const events = this.resolvePendingPrompt();
+        const toolName =
+          stringField(frame.payload, 'name') ?? this.activeToolName;
+        const toolOutput = toToolDetail(stringField(frame.payload, 'preview'));
+        if (!toolName && !toolOutput) return events;
+        events.push({
+          ...this.base('tool.status'),
+          messageId: this.messageId,
+          status: 'progress',
+          ...(toolName
+            ? { toolName: toolName.slice(0, MAX_TOOL_NAME_CHARS) }
+            : {}),
+          ...(toolOutput ? { toolOutput, toolOutputIsPreview: true } : {}),
         } as WaveTurnEvent);
         return events;
       }
@@ -200,8 +241,22 @@ export class GatewayTurnTranslator {
         } as WaveTurnEvent);
         return events;
       }
+      case 'message.complete': {
+        const content = stringField(frame.payload, 'text');
+        const previewWasFinalized = frame.payload.response_previewed === true;
+        return this.finish({
+          content,
+          interrupted: false,
+          replacesLastInterim: Boolean(
+            content &&
+            this.lastInterimContent &&
+            this.content.length === 0 &&
+            previewWasFinalized &&
+            content.startsWith(this.lastInterimContent),
+          ),
+        });
+      }
       case 'message.end':
-      case 'message.complete':
       case 'turn.end':
         // message.complete is canonical on the measured baseline; the others
         // remain harmless aliases for compatible gateways.
@@ -226,18 +281,28 @@ export class GatewayTurnTranslator {
           } as WaveTurnEvent,
         ];
       }
+      case 'status.update': {
+        const status = waveActivityStatus(frame.payload);
+        if (!status) return [];
+        return [
+          {
+            ...this.base('activity.status'),
+            status,
+          } as WaveTurnEvent,
+        ];
+      }
       default:
         // session.info (including tools/skills), thinking/reasoning details,
-        // message.interim, tool.progress, status.update, session.title, and any
-        // future frame have no Stage 0 transcript projection.
+        // session.title, and any future frame have no transcript projection.
         return [];
     }
   }
 
   /**
-   * Any frame after a prompt proves the wait ended — answered here, answered
-   * by another client, or expired server-side (approvals time out at 60s,
-   * clarify at 300s) — so the prompt UI must clear.
+   * Any substantive turn frame after a prompt proves the wait ended — answered
+   * here, answered by another client, or expired server-side (approvals time
+   * out at 60s, clarify at 300s). Ephemeral status updates deliberately do not
+   * clear the prompt.
    */
   private resolvePendingPrompt(): WaveTurnEvent[] {
     const promptId = this.pendingPromptId;
@@ -267,7 +332,11 @@ export class GatewayTurnTranslator {
   }
 
   /** Terminal events for a turn that ended without an explicit end frame. */
-  finish(options: { interrupted: boolean }): WaveTurnEvent[] {
+  finish(options: {
+    content?: string;
+    interrupted: boolean;
+    replacesLastInterim?: boolean;
+  }): WaveTurnEvent[] {
     if (this.completed) return [];
     this.completed = true;
     const events = [
@@ -277,10 +346,11 @@ export class GatewayTurnTranslator {
     events.push(
       {
         ...this.base('assistant.completed'),
-        content: this.content.slice(0, MAX_CONTENT_CHARS),
+        content: (options.content ?? this.content).slice(0, MAX_CONTENT_CHARS),
         interrupted: options.interrupted,
         messageId: this.messageId,
         partial: options.interrupted,
+        ...(options.replacesLastInterim ? { replacesLastInterim: true } : {}),
       } as WaveTurnEvent,
       {
         ...this.base('turn.completed'),
@@ -313,4 +383,22 @@ export class GatewayTurnTranslator {
       type,
     };
   }
+}
+
+function waveActivityStatus(
+  payload: Record<string, unknown>,
+): Extract<WaveTurnEvent, { type: 'activity.status' }>['status'] | undefined {
+  const kind = stringField(payload, 'kind')?.trim().toLowerCase();
+  const text = stringField(payload, 'text')?.trim();
+  if (kind === 'compacting') return 'compacting';
+  if (kind === 'compacted') return 'ready';
+  if (kind === 'process' && text) return 'process-updated';
+  if (kind === 'goal' && text) {
+    if (text.startsWith('✓')) return 'goal-complete';
+    if (text.startsWith('↻')) return 'goal-continuing';
+    if (text.startsWith('⏸')) return 'goal-paused';
+    return undefined;
+  }
+  if (kind === 'status' && text?.toLowerCase() === 'ready') return 'ready';
+  return undefined;
 }

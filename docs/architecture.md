@@ -133,7 +133,9 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   for current-flow coordination. Connected cold launch deliberately creates a new conversation;
   Hermes remains the durable source for every prior conversation shown in the drawer.
 - `useWaveChat` and its reducer own the single active stream, 50 ms assistant-delta batching,
-  cancellation and correction races, safe error state, and post-stream timeline reconciliation.
+  sealed interim assistant segments, in-place bounded tool progress, reviewed ephemeral activity,
+  server-reported live state/freshness, cancellation and correction races, safe error state, and
+  post-stream timeline reconciliation.
   A text-only correction is optimistically inserted before the active assistant reply, kept there
   when redirected, moved to the tail when queued, or removed and restored to the draft when
   rejected/ambiguous. An explicitly accepted correction is also recorded in a bounded,
@@ -142,7 +144,9 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   deduplicating the ordinary user row Hermes does persist for model-time redirects. The reducer
   keeps new turn submission blocked until stream cleanup and reconciliation have settled, so a
   newly enabled send cannot race the prior turn. React screens do not parse stream frames or
-  construct protocol messages.
+  construct protocol messages. Unknown status frames and reasoning stay at the transport boundary;
+  the UI receives only a small Wave-owned lifecycle vocabulary. A stale-working hint is
+  presentation only and cannot settle a turn, resend work, or authorize deletion.
 - The Expo Router drawer is the connected app shell around a single native stack: every app
   screen lives in that stack, so screens get native headers, push transitions, and swipe-back,
   while the drawer stays a conversation switcher rather than a sibling navigator. Cold launch

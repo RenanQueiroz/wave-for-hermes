@@ -62,7 +62,8 @@ currently includes:
   Realtime call, and strict `ask_hermes` schemas in `@wave/contracts`;
 - resumable turn streams: a dropped connection, backgrounding, or app restart no longer cancels a
   running Hermes turn — the chat screen resumes the live session and reconciles from authoritative
-  Hermes history, while explicit Stop still cancels;
+  Hermes history, restores the server's starting/working/waiting state and last-activity time,
+  while explicit Stop still cancels;
 - an offline read cache that keeps previously viewed chats and the session list readable without
   connectivity, retains a bounded app-trusted journal of accepted mid-turn corrections for stable
   reload ordering, shows a quiet offline notice for connectivity-shaped failures, and purges
@@ -72,8 +73,9 @@ currently includes:
   Settings and Disconnect fixed at the bottom;
 - TanStack Query-backed paginated session/timeline state plus PanelUI conversation and chat routes
   with batched assistant deltas, lifecycle-safe prompt cancellation, coherent grouped turns,
-  bottom-aligned Wave avatars, collapsed named tool rows whose disclosures render bounded raw
-  input/output as inert code, current-session tracking, and a keyboard-sticky rounded composer
+  sealed interim narration, in-place bounded tool progress, reviewed ephemeral activity and
+  stale-working hints, bottom-aligned Wave avatars, collapsed named tool rows whose disclosures
+  render bounded raw input/output as inert code, current-session tracking, and a keyboard-sticky rounded composer
   with an internal attachment control and exactly one trailing action: Send when text is present,
   live voice when it is empty, or — during an active turn — Correct for text and Stop when empty;
 - inline mid-turn prompts: Hermes approval and clarify requests render in the turn they belong

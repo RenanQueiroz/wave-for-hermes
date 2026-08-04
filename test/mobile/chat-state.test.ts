@@ -3,8 +3,11 @@ import test from 'node:test';
 
 import {
   initialWaveChatState,
+  isWaveChatActivityStale,
   timelineToWaveChatMessages,
+  waveChatActivityLabel,
   waveChatReducer,
+  WAVE_CHAT_ACTIVITY_STALE_MS,
 } from '../../src/features/chat/chat-state.ts';
 import type {
   WaveConversationMessage,
@@ -24,6 +27,7 @@ test('reduces batched assistant text and bounded tool lifecycle details in order
   });
   state = waveChatReducer(state, {
     delta: 'Working',
+    timestamp: '2026-07-30T02:00:00.000Z',
     type: 'assistant.delta',
   });
   state = waveChatReducer(state, {
@@ -44,13 +48,27 @@ test('reduces batched assistant text and bounded tool lifecycle details in order
     event: event({
       messageId: 'message-1',
       sequence: 2,
+      status: 'progress',
+      toolName: 'search',
+      toolOutput: {
+        text: '{"matches":2}',
+        truncated: false,
+      },
+      toolOutputIsPreview: true,
+      type: 'tool.status',
+    }),
+    type: 'event',
+  });
+  state = waveChatReducer(state, {
+    event: event({
+      messageId: 'message-1',
+      sequence: 3,
       status: 'completed',
       toolName: 'search',
       toolOutput: {
         text: '{"matches":3}',
         truncated: false,
       },
-      toolOutputIsPreview: true,
       type: 'tool.status',
     }),
     type: 'event',
@@ -68,7 +86,6 @@ test('reduces batched assistant text and bounded tool lifecycle details in order
         text: '{"matches":3}',
         truncated: false,
       },
-      outputIsPreview: true,
       status: 'complete',
       title: 'search',
       type: 'task',
@@ -79,11 +96,15 @@ test('reduces batched assistant text and bounded tool lifecycle details in order
 test('resume seeds only an assistant placeholder and streams replayed events', () => {
   let state = waveChatReducer(initialWaveChatState, {
     assistantId: 'assistant-resumed',
+    lastActivityAt: '2026-07-30T01:59:00.000Z',
+    liveStatus: 'waiting',
     turnId: 'turn-1',
     type: 'resume',
   });
   assert.equal(state.status, 'submitting');
   assert.equal(state.activeTurnId, 'turn-1');
+  assert.equal(state.liveStatus, 'waiting');
+  assert.equal(state.lastActivityAt, '2026-07-30T01:59:00.000Z');
   assert.deepEqual(state.messages, [
     { id: 'assistant-resumed', parts: [], role: 'assistant' },
   ]);
@@ -94,6 +115,7 @@ test('resume seeds only an assistant placeholder and streams replayed events', (
   });
   state = waveChatReducer(state, {
     delta: 'Picked back up',
+    timestamp: '2026-07-30T02:00:00.000Z',
     type: 'assistant.delta',
   });
   assert.equal(state.status, 'streaming');
@@ -462,6 +484,175 @@ test('a correction transport failure removes only its optimistic message', () =>
     retryable: true,
   });
   assert.equal(state.status, 'submitting');
+});
+
+test('seals interim narration and preserves it beside the final segment', () => {
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'assistant-local',
+    input: 'Inspect the project',
+    type: 'send',
+    userId: 'user-local',
+  });
+  state = waveChatReducer(state, {
+    event: event({ type: 'turn.started' }),
+    type: 'event',
+  });
+  state = waveChatReducer(state, {
+    delta: 'I will inspect the files.',
+    timestamp: '2026-07-30T02:00:01.000Z',
+    type: 'assistant.delta',
+  });
+  state = waveChatReducer(state, {
+    event: {
+      apiVersion: 'v1',
+      content: 'I will inspect the files.',
+      eventId: 'event-interim',
+      messageId: 'assistant-local',
+      sequence: 2,
+      sessionId: 'session-1',
+      timestamp: '2026-07-30T02:00:02.000Z',
+      turnId: 'turn-1',
+      type: 'assistant.interim',
+    },
+    type: 'event',
+  });
+  state = waveChatReducer(state, {
+    delta: 'The checks passed.',
+    timestamp: '2026-07-30T02:00:03.000Z',
+    type: 'assistant.delta',
+  });
+  state = waveChatReducer(state, {
+    event: {
+      apiVersion: 'v1',
+      content: 'The checks passed.',
+      eventId: 'event-complete',
+      interrupted: false,
+      messageId: 'assistant-local',
+      partial: false,
+      sequence: 3,
+      sessionId: 'session-1',
+      timestamp: '2026-07-30T02:00:04.000Z',
+      turnId: 'turn-1',
+      type: 'assistant.completed',
+    },
+    type: 'event',
+  });
+
+  assert.deepEqual(state.messages[1]?.parts, [
+    { sealed: true, text: 'I will inspect the files.', type: 'text' },
+    { text: 'The checks passed.', type: 'text' },
+  ]);
+
+  const previewed = waveChatReducer(
+    waveChatReducer(
+      waveChatReducer(initialWaveChatState, {
+        assistantId: 'assistant-preview',
+        input: 'Preview this',
+        type: 'send',
+        userId: 'user-preview',
+      }),
+      {
+        event: {
+          apiVersion: 'v1',
+          content: 'Preview text.',
+          eventId: 'event-preview',
+          messageId: 'assistant-preview',
+          sequence: 1,
+          sessionId: 'session-1',
+          timestamp: '2026-07-30T02:00:01.000Z',
+          turnId: 'turn-1',
+          type: 'assistant.interim',
+        },
+        type: 'event',
+      },
+    ),
+    {
+      event: {
+        apiVersion: 'v1',
+        content: 'Preview text. Extended.',
+        eventId: 'event-preview-complete',
+        interrupted: false,
+        messageId: 'assistant-preview',
+        partial: false,
+        replacesLastInterim: true,
+        sequence: 2,
+        sessionId: 'session-1',
+        timestamp: '2026-07-30T02:00:02.000Z',
+        turnId: 'turn-1',
+        type: 'assistant.completed',
+      },
+      type: 'event',
+    },
+  );
+  assert.deepEqual(previewed.messages[1]?.parts, [
+    { text: 'Preview text. Extended.', type: 'text' },
+  ]);
+});
+
+test('tracks reviewed activity, prompt waiting, and stale working hints', () => {
+  const base = {
+    apiVersion: 'v1' as const,
+    eventId: 'event-activity',
+    sequence: 1,
+    sessionId: 'session-1',
+    timestamp: '2026-07-30T02:00:00.000Z',
+    turnId: 'turn-1',
+  };
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'assistant-local',
+    input: 'Do the work',
+    type: 'send',
+    userId: 'user-local',
+  });
+  state = waveChatReducer(state, {
+    event: { ...base, status: 'compacting', type: 'activity.status' },
+    type: 'event',
+  });
+  assert.equal(state.liveStatus, 'working');
+  assert.equal(waveChatActivityLabel(state), 'Summarizing conversation…');
+  assert.equal(
+    isWaveChatActivityStale(
+      state,
+      Date.parse(base.timestamp) + WAVE_CHAT_ACTIVITY_STALE_MS - 1,
+    ),
+    false,
+  );
+  assert.equal(
+    isWaveChatActivityStale(
+      state,
+      Date.parse(base.timestamp) + WAVE_CHAT_ACTIVITY_STALE_MS,
+    ),
+    true,
+  );
+
+  state = waveChatReducer(state, {
+    event: {
+      ...base,
+      allowsFreeText: true,
+      choices: [],
+      kind: 'clarify',
+      promptId: 'prompt-1',
+      question: 'Which path?',
+      sequence: 2,
+      type: 'prompt.request',
+    },
+    type: 'event',
+  });
+  assert.equal(state.liveStatus, 'waiting');
+  assert.equal(isWaveChatActivityStale(state, Number.MAX_SAFE_INTEGER), false);
+
+  state = waveChatReducer(state, {
+    event: {
+      ...base,
+      eventId: 'event-while-waiting',
+      sequence: 3,
+      status: 'process-updated',
+      type: 'activity.status',
+    },
+    type: 'event',
+  });
+  assert.equal(state.liveStatus, 'waiting');
+  assert.equal(state.activePrompt?.promptId, 'prompt-1');
 });
 
 function event(

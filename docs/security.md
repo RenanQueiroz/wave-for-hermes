@@ -123,8 +123,8 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 ### Resource exhaustion and malformed content
 
 - Shared schemas bound identifiers, text, attachment count, decoded image bytes, text files, tool
-  input/output, instructions, and tool results; unknown fields and unknown event variants fail
-  closed.
+  input/output and previews, interim assistant segments, instructions, and tool results; unknown
+  fields and unknown event variants fail closed.
 - Mobile JSON reads, stream frames, ordered sequences, stream identities, idle time, and total
   time are bounded. Oversized responses are cancelled while streaming.
 - Realtime setup, sideband connection, tool execution, and reconnection are separately bounded
@@ -140,6 +140,9 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - The app does not log access tokens, authorization headers, request URLs, network addresses,
   opaque conversation identifiers, or conversation payloads.
 - Tool details are bounded and rendered as inert code, never Markdown.
+- Hermes lifecycle frames are allowlisted into short Wave-owned ephemeral states. Raw status
+  payloads, hidden reasoning, and unreviewed progress fields never enter the render model or
+  persisted timeline; the stale-working label is a local time-based presentation hint only.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
   provider identifiers are persisted anywhere. Work delegated through `ask_hermes` lands as
   ordinary turns in canonical Hermes history.

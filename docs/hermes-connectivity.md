@@ -36,7 +36,10 @@ absent or malformed.
   Reattaching is a read of the same execution — the prompt itself is never re-sent.
 - **Live state**: `session.active_list` can report `starting`, `working`, `waiting`, or `idle`.
   Wave treats all but `idle` as active for conflict checks; a legacy `running: true` or `running`
-  status remains a defensive alias. Missing and unknown states do not claim that a turn is active.
+  status remains a defensive alias. The normalized response also carries bounded `lastActiveAt`
+  when present so a resumed screen can show an eight-minute stale-working presentation hint.
+  Missing and unknown states do not claim that a turn is active, and freshness never settles work
+  or weakens conflict checks.
 - **Cancellation** must go through the live transport sid. A user Stop is reported as a
   cancellation, not a connection loss.
 - **REST**: paginated session list, `/messages` history, rename, delete, and full-text search.
@@ -57,10 +60,12 @@ absent or malformed.
   and restores that row after reload. It never recognizes correction text from untrusted tool
   output. Server-owned `pinned` and `source` session-row fields remain staged for conversation
   organization.
-- **New event frames**: v0.20 may send `message.interim`, `tool.progress`, and `status.update`.
-  Until their Wave-owned projections land, the turn translator ignores them exactly like any
-  unknown optional frame, so their presence cannot break a turn. Sanitized fixtures lock that
-  behavior without storing real payloads or identifiers.
+- **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed
+  final can replace that segment once without duplicating it. `tool.progress` updates the existing
+  named Task with one bounded preview. Only reviewed compaction, goal, process, and ready states
+  cross from `status.update` into ephemeral Wave-owned labels. Unknown fields, statuses, and
+  thinking/reasoning frames remain ignored. These projections update only the active chat tail and
+  are never persisted as assistant speech. Sanitized fixtures contain synthetic shapes only.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from

@@ -181,6 +181,13 @@ documentation before implementing UI.
   from tool output or another content-controlled marker.
 - Keep stream framing, ordering, timeout, cancellation, and size limits inside
   `src/services/gateway`; HTTP reads use Expo SDK 57's `expo/fetch`.
+- Preserve `message.interim` as sealed assistant segments and reconcile previewed completion
+  without duplicate text. `tool.progress` may update only the existing bounded Task preview, and
+  `status.update` may cross the gateway boundary only through an explicitly reviewed Wave-owned
+  ephemeral state; never render or persist raw lifecycle or reasoning payloads.
+- Server-reported `starting`, `working`, `waiting`, and `idle` plus bounded freshness may inform
+  presentation. A stale-working hint never completes a turn, resends work, or relaxes active-turn
+  conflicts.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured
   success and error results to the Realtime session.
 - Wave does not add a separate user-approval prompt before `ask_hermes`. Dispatch it automatically

@@ -58,7 +58,10 @@ import { OfflineNotice } from '@/components/offline-notice';
 import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
+  isWaveChatActivityStale,
   timelineToWaveChatMessages,
+  waveChatActivityLabel,
+  WAVE_CHAT_ACTIVITY_STALE_MS,
   type WaveChatMessage,
   type WaveChatPart,
 } from '@/features/chat/chat-state';
@@ -286,7 +289,12 @@ function ConnectedChatScreen({
       .getActiveTurn(sessionId)
       .then((response) => {
         if (cancelled || !response.activeTurn) return;
-        void resume(response.activeTurn.turnId);
+        void resume(response.activeTurn.turnId, {
+          ...(response.lastActiveAt
+            ? { lastActivityAt: response.lastActiveAt }
+            : {}),
+          liveStatus: response.liveStatus ?? 'working',
+        });
       })
       .catch(() => undefined);
     return () => {
@@ -299,11 +307,13 @@ function ConnectedChatScreen({
     return registerMobileAgentStateProvider({
       name: 'wave-chat',
       read: () => ({
+        activity: chat.state.activity ?? 'none',
         correction: chat.state.correction
           ? 'sending'
           : chat.state.correctionError
             ? 'error'
             : 'idle',
+        liveStatus: chat.state.liveStatus,
         sessionId,
         status: chat.state.status,
       }),
@@ -311,6 +321,8 @@ function ConnectedChatScreen({
   }, [
     chat.state.correction,
     chat.state.correctionError,
+    chat.state.activity,
+    chat.state.liveStatus,
     chat.state.status,
     sessionId,
   ]);
@@ -469,6 +481,26 @@ function ConnectedChatScreen({
     !chat.state.activePrompt &&
     attachmentState.attachments.length === 0 &&
     Boolean(input.trim());
+  const [activityNow, setActivityNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (chat.state.liveStatus !== 'working' || !chat.state.lastActivityAt) {
+      return;
+    }
+    const lastActivityAt = Date.parse(chat.state.lastActivityAt);
+    if (!Number.isFinite(lastActivityAt)) return;
+    const delay = Math.max(
+      0,
+      lastActivityAt + WAVE_CHAT_ACTIVITY_STALE_MS - Date.now(),
+    );
+    const timer = setTimeout(
+      () => setActivityNow(Date.now()),
+      Math.min(delay + 50, WAVE_CHAT_ACTIVITY_STALE_MS),
+    );
+    return () => clearTimeout(timer);
+  }, [chat.state.lastActivityAt, chat.state.liveStatus]);
+  const activityLabel = isWaveChatActivityStale(chat.state, activityNow)
+    ? 'Still working — no new activity yet'
+    : waveChatActivityLabel(chat.state);
 
   // Mid-turn prompt responses go to the gateway client directly: prompts are
   // a gateway-only capability, and the response must reach the streaming
@@ -829,6 +861,16 @@ function ConnectedChatScreen({
             testID="chat-composer-blocked-hint">
             Sending and live voice are paused until this conversation can
             refresh.
+          </Typography.Paragraph>
+        ) : null}
+
+        {busy && activityLabel && !chat.state.activePrompt ? (
+          <Typography.Paragraph
+            muted
+            accessibilityLiveRegion="polite"
+            className="px-2 text-center text-xs"
+            testID="chat-activity-status">
+            {activityLabel}
           </Typography.Paragraph>
         ) : null}
 

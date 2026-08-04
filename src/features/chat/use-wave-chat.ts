@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { WaveTurnEvent, WaveTurnInput } from '@wave/contracts';
 
-import { initialWaveChatState, waveChatReducer } from './chat-state';
+import {
+  initialWaveChatState,
+  waveChatReducer,
+  type WaveChatLiveStatus,
+} from './chat-state';
 import { calculateBoundedRetryDelay } from '@/services/query/retry-policy';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
@@ -68,6 +72,7 @@ export function useWaveChat({
       tracking: { lastSequence: number; resuming: boolean },
     ) => {
       let pendingDelta = '';
+      let pendingDeltaTimestamp = new Date().toISOString();
       let flushTimer: ReturnType<typeof setTimeout> | undefined;
       const flush = () => {
         if (flushTimer) clearTimeout(flushTimer);
@@ -75,7 +80,11 @@ export function useWaveChat({
         if (!pendingDelta) return;
         const delta = pendingDelta;
         pendingDelta = '';
-        dispatch({ delta, type: 'assistant.delta' });
+        dispatch({
+          delta,
+          timestamp: pendingDeltaTimestamp,
+          type: 'assistant.delta',
+        });
       };
       const scheduleFlush = () => {
         flushTimer ??= setTimeout(flush, DELTA_FLUSH_MS);
@@ -95,6 +104,7 @@ export function useWaveChat({
               }
               if (event.type === 'assistant.delta') {
                 pendingDelta += event.delta;
+                pendingDeltaTimestamp = event.timestamp;
                 scheduleFlush();
                 continue;
               }
@@ -234,7 +244,13 @@ export function useWaveChat({
   );
 
   const resume = useCallback(
-    async (turnId: string) => {
+    async (
+      turnId: string,
+      liveState?: {
+        lastActivityAt?: string;
+        liveStatus?: WaveChatLiveStatus;
+      },
+    ) => {
       if (busyRef.current || correctingRef.current || !mountedRef.current) {
         return;
       }
@@ -247,6 +263,10 @@ export function useWaveChat({
       turnIdRef.current = turnId;
       dispatch({
         assistantId: `assistant-resume-${Date.now()}-${idRef.current}`,
+        ...(liveState?.lastActivityAt
+          ? { lastActivityAt: liveState.lastActivityAt }
+          : {}),
+        liveStatus: liveState?.liveStatus ?? 'working',
         turnId,
         type: 'resume',
       });
