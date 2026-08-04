@@ -47,6 +47,11 @@ one deliberate exception to "the mobile process never holds an upstream key."
   gateway or any Wave surface.
 - The production bundle scanner refuses key-shaped literals (`sk-…`) and the `OPENAI_API_KEY`
   env-var name in exported bundles, reporting a label rather than the match.
+- Model choice is a separate strict versioned device preference, not key material. Only the two
+  app-supported ids can reach call setup; missing, corrupt, or retired values become
+  `gpt-realtime-2.1-mini`, and the selected id is snapshotted for the call. A setup rejection is
+  attempted once and becomes bounded model-setting guidance without parsing or displaying the
+  OpenAI response body.
 - ask_hermes tool calls from a keyed Realtime call are validated client-side (strict schema,
   trusted session binding, coalescing, serialization, bounded concurrency, response-safe
   delivery), then run as ordinary turns on the gateway connection under the gateway's own
@@ -87,6 +92,10 @@ switch.
 - The Realtime session exposes exactly `ask_hermes({ instruction })`. Its JSON Schema is
   generated from the same strict Zod schema used at dispatch; unknown tools, keys, and
   model-selected session IDs fail closed (the schema has no session field at all).
+- The prompt and tool description are fixed Wave-owned values and accept no capability metadata.
+  Wave does not fetch or reflect Hermes tools, skills, MCP servers, A2A peers, Agent Cards,
+  configuration, or descriptions into OpenAI. The model may preserve a user-explicit execution
+  preference inside the ordinary instruction, but cannot invoke that capability directly.
 - The orchestrator binds dispatch to the initiating conversation's session through trusted call
   state and refuses tool calls from a call it no longer tracks.
 - Per-call tool count (128), outstanding queue size (8), execution serialization, output length,
@@ -152,7 +161,8 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   never enter the render or persisted contract. Unknown sources stay reachable in Activity/All.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
   provider identifiers are persisted anywhere. Work delegated through `ask_hermes` lands as
-  ordinary turns in canonical Hermes history.
+  ordinary turns in canonical Hermes history. A final exact stop utterance is consumed as local
+  call control before it enters even the ephemeral transcript state.
 - The mobile offline read cache stores normalized session-list/timeline responses and up to 32
   gateway-accepted correction rows per session as one JSON file in the app sandbox (platform
   encryption at rest, no credentials or provider identifiers), expires after seven days, and is

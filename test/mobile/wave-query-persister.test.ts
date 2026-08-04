@@ -169,6 +169,13 @@ test('dehydrates only successful long-lived conversation data', () => {
   );
   assert.equal(
     shouldPersistWaveQuery(
+      ['wave', 'device', 'realtime', 'model-preference'],
+      success,
+    ),
+    false,
+  );
+  assert.equal(
+    shouldPersistWaveQuery(
       ['wave', 'device-1', 'https://wave.test', 'session-list'],
       { status: 'error' },
     ),

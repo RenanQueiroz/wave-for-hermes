@@ -80,14 +80,19 @@ fails explicitly.
 Microphone denial produces a retryable, content-free permission error and an accessible system
 settings action. Android requests `RECORD_AUDIO` explicitly before native media acquisition; iOS
 uses the configured microphone purpose string and native prompt. The selected Wave voice is loaded
-from secure device storage before setup and included only in the Realtime session configuration
-sent to OpenAI.
+from secure device storage before setup. A separate strict model preference accepts only
+`gpt-realtime-2.1-mini` or `gpt-realtime-2.1`; Wave snapshots model and voice into the initial
+Realtime session configuration because OpenAI does not allow `model` to change through
+`session.update`. A rejected selected model does not retry or silently fall back and links back to
+Settings without exposing the response body.
 
 The live transcript shown during a call is transient controller state and is not persisted
 anywhere — Realtime speech is ephemeral, and the call screen says so. Work Wave hands to Hermes
 through `ask_hermes` lands as ordinary turns in the bound session. Successful route exit
 refreshes the active unified timeline query before text chat is shown again, so completed
-voice-triggered Hermes work appears without closing and reopening the conversation.
+voice-triggered Hermes work appears without closing and reopening the conversation. A final exact
+whole-utterance stop command closes locally before the phrase enters transcript state; speech that
+merely contains a stop word remains conversation.
 
 ### Run the proof
 
@@ -144,6 +149,12 @@ On 2026-07-31, both Radon-managed platforms additionally passed denial and later
 microphone permission, the system-settings recovery action, a successful subsequent call reaching
 `Listening`, established-call background teardown, and another clean idle state ready to reconnect.
 
+On 2026-08-03, the Stage 5a iOS simulator loaded both accessible model choices, persisted a change,
+and established then explicitly ended one real WebRTC call with each supported model; both reached
+`Listening` with one remote audio track. The mini default was restored afterward. Android loaded
+the updated bundle and Settings route without a Realtime key on that emulator, so model-specific
+Android and all physical-device acceptance remain release gates.
+
 Deterministic tests separately cover strict `ask_hermes` validation, trusted session binding,
 coalescing, bounded ordered dispatch, response-safe delivery, teardown, and reconnection. The
 physical and simulator evidence does not establish alternate audio routes, physical iOS behavior,
@@ -158,6 +169,7 @@ Before declaring voice production-ready, validate:
 - speaker, receiver, Bluetooth, and wired-headset routing;
 - interruptions, phone calls, route changes, lock/background behavior, and reconnection;
 - release builds and realistic network transitions.
+- a real call and `ask_hermes` delegation with each supported model on physical iOS and Android.
 
 The local proof should remain a small development-only native diagnostic even though the
 production controller now exists.

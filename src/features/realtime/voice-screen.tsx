@@ -24,10 +24,12 @@ import {
   realtimeVoicePreferenceQueryKey,
   realtimeVoicePreferenceStore,
 } from '@/features/realtime/realtime-voice-preference';
+import { realtimeModelPreferenceStore } from '@/features/realtime/realtime-model-preference';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
 import { OpenAiRealtimeBackend } from '@/services/realtime/openai-realtime-backend';
 import { openAiKeyStore } from '@/services/realtime/openai-key-store';
+import type { WaveRealtimeModelId } from '@/services/realtime/realtime-model-preference-record';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
 import type { WaveTimelineResponse } from '@wave/contracts';
 
@@ -44,17 +46,23 @@ export function KeyedRealtimeVoiceScreen({
   sessionId: string;
 }) {
   const { state: connection } = useWaveConnection();
-  const [apiKey, setApiKey] = useState<string | undefined | null>(undefined);
+  const [configuration, setConfiguration] = useState<
+    { apiKey: string; model: WaveRealtimeModelId } | null | undefined
+  >(undefined);
 
   useEffect(() => {
     let cancelled = false;
-    void openAiKeyStore
-      .load()
-      .then((key) => {
-        if (!cancelled) setApiKey(key ?? null);
+    void Promise.all([
+      openAiKeyStore.load(),
+      realtimeModelPreferenceStore.load(),
+    ])
+      .then(([apiKey, model]) => {
+        if (!cancelled) {
+          setConfiguration(apiKey ? { apiKey, model } : null);
+        }
       })
       .catch(() => {
-        if (!cancelled) setApiKey(null);
+        if (!cancelled) setConfiguration(null);
       });
     return () => {
       cancelled = true;
@@ -66,15 +74,16 @@ export function KeyedRealtimeVoiceScreen({
   }
   // Key vanished (removed in Settings mid-navigation): gateway voice owns
   // the route on the next visit; nothing renders a half-configured call.
-  if (apiKey === null) return <Redirect href="/" />;
-  if (apiKey === undefined) return null;
+  if (configuration === null) return <Redirect href="/" />;
+  if (configuration === undefined) return null;
 
   return (
     <KeyedRealtimeVoiceScreenReady
-      apiKey={apiKey}
+      apiKey={configuration.apiKey}
       baseUrl={connection.identity.baseUrl}
       client={client}
       connectionId={connection.identity.id}
+      model={configuration.model}
       sessionId={sessionId}
     />
   );
@@ -85,12 +94,14 @@ function KeyedRealtimeVoiceScreenReady({
   baseUrl,
   client,
   connectionId,
+  model,
   sessionId,
 }: {
   apiKey: string;
   baseUrl: string;
   client: GatewayClient;
   connectionId: string;
+  model: WaveRealtimeModelId;
   sessionId: string;
 }) {
   const backend = useMemo(
@@ -101,8 +112,9 @@ function KeyedRealtimeVoiceScreenReady({
           client,
           sessionId,
         }),
+        model,
       }),
-    [apiKey, client, sessionId],
+    [apiKey, client, model, sessionId],
   );
   return (
     <ConnectedVoiceScreen
@@ -324,6 +336,16 @@ function ConnectedVoiceScreen({
             variant="outline"
             onPress={() => void Linking.openSettings()}>
             Open microphone settings
+          </Button>
+        ) : null}
+        {state.error?.kind === 'model_unavailable' ? (
+          <Button
+            fullWidth
+            accessibilityLabel="Choose a different Realtime model"
+            testID="voice-open-model-settings-button"
+            variant="outline"
+            onPress={() => router.replace('/settings')}>
+            Review model in Settings
           </Button>
         ) : null}
         {state.cleanupPending ? (

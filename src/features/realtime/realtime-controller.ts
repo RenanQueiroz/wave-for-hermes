@@ -11,6 +11,7 @@ import type {
   RealtimeTransportError,
   RealtimeTransportEvent,
 } from '@/services/realtime/realtime-transport';
+import { isVoiceStopCommand } from '../voice/voice-stop-command.ts';
 import { calculateBoundedRetryDelay } from '../../services/query/retry-policy.ts';
 
 const MAX_TRANSCRIPT_LENGTH = 24_000;
@@ -383,6 +384,17 @@ export class WaveRealtimeController {
         this.patchState({ remoteAudioTracks: event.count });
         return;
       case 'transcript':
+        if (
+          event.final &&
+          event.role === 'user' &&
+          isVoiceStopCommand(event.text)
+        ) {
+          // This final transcript is a local control, never conversation
+          // state. Stop closes WebRTC and the provider call without storing or
+          // delegating the phrase.
+          void this.stop();
+          return;
+        }
         this.applyTranscript(event);
         return;
       case 'error':

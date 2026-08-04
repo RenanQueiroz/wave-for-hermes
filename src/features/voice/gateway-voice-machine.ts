@@ -41,6 +41,8 @@ export const FLOOR_WINDOW_SAMPLES = 20;
 /** Levels this quiet are never speech, however low the floor sits. */
 export const MIN_SPEECH_DBFS = -55;
 
+export { isVoiceStopCommand } from './voice-stop-command.ts';
+
 /** The current speaking cut-off implied by the tracker's noise floor. */
 export function utteranceSpeechThreshold(tracker: UtteranceTracker): number {
   const floor =
@@ -48,33 +50,6 @@ export function utteranceSpeechThreshold(tracker: UtteranceTracker): number {
       ? MIN_SPEECH_DBFS - SPEECH_MARGIN_DB
       : Math.min(...tracker.recentLevels);
   return Math.max(floor + SPEECH_MARGIN_DB, MIN_SPEECH_DBFS);
-}
-
-const STOP_WORDS = [
-  'stop',
-  'stop listening',
-  'stop wave',
-  'wave stop',
-  'cancel',
-  'never mind',
-  'nevermind',
-  'exit voice',
-  'end voice',
-  'quiet',
-];
-
-/**
- * True when the transcript is a bare command to leave voice mode rather than
- * something to send to Hermes. Only an exact match (modulo punctuation and
- * case) counts — "stop the deployment" is a real instruction.
- */
-export function isVoiceStopCommand(transcript: string): boolean {
-  const normalized = transcript
-    .toLowerCase()
-    .replace(/[.!?,;:]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return STOP_WORDS.includes(normalized);
 }
 
 export interface UtteranceSample {

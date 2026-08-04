@@ -111,7 +111,10 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   platform secure storage (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`); the Settings card validates a key
   against `GET /v1/models` before saving and exposes presence — never the value — through the
   query cache. The voice route selects Realtime iff a key is saved and the user has left
-  **Prefer live voice** on; otherwise it selects gateway voice.
+  **Prefer live voice** on; otherwise it selects gateway voice. A separate strict versioned
+  preference allows only `gpt-realtime-2.1-mini` or `gpt-realtime-2.1`, defaults invalid or retired
+  values to mini, and is snapshotted into a newly constructed backend so it cannot mutate a live
+  call. Voice choice remains a separate preference.
 - `OpenAiRealtimeBackend` performs the SDP exchange directly against
   `POST /v1/realtime/calls`, attaches the authenticated WebSocket sideband, and wires
   `ask_hermes` dispatch through `AskHermesOrchestrator`: strict schema validation, trusted
@@ -119,11 +122,14 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   active-or-waiting requests, a 128-request per-call cap, exact-instruction coalescing within
   one initiating user turn, and response-safe delivery that holds completed results while the
   user is speaking or a model response is active. Validated instructions execute as ordinary
-  turns on the gateway connection, so their side effects land in canonical Hermes history.
+  turns on the gateway connection, so their side effects land in canonical Hermes history. Its
+  pure prompt/config builder takes only the app-validated model and voice: no gateway version,
+  tool, skill, MCP, A2A, Agent Card, or configuration metadata can enter the OpenAI session.
 - `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
   native peer and data channel, remote audio tracks, and cleanup. `WaveRealtimeController` owns
   call lifecycle, cancellation/expiry, bounded reconnection (grace for ICE self-recovery, then
-  up to three full re-offers with the shared jitter policy), and normalized activity state. The
+  up to three full re-offers with the shared jitter policy), normalized activity state, and final
+  exact stop-command teardown. The
   PanelUI voice route renders controller snapshots and never owns raw WebRTC resources or
   provider protocol messages. Realtime transcripts are ephemeral: they render during the call
   and are not persisted anywhere.
@@ -237,7 +243,10 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
   Markdown.
 - The only Realtime tool is the strict `ask_hermes({ instruction: string })` operation. A
   model-controlled session ID is forbidden by construction — the schema has no such field, and
-  the executor is bound to the initiating conversation.
+  the executor is bound to the initiating conversation. Its fixed generic description names the
+  classes of work worth delegating but never mirrors Hermes capabilities. An execution preference
+  is retained only when the user explicitly states it; Hermes otherwise chooses its own tools,
+  skills, and plan.
 - Wave owns the spoken interaction. The user addresses Wave naturally, and Wave selects and
   phrases a Hermes handoff when backend work is needed; successful voice responses do not
   require the user to understand or manage that boundary.

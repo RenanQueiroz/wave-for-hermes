@@ -206,6 +206,18 @@ documentation before implementing UI.
 - Realtime transcripts are ephemeral: store no raw audio, no partial or final transcripts, no
   provider identifiers, and no hidden reasoning. Work Wave hands to Hermes through `ask_hermes`
   lands as ordinary turns in the bound session, and Hermes remains canonical for its own turns.
+- Realtime model choice is an app-owned allowlist containing exactly `gpt-realtime-2.1-mini` and
+  `gpt-realtime-2.1`; mini is the default. Persist it separately from the key and voice in a strict
+  versioned device record, reject free-form ids, and snapshot it into the initial call — never
+  attempt to change or silently fall back through `session.update`.
+- Keep the Realtime prompt and generic `ask_hermes` description Wave-authored and independent of
+  gateway metadata. Never fetch or reflect Hermes tools, skills, MCP servers, A2A peers, Agent
+  Cards, configuration, or descriptions into OpenAI. Preserve a tool/skill/CLI/provider preference
+  only when the user explicitly states it inside their request; otherwise Hermes chooses its own
+  execution plan.
+- Consume only a final exact whole-utterance voice stop phrase as local Realtime teardown, before
+  it enters transcript state. A phrase that merely contains a stop word remains user intent, and
+  speech barge-in still interrupts Wave playback rather than active Hermes work.
 - Build mobile conversation history from the paginated unified timeline, not by joining text in
   the client, and refresh that timeline before returning from live voice.
 - Do not silently broaden a chat tool into arbitrary administration access.

@@ -9,7 +9,6 @@
  * never logged or included in errors.
  */
 import {
-  WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH,
   type WaveAskHermesToolResult,
   type WaveEndRealtimeCallResponse,
   type WaveRealtimeVoiceId,
@@ -17,16 +16,21 @@ import {
 } from '@wave/contracts';
 import { fetch as expoFetch } from 'expo/fetch';
 
+import { AskHermesOrchestrator } from '../../features/realtime/ask-hermes-orchestrator.ts';
+import type { RealtimeBackend } from '../../features/realtime/realtime-controller.ts';
 import {
-  AskHermesOrchestrator,
-  ASK_HERMES_TOOL_NAME,
-} from '@/features/realtime/ask-hermes-orchestrator';
-import { OpenAiRealtimeSideband } from './openai-realtime-sideband';
-import type { RealtimeBackend } from '@/features/realtime/realtime-controller';
+  isWaveRealtimeModelId,
+  WAVE_REALTIME_DEFAULT_MODEL,
+  type WaveRealtimeModelId,
+} from './realtime-model-preference-record.ts';
+import {
+  buildWaveRealtimeInstructions,
+  createAskHermesToolDefinition,
+} from './realtime-prompt.ts';
+import { OpenAiRealtimeSideband } from './openai-realtime-sideband.ts';
 
 const OPENAI_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 const OPENAI_SIDEBAND_URL = 'wss://api.openai.com/v1/realtime';
-export const OPENAI_REALTIME_DEFAULT_MODEL = 'gpt-realtime-2.1-mini';
 const REQUEST_TIMEOUT_MS = 20_000;
 const SIDEBAND_CONNECT_TIMEOUT_MS = 15_000;
 const MAX_SDP_ANSWER_CHARS = 48_000;
@@ -53,7 +57,7 @@ export interface OpenAiRealtimeBackendOptions {
     signal: AbortSignal,
   ): Promise<WaveAskHermesToolResult>;
   fetchImpl?: typeof globalThis.fetch;
-  model?: string;
+  model?: WaveRealtimeModelId;
   socketFactory?: (url: string, apiKey: string) => WebSocket;
 }
 
@@ -67,7 +71,7 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
   private readonly calls = new Map<string, ActiveCall>();
   private readonly executeAskHermes: OpenAiRealtimeBackendOptions['executeAskHermes'];
   private readonly fetchImpl: typeof globalThis.fetch;
-  private readonly model: string;
+  private readonly model: WaveRealtimeModelId;
   private readonly socketFactory: (url: string, apiKey: string) => WebSocket;
 
   constructor(options: OpenAiRealtimeBackendOptions) {
@@ -75,7 +79,16 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
     this.executeAskHermes = options.executeAskHermes;
     this.fetchImpl =
       options.fetchImpl ?? (expoFetch as unknown as typeof globalThis.fetch);
-    this.model = options.model ?? OPENAI_REALTIME_DEFAULT_MODEL;
+    const model = options.model ?? WAVE_REALTIME_DEFAULT_MODEL;
+    if (!isWaveRealtimeModelId(model)) {
+      throw new OpenAiRealtimeBackendError(
+        'Wave does not support that Realtime model.',
+        { kind: 'model_unavailable' },
+      );
+    }
+    // A backend snapshots one app-validated model for its entire lifetime.
+    // Settings changes therefore apply only after a new backend/call exists.
+    this.model = model;
     this.socketFactory =
       options.socketFactory ??
       ((url, apiKey) => {
@@ -103,7 +116,9 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
     form.append('sdp', sdpOffer);
     form.append(
       'session',
-      JSON.stringify(createSessionConfig(this.model, voiceId ?? 'marin')),
+      JSON.stringify(
+        createOpenAiRealtimeSessionConfig(this.model, voiceId ?? 'marin'),
+      ),
     );
 
     const controller = new AbortController();
@@ -134,6 +149,16 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
       throw new OpenAiRealtimeBackendError(
         'OpenAI rejected the saved key. Check it in Settings.',
         { kind: 'unauthorized' },
+      );
+    }
+    if (
+      response.status === 400 ||
+      response.status === 404 ||
+      response.status === 422
+    ) {
+      throw new OpenAiRealtimeBackendError(
+        'OpenAI could not start Realtime with the selected model. Choose another model in Settings.',
+        { kind: 'model_unavailable' },
       );
     }
     if (!response.ok) {
@@ -232,7 +257,16 @@ function parseCallId(location: string | null): string | undefined {
   return segment && segment.length <= 200 ? segment : undefined;
 }
 
-function createSessionConfig(model: string, voice: WaveRealtimeVoiceId) {
+export function createOpenAiRealtimeSessionConfig(
+  model: WaveRealtimeModelId,
+  voice: WaveRealtimeVoiceId,
+) {
+  if (!isWaveRealtimeModelId(model)) {
+    throw new OpenAiRealtimeBackendError(
+      'Wave does not support that Realtime model.',
+      { kind: 'model_unavailable' },
+    );
+  }
   return {
     audio: {
       input: {
@@ -245,57 +279,14 @@ function createSessionConfig(model: string, voice: WaveRealtimeVoiceId) {
       },
       output: { voice },
     },
-    instructions: `# Role
-You are Wave, the user's concise live voice assistant. Speak and act as one assistant. Hermes is your execution and reasoning backend; the user never needs to mention Hermes or ask you to delegate.
-
-# Direct replies and delegation
-Answer greetings, lightweight conversation, clarification, and simple computations directly.
-Use ask_hermes automatically when a request needs external or current information, private or user-specific context, device or service control, durable work, or substantial reasoning.
-When the request is sufficiently specified, do not ask for confirmation solely because ask_hermes is needed. If missing information would materially change the requested action, ask one concise clarifying question first.
-
-# Tool instructions
-Translate the user's request into a clear, self-contained instruction optimized for Hermes. Preserve the user's intent, scope, constraints, identifiers, quoted text, and literal values. You may rephrase or organize the instruction, but never broaden the requested action, add side effects, or invent missing details.
-Before a tool call that may take noticeable time, say at most one short, neutral preamble such as "I'll take care of that" or "Let me check." Do not mention Hermes or imply success in the preamble. Then call the tool immediately.
-Hermes requests continue in the background, so remain available for conversational follow-ups while waiting and do not treat an interruption of your speech as cancelling Hermes.
-When the user makes another distinct request that needs Hermes while earlier Hermes work is still running, call ask_hermes for the new request immediately; Wave will queue it safely in arrival order. Do not wait for the earlier result or claim that another Hermes request cannot be queued.
-Call ask_hermes once per distinct user request and do not retry an identical instruction. Never invent a session identifier.
-
-# Results
-After a successful tool result, answer naturally as Wave and summarize or confirm the outcome in speech-first language. Do not say "Hermes said" by default. Never claim an action succeeded until the tool result explicitly confirms it, and do not add facts beyond the result.
-Explain tool failures briefly without claiming success, and let the user retry.`,
+    instructions: buildWaveRealtimeInstructions(),
     max_output_tokens: 1_024,
     model,
     output_modalities: ['audio'],
     parallel_tool_calls: true,
     reasoning: { effort: 'low' },
     tool_choice: 'auto',
-    tools: [
-      {
-        description:
-          "Delegate work to the user's already-authorized Hermes execution and reasoning backend. " +
-          'Use for external or current information, private or user-specific context, device or ' +
-          'service control, durable work, or substantial reasoning. Do not use for greetings, ' +
-          'lightweight conversation, clarification, or simple computations. Provide a clear, ' +
-          "self-contained instruction that preserves the user's intent, scope, constraints, " +
-          'identifiers, quoted text, and literal values without broadening the action or inventing ' +
-          'details. Submit each distinct request once, including new requests made while earlier ' +
-          'work is still running; Wave queues them safely.',
-        name: ASK_HERMES_TOOL_NAME,
-        parameters: {
-          additionalProperties: false,
-          properties: {
-            instruction: {
-              maxLength: WAVE_MAX_ASK_HERMES_INSTRUCTION_LENGTH,
-              minLength: 1,
-              type: 'string',
-            },
-          },
-          required: ['instruction'],
-          type: 'object',
-        },
-        type: 'function',
-      },
-    ],
+    tools: [createAskHermesToolDefinition()],
     tracing: null,
     type: 'realtime',
   };

@@ -142,6 +142,41 @@ test('connects, reduces safe activity, controls the microphone, and cleans up ex
   assert.equal(controller.getState().phase, 'idle');
 });
 
+test('a final exact stop phrase ends Realtime locally without retaining it', async () => {
+  const backend = new FakeRealtimeBackend();
+  const transport = new FakeRealtimeTransport();
+  const controller = new WaveRealtimeController({ backend, transport });
+
+  await controller.start('session-1');
+  transport.emit({
+    final: true,
+    role: 'user',
+    text: '  Never mind! ',
+    type: 'transcript',
+  });
+  await waitFor(() => controller.getState().phase === 'idle');
+  assert.deepEqual(backend.endedCallIds, ['call-1']);
+  assert.equal(controller.getState().userTranscript, '');
+});
+
+test('a final utterance containing a stop word remains conversation', async () => {
+  const backend = new FakeRealtimeBackend();
+  const transport = new FakeRealtimeTransport();
+  const controller = new WaveRealtimeController({ backend, transport });
+
+  await controller.start('session-1');
+  transport.emit({
+    final: true,
+    role: 'user',
+    text: 'Stop the deployment',
+    type: 'transcript',
+  });
+  assert.equal(controller.getState().phase, 'listening');
+  assert.equal(controller.getState().userTranscript, 'Stop the deployment');
+  assert.deepEqual(backend.endedCallIds, []);
+  await controller.stop();
+});
+
 test('ends a call that resolves after local cancellation without reviving state', async () => {
   const backend = new FakeRealtimeBackend();
   const transport = new FakeRealtimeTransport();

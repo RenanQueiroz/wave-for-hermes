@@ -91,11 +91,14 @@ currently includes:
   `POST /v1/realtime/calls`, the authenticated WebSocket sideband, an audio-only native
   `RealtimeTransport` and focused lifecycle controller with bounded reconnection, strictly
   validated `ask_hermes` dispatch executed as ordinary turns on the gateway connection with
-  serialization, coalescing, and response-safe delivery enforced client-side, ephemeral in-call
+  serialization, coalescing, and response-safe delivery enforced client-side, a fixed
+  metadata-free delegation prompt, exact whole-utterance stop handling, ephemeral in-call
   transcripts, and unified-timeline refresh before returning to text chat;
 - an OpenAI key card in Settings that validates the key before saving, stores it with
   `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, exposes presence (never the value) to the UI, can remove it,
-  and a client-side Realtime voice picker persisted per device;
+  plus separate per-device Realtime model and voice pickers. The model picker accepts only
+  `gpt-realtime-2.1-mini` (the latency/cost-oriented default) or `gpt-realtime-2.1` (the
+  larger-model option), and a change applies to the next call;
 - a persisted appearance setting pairing PanelUI's Panel, Moon, and Grass theme families with a
   separate system/light/dark choice, applied live across the app including native headers and the
   status bar;
@@ -115,8 +118,11 @@ left Realtime enabled — a native WebRTC Realtime call that automatically dispa
 validated `ask_hermes({ instruction })` call against the bound Hermes session when the user's
 natural request requires backend work. The Realtime model may turn that request into a clearer,
 self-contained Hermes instruction, but it must preserve the user's intent, scope, constraints,
-identifiers, quoted text, and literal values. It then summarizes or confirms only the result
-Hermes actually returned, without making the user manage the internal handoff. Physical iOS
+identifiers, quoted text, literal values, and any explicitly named execution preference. It does
+not receive a catalog of Hermes tools, skills, MCP servers, peers, or configuration; Hermes chooses
+how to execute the generic instruction. It then summarizes or confirms only the result Hermes
+actually returned, without making the user manage the internal handoff. A final bare Stop phrase
+ends the Realtime call locally and is not stored. Physical iOS
 (including barge-in), audio-route, interruption, release-build, and realistic network validation
 remain before Realtime voice is production-ready. See the tracked
 [`docs/roadmap.md`](./docs/roadmap.md) for the prioritized remaining work.
@@ -313,6 +319,9 @@ components can coexist.
 - Realtime may dispatch the narrow `ask_hermes({ instruction })` tool without an additional Wave
   confirmation dialog after strict schema validation and trusted session binding. This does not
   bypass Hermes's own tool safety policy or broaden the tool into administration access.
+- Realtime receives one fixed Wave-authored delegation tool, never a reflected catalog of Hermes
+  tools, skills, MCP/A2A metadata, Agent Cards, or configuration. Preserve an execution preference
+  only when the user states it explicitly; otherwise Hermes chooses its own plan.
 - Store only the gateway's rotating session tokens (and the user's optional OpenAI key) in Expo
   SecureStore. Never expose them through UI, development state, logs, screenshots, or traces.
 - Keep Wave's Hermes access limited to chat and explicit conversational tools; do not quietly add
@@ -341,6 +350,7 @@ npm test
 - [PanelUI theming](https://www.panelui.dev/docs/theming)
 - [OpenAI Realtime API](https://developers.openai.com/api/docs/guides/realtime)
 - [Realtime WebRTC connection guide](https://developers.openai.com/api/docs/guides/realtime-webrtc)
+- [Realtime prompting guide](https://developers.openai.com/api/docs/guides/realtime-models-prompting)
 - [Realtime server-side controls](https://developers.openai.com/api/docs/guides/realtime-server-controls)
 - [React Native Legal](https://github.com/callstackincubator/react-native-legal)
 - [Wave architecture and workspace boundaries](./docs/architecture.md)

@@ -10,6 +10,7 @@ import {
   OPENAI_KEY_STATE_QUERY_KEY,
   OpenAiKeyCard,
 } from '@/features/realtime/openai-key-card';
+import { RealtimeModelCard } from '@/features/realtime/realtime-model-card';
 import { RealtimeVoiceCard } from '@/features/realtime/realtime-voice-card';
 import { AppearanceCard } from '@/features/settings/appearance-card';
 
@@ -56,7 +57,12 @@ export function SettingsScreen() {
 
         <OpenAiKeyCard />
 
-        {keyState.data?.hasKey ? <RealtimeVoiceCard /> : null}
+        {keyState.data?.hasKey ? (
+          <>
+            <RealtimeModelCard />
+            <RealtimeVoiceCard />
+          </>
+        ) : null}
 
         <AppearanceCard />
 

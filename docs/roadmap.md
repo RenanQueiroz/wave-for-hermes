@@ -26,19 +26,8 @@ covering simultaneous capture/playback, echo cancellation, pre-roll capture, pha
 speaker and Bluetooth routing, interruption, and cleanup. If that proof is not reliable, Realtime
 remains Wave's full-duplex mode.
 
-### Improve OpenAI Realtime behavior
+### Correct active Hermes work from Realtime
 
-- Let the user choose from Wave's explicit supported-model list:
-  `gpt-realtime-2.1-mini` (the default) or `gpt-realtime-2.1`. Wave will not dynamically fetch a
-  model catalog or accept arbitrary model ids; changing the preference applies to the next call.
-- Keep `ask_hermes({ instruction })` deliberately generic: it delegates external information,
-  private context, files, coding, automation, actions, and specialized workflows while Hermes
-  chooses its own configured tools and skills. Do not advertise, classify, summarize, or mirror
-  Hermes tools, skills, MCP/A2A metadata, or configuration to OpenAI. Preserve an execution
-  preference only when the user explicitly states it.
-- Refine the Realtime prompt for unclear audio, background speech and silence, within-utterance
-  self-correction, literal values, concise preambles, and tool failures.
-- Add deterministic whole-utterance Stop handling without persisting the transcript.
 - Build on the stable chat-redirect contract by deliberately extending the current one-tool
   contract with a strict `correct_hermes({ instruction })` operation. It may target only the one
   active Hermes execution
