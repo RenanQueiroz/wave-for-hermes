@@ -11,6 +11,7 @@ import type {
   WaveActiveTurnResponse,
   WaveCancelTurnResponse,
   WaveDeleteSessionResponse,
+  WaveRedirectTurnResponse,
   WaveSessionHistoryResponse,
   WaveSessionListResponse,
   WaveSessionResponse,
@@ -65,6 +66,10 @@ export interface WaveChatClient {
     input?: { limit?: number; offset?: number },
     signal?: AbortSignal,
   ): Promise<WaveSessionPage>;
+  redirectTurn(
+    sessionId: string,
+    text: string,
+  ): Promise<WaveRedirectTurnResponse>;
   resumeTurnStream(
     sessionId: string,
     turnId: string,

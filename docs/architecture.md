@@ -133,10 +133,16 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   for current-flow coordination. Connected cold launch deliberately creates a new conversation;
   Hermes remains the durable source for every prior conversation shown in the drawer.
 - `useWaveChat` and its reducer own the single active stream, 50 ms assistant-delta batching,
-  cancellation races, safe error state, and post-stream timeline reconciliation. The reducer
-  keeps the composer busy until stream cleanup and reconciliation have settled, so a newly
-  enabled send cannot race the prior turn. React screens do not parse stream frames or construct
-  protocol messages.
+  cancellation and correction races, safe error state, and post-stream timeline reconciliation.
+  A text-only correction is optimistically inserted before the active assistant reply, kept there
+  when redirected, moved to the tail when queued, or removed and restored to the draft when
+  rejected/ambiguous. An explicitly accepted correction is also recorded in a bounded,
+  account-scoped TanStack journal. Timeline reads merge that app-trusted row after its initiating
+  prompt when Hermes's tool-boundary steering did not persist a distinct HTTP user row, while
+  deduplicating the ordinary user row Hermes does persist for model-time redirects. The reducer
+  keeps new turn submission blocked until stream cleanup and reconciliation have settled, so a
+  newly enabled send cannot race the prior turn. React screens do not parse stream frames or
+  construct protocol messages.
 - The Expo Router drawer is the connected app shell around a single native stack: every app
   screen lives in that stack, so screens get native headers, push transitions, and swipe-back,
   while the drawer stays a conversation switcher rather than a sibling navigator. Cold launch
@@ -154,13 +160,21 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   `KeyboardAvoider` docks the rounded `InputGroup` composer above the native keyboard, keeping a
   small gap while the keyboard is open. Opening the attachment sheet dismisses the keyboard
   first, since the styled sheet draws under the keyboard's own window. The attachment control
-  sits inside the leading edge. The trailing slot shows exactly one of Stop, Send, or the
-  live-wave action; when idle, trimmed text selects Send and empty text selects live voice.
+  sits inside the leading edge. The trailing slot shows exactly one action: when idle, trimmed
+  text selects Send and empty text selects live voice; during a turn, eligible text selects
+  Correct and empty or ineligible content keeps Stop. Corrections are text-only, so attachment,
+  prompt-response, cancellation, and correction-in-flight states cannot race the mutation.
 - Camera/Photos become bounded inline JPEG turn parts. Supported text-based Files are read from
   the document-picker cache and become bounded inert text-file parts. The mobile client rejects
   unsupported binary files before dispatch.
 
 ## Shared protocol
+
+`WaveRedirectTurnRequestSchema` accepts only one bounded text field and has no identifier fields.
+`GatewayClient.redirectTurn` resolves the stored conversation through trusted state, requires the
+already-registered turn channel, sends `session.redirect` once with its live sid, and exposes only
+the normalized `redirected | queued | rejected` result. It never opens a generic RPC surface or
+automatically retries an ambiguous mutation.
 
 `@wave/contracts` currently defines:
 
@@ -183,21 +197,23 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
 
 ## State and UI direction
 
-- Hermes remains the source of truth for its durable sessions, messages, and tool records.
-  Realtime speech is ephemeral; only work delegated through `ask_hermes` lands in history, as
-  ordinary turns.
+- Hermes remains the source of truth for its durable sessions, messages, and tool records. The
+  one presentation overlay is an app-trusted accepted chat correction when Hermes delivered it
+  through a tool-result boundary without a distinct HTTP user row; Wave never infers that row
+  from untrusted tool content. Realtime speech is ephemeral; only work delegated through
+  `ask_hermes` lands in history, as ordinary turns.
 - TanStack Query owns finite server state such as paginated account sessions, the unified
   timeline, and speech capability probes. Retryable finite reads retry at most twice with the
   shared 500 ms exponential-jitter policy capped at 8 seconds; mutations never retry
   automatically.
 - The query cache is persisted to one sandboxed cache file so previously viewed sessions and
-  timelines stay readable offline. Only successful session-list and timeline reads dehydrate,
-  entries expire after seven days or a cache-buster bump, and sign-in and sign-out purge the
-  file alongside the in-memory cache. Persist writes go through a sibling temp file renamed into
-  place so an interrupted write can never truncate the document, and a document that fails to
-  parse on restore is deleted rather than left permanently unreadable. A connectivity-shaped
-  refetch failure over cached data renders a quiet offline notice; every other error keeps its
-  explicit surface.
+  timelines stay readable offline. Successful session-list and timeline reads plus at most 32
+  accepted correction-journal rows per session dehydrate; entries expire after seven days or a
+  cache-buster bump, and sign-in and sign-out purge the file alongside the in-memory cache.
+  Persist writes go through a sibling temp file renamed into place so an interrupted write can
+  never truncate the document, and a document that fails to parse on restore is deleted rather
+  than left permanently unreadable. A connectivity-shaped refetch failure over cached data
+  renders a quiet offline notice; every other error keeps its explicit surface.
 - Active stream and Realtime lifecycles belong in focused controllers/reducers, not query cache.
 - The connection provider owns only sign-in bootstrap and verification state; it is not a
   general application-state container.

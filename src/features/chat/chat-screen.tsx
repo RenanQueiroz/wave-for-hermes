@@ -70,6 +70,12 @@ import { useDictation } from '@/features/voice/use-dictation';
 import { useMessagePlayback } from '@/features/voice/use-message-playback';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
+  addWaveCorrectionJournalEntry,
+  getWaveCorrectionJournal,
+  mergeWaveCorrectionsIntoTimeline,
+  mergeWaveCorrectionsIntoTimelineEntries,
+} from '@/features/sessions/session-correction-journal';
+import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
@@ -189,6 +195,23 @@ function ConnectedChatScreen({
     () => waveTimelineQueryKey(connectionId, baseUrl, sessionId),
     [baseUrl, connectionId, sessionId],
   );
+  const loadTimelinePage = useCallback(
+    async (before: string | undefined, signal: AbortSignal) => {
+      const page = await client.getSessionTimeline(
+        sessionId,
+        {
+          ...(before ? { before } : {}),
+          limit: 100,
+        },
+        signal,
+      );
+      return mergeWaveCorrectionsIntoTimeline(
+        page,
+        getWaveCorrectionJournal(queryClient, connectionId, baseUrl, sessionId),
+      );
+    },
+    [baseUrl, client, connectionId, queryClient, sessionId],
+  );
   const timeline = useInfiniteQuery<
     WaveTimelineResponse,
     WaveBackendError,
@@ -198,30 +221,14 @@ function ConnectedChatScreen({
   >({
     getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) =>
-      client.getSessionTimeline(
-        sessionId,
-        {
-          ...(pageParam ? { before: pageParam } : {}),
-          limit: 100,
-        },
-        signal,
-      ),
+    queryFn: ({ pageParam, signal }) => loadTimelinePage(pageParam, signal),
     queryKey: timelineKey,
   });
   const reconcileTimeline = useCallback(async () => {
     const result = await refreshWaveSessionTimeline({
       baseUrl,
       connectionId,
-      load: (before, signal) =>
-        client.getSessionTimeline(
-          sessionId,
-          {
-            ...(before ? { before } : {}),
-            limit: 100,
-          },
-          signal,
-        ),
+      load: loadTimelinePage,
       queryClient,
       sessionId,
     });
@@ -229,9 +236,41 @@ function ConnectedChatScreen({
       queryKey: waveSessionQueryKey(connectionId, baseUrl),
     });
     return result;
-  }, [baseUrl, client, connectionId, queryClient, sessionId]);
+  }, [baseUrl, connectionId, loadTimelinePage, queryClient, sessionId]);
+  const getCorrectionAnchor = useCallback(() => {
+    const entries = [...(timeline.data?.pages ?? [])]
+      .reverse()
+      .flatMap((page) => page.entries);
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry.type === 'message' && entry.message.role === 'user') {
+        return entry.message.content.trim() || undefined;
+      }
+    }
+    return undefined;
+  }, [timeline.data?.pages]);
+  const persistCorrection = useCallback(
+    (entry: {
+      anchorText: string;
+      createdAt: string;
+      id: string;
+      sessionId: string;
+      text: string;
+    }) => {
+      const { sessionId: correctionSessionId, ...journalEntry } = entry;
+      addWaveCorrectionJournalEntry(queryClient, {
+        baseUrl,
+        connectionId,
+        entry: journalEntry,
+        sessionId: correctionSessionId,
+      });
+    },
+    [baseUrl, connectionId, queryClient],
+  );
   const chat = useWaveChat({
     client,
+    getCorrectionAnchor,
+    persistCorrection,
     reconcileTimeline,
     sessionId,
   });
@@ -260,11 +299,21 @@ function ConnectedChatScreen({
     return registerMobileAgentStateProvider({
       name: 'wave-chat',
       read: () => ({
+        correction: chat.state.correction
+          ? 'sending'
+          : chat.state.correctionError
+            ? 'error'
+            : 'idle',
         sessionId,
         status: chat.state.status,
       }),
     });
-  }, [chat.state.status, sessionId]);
+  }, [
+    chat.state.correction,
+    chat.state.correctionError,
+    chat.state.status,
+    sessionId,
+  ]);
 
   useEffect(() => {
     void activeSessionStore
@@ -311,13 +360,15 @@ function ConnectedChatScreen({
     ]),
   );
 
-  const timelineEntries = useMemo(
-    () =>
-      [...(timeline.data?.pages ?? [])]
-        .reverse()
-        .flatMap((page) => page.entries),
-    [timeline.data?.pages],
-  );
+  const timelineEntries = useMemo(() => {
+    const entries = [...(timeline.data?.pages ?? [])]
+      .reverse()
+      .flatMap((page) => page.entries);
+    return mergeWaveCorrectionsIntoTimelineEntries(
+      entries,
+      getWaveCorrectionJournal(queryClient, connectionId, baseUrl, sessionId),
+    );
+  }, [baseUrl, connectionId, queryClient, sessionId, timeline.data?.pages]);
   const timelineMessages = useMemo(
     () => timelineToWaveChatMessages(timelineEntries),
     [timelineEntries],
@@ -347,6 +398,8 @@ function ConnectedChatScreen({
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
     chat.state.status === 'cancelling';
+  const correcting = Boolean(chat.state.correction);
+  const cancelling = chat.state.status === 'cancelling';
   // Dispatching a turn or starting voice needs a reachable gateway and the
   // conversation's current state. While either is missing the composer stays
   // readable but cannot send; typing is still allowed so drafts survive.
@@ -374,6 +427,48 @@ function ConnectedChatScreen({
     attachmentState.clear();
     void chat.send(turnInput, optimisticText);
   }, [attachmentState, busy, chat, composerBlocked, input]);
+
+  const correct = useCallback(() => {
+    const value = input;
+    if (
+      !value.trim() ||
+      !busy ||
+      cancelling ||
+      correcting ||
+      composerBlocked ||
+      chat.state.activePrompt ||
+      attachmentState.attachments.length > 0
+    ) {
+      return;
+    }
+    setInput('');
+    void chat.correct(value).then((result) => {
+      if (
+        result.status === 'failed' ||
+        result.status === 'rejected' ||
+        result.status === 'unavailable'
+      ) {
+        setInput((current) => (current.trim() ? current : result.draft));
+      }
+    });
+  }, [
+    attachmentState.attachments.length,
+    busy,
+    cancelling,
+    chat,
+    composerBlocked,
+    correcting,
+    input,
+  ]);
+
+  const submitComposer = busy ? correct : send;
+  const canCorrect =
+    busy &&
+    !cancelling &&
+    !correcting &&
+    !chat.state.activePrompt &&
+    attachmentState.attachments.length === 0 &&
+    Boolean(input.trim());
 
   // Mid-turn prompt responses go to the gateway client directly: prompts are
   // a gateway-only capability, and the response must reach the streaming
@@ -669,6 +764,18 @@ function ConnectedChatScreen({
           </Attachment.Group>
         ) : null}
 
+        {chat.state.correctionError ? (
+          <Alert variant="destructive" testID="chat-correction-error">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>Correction not sent</Alert.Title>
+              <Alert.Description>
+                {chat.state.correctionError.message}
+              </Alert.Description>
+            </Alert.Content>
+          </Alert>
+        ) : null}
+
         {attachmentState.error ? (
           <Alert variant="destructive" testID="attachment-error">
             <Alert.Indicator />
@@ -676,9 +783,24 @@ function ConnectedChatScreen({
               <Alert.Description>{attachmentState.error}</Alert.Description>
             </Alert.Content>
           </Alert>
+        ) : busy && attachmentState.attachments.length > 0 ? (
+          <Typography.Paragraph
+            muted
+            className="px-2 text-center text-xs"
+            testID="chat-correction-attachment-hint">
+            Corrections are text only. Remove the attachments or wait for this
+            response to finish.
+          </Typography.Paragraph>
         ) : attachmentState.attachments.length > 0 && !input.trim() ? (
           <Typography.Paragraph muted className="px-2 text-xs">
             Add a message to send the selected attachments.
+          </Typography.Paragraph>
+        ) : busy && chat.state.activePrompt && input.trim() ? (
+          <Typography.Paragraph
+            muted
+            className="px-2 text-center text-xs"
+            testID="chat-correction-prompt-hint">
+            Answer the prompt above before correcting this response.
           </Typography.Paragraph>
         ) : null}
 
@@ -712,7 +834,7 @@ function ConnectedChatScreen({
 
         <InputGroup
           className="min-h-14 overflow-hidden rounded-[28px] bg-muted"
-          isDisabled={busy}>
+          isDisabled={cancelling || correcting}>
           <InputGroup.Prefix className="px-2">
             {/* The dim lives on a wrapper View: the button's press-feedback
                 animation drives opacity from the UI thread, overriding both
@@ -762,9 +884,9 @@ function ConnectedChatScreen({
           </InputGroup.Prefix>
           <InputGroup.Input
             multiline
-            accessibilityLabel="Message Wave"
+            accessibilityLabel={busy ? 'Correct Wave response' : 'Message Wave'}
             className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
-            placeholder="Message Wave"
+            placeholder={busy ? 'Add a correction' : 'Message Wave'}
             // Clears the prefix buttons, which the InputGroup overlays on the
             // field: 8 padding + 44 attachment + 44 mic + spacing.
             style={{ paddingLeft: canDictate ? 116 : 60, paddingRight: 56 }}
@@ -772,10 +894,28 @@ function ConnectedChatScreen({
             testID="chat-composer-input"
             value={input}
             onChangeText={setInput}
-            onSubmitEditing={send}
+            onSubmitEditing={submitComposer}
           />
           <InputGroup.Suffix className="px-2">
-            {busy ? (
+            {correcting ? (
+              <Button
+                size="icon"
+                accessibilityLabel="Sending correction"
+                className="rounded-full"
+                disabled
+                loading
+                testID="chat-correction-loading-button"
+              />
+            ) : canCorrect ? (
+              <Button
+                size="icon"
+                accessibilityLabel="Correct current Wave response"
+                className="rounded-full"
+                testID="chat-correct-button"
+                onPress={correct}>
+                <SendIcon size={18} />
+              </Button>
+            ) : busy ? (
               <Button
                 size="icon"
                 variant="secondary"

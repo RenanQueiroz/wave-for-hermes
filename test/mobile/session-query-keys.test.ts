@@ -5,9 +5,11 @@ import { QueryClient } from '@tanstack/react-query';
 
 import { mergeSessionSearchResults } from '../../src/features/sessions/merge-session-search.ts';
 import {
+  waveSessionDataQueryKey,
   waveSessionQueryKey,
   waveTimelineQueryKey,
 } from '../../src/features/sessions/session-query-keys.ts';
+import { waveCorrectionJournalQueryKey } from '../../src/features/sessions/session-correction-journal.ts';
 
 test('session list invalidation never matches conversation timelines', () => {
   const listKey = waveSessionQueryKey('device-1', 'https://wave.example.test');
@@ -27,6 +29,44 @@ test('session list invalidation never matches conversation timelines', () => {
     .map((query) => query.queryKey);
 
   assert.deepEqual(matched, [listKey]);
+  queryClient.clear();
+});
+
+test('session data prefix matches only one conversation cache', () => {
+  const queryClient = new QueryClient();
+  const sessionPrefix = waveSessionDataQueryKey(
+    'device-1',
+    'https://wave.example.test',
+    'session-1',
+  );
+  const ownTimeline = waveTimelineQueryKey(
+    'device-1',
+    'https://wave.example.test',
+    'session-1',
+  );
+  const ownCorrections = waveCorrectionJournalQueryKey(
+    'device-1',
+    'https://wave.example.test',
+    'session-1',
+  );
+  const otherTimeline = waveTimelineQueryKey(
+    'device-1',
+    'https://wave.example.test',
+    'session-2',
+  );
+  const listKey = waveSessionQueryKey('device-1', 'https://wave.example.test');
+
+  for (const key of [ownTimeline, ownCorrections, otherTimeline, listKey]) {
+    queryClient.setQueryData(key, true);
+  }
+
+  assert.deepEqual(
+    queryClient
+      .getQueryCache()
+      .findAll({ queryKey: sessionPrefix })
+      .map((query) => query.queryKey),
+    [ownTimeline, ownCorrections],
+  );
   queryClient.clear();
 });
 

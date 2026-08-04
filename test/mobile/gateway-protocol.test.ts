@@ -769,6 +769,8 @@ test('the turn event queue tells cancellation apart from idle timeout', async ()
  */
 function makeTurnFixtureClient(options: {
   attachResult?: { code: number; message: string };
+  redirectError?: { code: number; message: string };
+  redirectStatus?: 'queued' | 'redirected' | 'rejected' | 'unknown';
   submitResult?: { code: number; message: string };
 }) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -817,6 +819,14 @@ function makeTurnFixtureClient(options: {
           return;
         }
         reply({ result: { attached: true, count: 1 } });
+        return;
+      }
+      if (frame.method === 'session.redirect') {
+        if (options.redirectError) {
+          reply({ error: options.redirectError });
+          return;
+        }
+        reply({ result: { status: options.redirectStatus ?? 'redirected' } });
         return;
       }
       if (frame.method === 'prompt.submit') {
@@ -928,6 +938,105 @@ test('a rejected submit reports its own error, not a dropped stream', async () =
     return true;
   });
   assert.deepEqual(events, ['turn.started']);
+});
+
+test('redirects an active turn through its trusted live session exactly once', async () => {
+  for (const status of ['queued', 'redirected', 'rejected'] as const) {
+    const { calls, client } = makeTurnFixtureClient({
+      redirectStatus: status,
+    });
+    const created = await client.createSession();
+    const stream = client.streamTurn(created.session.id, 'Original request');
+    const first = await stream.next();
+    assert.equal(first.value?.type, 'turn.started');
+
+    const result = await client.redirectTurn(
+      created.session.id,
+      '  Use SQLite instead.  ',
+    );
+    assert.equal(result.status, status);
+    const redirects = calls.filter(
+      (call) => call.method === 'session.redirect',
+    );
+    assert.equal(redirects.length, 1);
+    assert.deepEqual(redirects[0]?.params, {
+      session_id: 'live-1',
+      text: 'Use SQLite instead.',
+    });
+
+    while (!(await stream.next()).done) {
+      // Drain the fixture turn so its active-channel registration is cleaned.
+    }
+  }
+});
+
+test('a redirect race or malformed response restores control without retrying', async () => {
+  const raced = makeTurnFixtureClient({
+    redirectError: { code: 4010, message: 'turn is no longer redirectable' },
+  });
+  const created = await raced.client.createSession();
+  const stream = raced.client.streamTurn(created.session.id, 'Original');
+  await stream.next();
+  await assert.rejects(
+    raced.client.redirectTurn(created.session.id, 'Correction'),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'conflict');
+      assert.equal(error.retryable, false);
+      return true;
+    },
+  );
+  assert.equal(
+    raced.calls.filter((call) => call.method === 'session.redirect').length,
+    1,
+  );
+  while (!(await stream.next()).done) {
+    // Drain the fixture turn.
+  }
+
+  const malformed = makeTurnFixtureClient({ redirectStatus: 'unknown' });
+  const malformedCreated = await malformed.client.createSession();
+  const malformedStream = malformed.client.streamTurn(
+    malformedCreated.session.id,
+    'Original',
+  );
+  await malformedStream.next();
+  await assert.rejects(
+    malformed.client.redirectTurn(malformedCreated.session.id, 'Correction'),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'upstream_incompatible');
+      assert.equal(error.retryable, false);
+      return true;
+    },
+  );
+  while (!(await malformedStream.next()).done) {
+    // Drain the fixture turn.
+  }
+});
+
+test('refuses empty corrections and sessions without a registered turn', async () => {
+  const { calls, client } = makeTurnFixtureClient({});
+  await assert.rejects(
+    client.redirectTurn('stored-1', '   '),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'bad_request');
+      return true;
+    },
+  );
+  await assert.rejects(
+    client.redirectTurn('stored-1', 'Use SQLite'),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'conflict');
+      return true;
+    },
+  );
+  assert.equal(
+    calls.filter((call) => call.method === 'session.redirect').length,
+    0,
+  );
 });
 
 test('translates observed tool frames with bounded input and output details', () => {

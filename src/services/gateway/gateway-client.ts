@@ -12,12 +12,14 @@
  *
  * Protocol reference: `docs/hermes-connectivity.md`.
  */
-import type {
-  WaveConversationMessage,
-  WaveSessionSummary,
-  WaveTimelineResponse,
-  WaveTurnEvent,
-  WaveTurnInput,
+import {
+  WaveRedirectTurnRequestSchema,
+  type WaveConversationMessage,
+  type WaveRedirectTurnResponse,
+  type WaveSessionSummary,
+  type WaveTimelineResponse,
+  type WaveTurnEvent,
+  type WaveTurnInput,
 } from '@wave/contracts';
 import { fetch as expoFetch } from 'expo/fetch';
 
@@ -79,6 +81,8 @@ const ACTIVE_GATEWAY_SESSION_STATUSES = new Set([
   // Defensive alias retained for gateways that reported a generic state.
   'running',
 ]);
+const REDIRECT_RACE_CODES = new Set([4001, 4007, 4009, 4010]);
+const REDIRECT_STATUSES = new Set(['queued', 'redirected', 'rejected']);
 
 export interface GatewayTokenSink {
   (tokens: GatewayTokens): void;
@@ -709,6 +713,62 @@ export class GatewayClient {
     } catch (error) {
       throw toWaveError(error);
     }
+  }
+
+  /**
+   * Correct the one active turn already registered for this stored session.
+   * The request cannot choose a live sid, and the mutation is issued exactly
+   * once on the turn's existing RPC channel.
+   */
+  async redirectTurn(
+    sessionId: string,
+    text: string,
+  ): Promise<WaveRedirectTurnResponse> {
+    const parsed = WaveRedirectTurnRequestSchema.safeParse({ text });
+    if (!parsed.success) {
+      throw new WaveBackendError(
+        'Enter a correction between 1 and 32,000 characters.',
+        { kind: 'bad_request' },
+      );
+    }
+    sessionId = this.resolveSessionId(sessionId);
+    const active = this.activeTurns.get(sessionId);
+    if (!active) {
+      throw new WaveBackendError(
+        'That response is no longer accepting corrections.',
+        { kind: 'conflict' },
+      );
+    }
+    let result: Record<string, unknown>;
+    try {
+      result = await active.rpc.call('session.redirect', {
+        session_id: active.liveSessionId,
+        text: parsed.data.text,
+      });
+    } catch (error) {
+      if (
+        error instanceof GatewayRpcError &&
+        REDIRECT_RACE_CODES.has(error.code)
+      ) {
+        throw new WaveBackendError(
+          'That response is no longer accepting corrections.',
+          { kind: 'conflict' },
+        );
+      }
+      throw toWaveError(error);
+    }
+    const status = result.status;
+    if (typeof status !== 'string' || !REDIRECT_STATUSES.has(status)) {
+      throw new WaveBackendError(
+        'Wave could not understand the correction response.',
+        { kind: 'upstream_incompatible' },
+      );
+    }
+    return {
+      apiVersion: 'v1',
+      sessionId,
+      status: status as WaveRedirectTurnResponse['status'],
+    };
   }
 
   /**

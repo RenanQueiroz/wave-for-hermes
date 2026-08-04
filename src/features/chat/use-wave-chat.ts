@@ -12,14 +12,29 @@ const DELTA_FLUSH_MS = 50;
 // attempts with the shared bounded exponential-jitter delay.
 const MAX_REATTACH_ATTEMPTS = 2;
 
+export interface WaveCorrectionResult {
+  draft: string;
+  status: 'failed' | 'queued' | 'redirected' | 'rejected' | 'unavailable';
+}
+
 interface UseWaveChatOptions {
   client: WaveChatClient;
+  getCorrectionAnchor(): string | undefined;
+  persistCorrection(input: {
+    anchorText: string;
+    createdAt: string;
+    id: string;
+    sessionId: string;
+    text: string;
+  }): void;
   reconcileTimeline(): Promise<unknown>;
   sessionId: string;
 }
 
 export function useWaveChat({
   client,
+  getCorrectionAnchor,
+  persistCorrection,
   reconcileTimeline,
   sessionId,
 }: UseWaveChatOptions) {
@@ -28,6 +43,8 @@ export function useWaveChat({
   const turnIdRef = useRef<string | undefined>(undefined);
   const busyRef = useRef(false);
   const cancellingRef = useRef(false);
+  const correctingRef = useRef(false);
+  const correctionAnchorRef = useRef<string | undefined>(undefined);
   const idRef = useRef(0);
   const mountedRef = useRef(true);
 
@@ -39,6 +56,10 @@ export function useWaveChat({
       controllerRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    correctionAnchorRef.current = undefined;
+  }, [sessionId]);
 
   const consumeTurn = useCallback(
     async (
@@ -182,11 +203,17 @@ export function useWaveChat({
       const displayText =
         optimisticText?.trim() ??
         (typeof input === 'string' ? input.trim() : '');
-      if (!displayText || busyRef.current || !mountedRef.current) {
+      if (
+        !displayText ||
+        busyRef.current ||
+        correctingRef.current ||
+        !mountedRef.current
+      ) {
         return;
       }
       busyRef.current = true;
       cancellingRef.current = false;
+      correctionAnchorRef.current = turnInputText(input) ?? displayText;
       const controller = new AbortController();
       controllerRef.current = controller;
       idRef.current += 1;
@@ -208,11 +235,12 @@ export function useWaveChat({
 
   const resume = useCallback(
     async (turnId: string) => {
-      if (busyRef.current || !mountedRef.current) {
+      if (busyRef.current || correctingRef.current || !mountedRef.current) {
         return;
       }
       busyRef.current = true;
       cancellingRef.current = false;
+      correctionAnchorRef.current = getCorrectionAnchor();
       const controller = new AbortController();
       controllerRef.current = controller;
       idRef.current += 1;
@@ -228,12 +256,12 @@ export function useWaveChat({
         { lastSequence: -1, resuming: true },
       );
     },
-    [client, consumeTurn, sessionId],
+    [client, consumeTurn, getCorrectionAnchor, sessionId],
   );
 
   const stop = useCallback(async () => {
     const controller = controllerRef.current;
-    if (!controller || cancellingRef.current) return;
+    if (!controller || cancellingRef.current || correctingRef.current) return;
     cancellingRef.current = true;
     dispatch({ type: 'cancel.requested' });
     const turnId = turnIdRef.current;
@@ -253,11 +281,118 @@ export function useWaveChat({
     }
   }, [client, sessionId]);
 
+  const reconcileCorrectionRace = useCallback(async () => {
+    const active = await client.getActiveTurn(sessionId).then(
+      (result) => Boolean(result.activeTurn),
+      () => true,
+    );
+    if (active || !mountedRef.current) return;
+    const reconciled = await reconcileTimeline().then(
+      () => true,
+      () => false,
+    );
+    if (reconciled && mountedRef.current) {
+      dispatch({ type: 'timeline.reconciled' });
+    }
+  }, [client, reconcileTimeline, sessionId]);
+
+  const correct = useCallback(
+    async (text: string): Promise<WaveCorrectionResult> => {
+      const draft = text.trim();
+      if (
+        !draft ||
+        !busyRef.current ||
+        cancellingRef.current ||
+        correctingRef.current ||
+        !mountedRef.current
+      ) {
+        return { draft, status: 'unavailable' };
+      }
+      correctingRef.current = true;
+      idRef.current += 1;
+      const messageId = `correction-${Date.now()}-${idRef.current}`;
+      const createdAt = new Date().toISOString();
+      const anchorText = correctionAnchorRef.current ?? getCorrectionAnchor();
+      dispatch({ messageId, text: draft, type: 'correction.requested' });
+      try {
+        const result = await client.redirectTurn(sessionId, text);
+        if (
+          (result.status === 'queued' || result.status === 'redirected') &&
+          anchorText
+        ) {
+          try {
+            persistCorrection({
+              anchorText,
+              createdAt,
+              id: messageId,
+              sessionId: result.sessionId,
+              text: draft,
+            });
+          } catch {
+            // The gateway already accepted the correction. A local cache
+            // failure must not turn that successful mutation into a retryable
+            // action or risk dispatching it twice.
+          }
+        }
+        if (result.status === 'queued' || result.status === 'redirected') {
+          correctionAnchorRef.current = draft;
+        }
+        if (!mountedRef.current) {
+          return { draft, status: 'unavailable' };
+        }
+        dispatch({
+          messageId,
+          status: result.status,
+          type: 'correction.resolved',
+        });
+        if (result.status === 'rejected') {
+          void reconcileCorrectionRace();
+        }
+        return { draft, status: result.status };
+      } catch (error) {
+        const failure = toCorrectionFailure(error);
+        if (mountedRef.current) {
+          dispatch({
+            message: failure.message,
+            messageId,
+            retryable: failure.retryable,
+            type: 'correction.failed',
+          });
+          void reconcileCorrectionRace();
+        }
+        return { draft, status: 'failed' };
+      } finally {
+        correctingRef.current = false;
+      }
+    },
+    [
+      client,
+      getCorrectionAnchor,
+      persistCorrection,
+      reconcileCorrectionRace,
+      sessionId,
+    ],
+  );
+
   return {
+    correct,
     resume,
     send,
     state,
     stop,
+  };
+}
+
+function toCorrectionFailure(error: unknown) {
+  if (error instanceof WaveBackendError) {
+    return {
+      message: error.message,
+      retryable: error.retryable,
+    };
+  }
+  return {
+    message: 'Wave could not deliver that correction.',
+    retryable: false,
   };
 }
 
@@ -288,4 +423,12 @@ function abortableDelay(ms: number, signal: AbortSignal) {
     const timer = setTimeout(settle, ms);
     signal.addEventListener('abort', settle, { once: true });
   });
+}
+
+function turnInputText(input: WaveTurnInput) {
+  if (typeof input === 'string') return input.trim() || undefined;
+  const textPart = input.find((part) => part.type === 'text');
+  return textPart?.type === 'text'
+    ? textPart.text.trim() || undefined
+    : undefined;
 }

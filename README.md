@@ -19,6 +19,7 @@ confirmed result naturally as its own response. The user never has to address He
 Wave is intended to support:
 
 - text chat with a Hermes agent;
+- text-only correction of a running response without discarding completed work;
 - browsing, searching, continuing, renaming, and deleting the user's Hermes conversation history;
 - sending bounded images and text-based files with a message;
 - a natural, interruptible live voice conversation;
@@ -63,8 +64,9 @@ currently includes:
   running Hermes turn — the chat screen resumes the live session and reconciles from authoritative
   Hermes history, while explicit Stop still cancels;
 - an offline read cache that keeps previously viewed chats and the session list readable without
-  connectivity, showing a quiet offline notice for connectivity-shaped failures and purging itself
-  on sign-in and sign-out;
+  connectivity, retains a bounded app-trusted journal of accepted mid-turn corrections for stable
+  reload ordering, shows a quiet offline notice for connectivity-shaped failures, and purges
+  itself on sign-in and sign-out;
 - a ChatGPT-style chat-first shell that creates a new conversation on connected launch, opens
   account-wide history from a side drawer, searches titles, renames/deletes sessions, and keeps
   Settings and Disconnect fixed at the bottom;
@@ -73,7 +75,7 @@ currently includes:
   bottom-aligned Wave avatars, collapsed named tool rows whose disclosures render bounded raw
   input/output as inert code, current-session tracking, and a keyboard-sticky rounded composer
   with an internal attachment control and exactly one trailing action: Send when text is present,
-  live voice when it is empty, or Stop during an active turn;
+  live voice when it is empty, or — during an active turn — Correct for text and Stop when empty;
 - inline mid-turn prompts: Hermes approval and clarify requests render in the turn they belong
   to, are answered on the socket bound to that turn, and clear as soon as anything proves them
   settled; secret/sudo requests are declined with copy that says why;
@@ -233,7 +235,11 @@ as Markdown or execute it. Truncation is explicit.
 The composer accepts up to four attachments with a non-empty message. Camera and Photos are
 converted to bounded inline JPEG data (4 MB per image). Files are restricted to supported
 text/code/JSON/CSV/XML/Markdown content and 128,000 characters. Unsupported binary documents are
-rejected locally before dispatch.
+rejected locally before dispatch. While a response is active, the composer accepts a text-only
+correction that preserves completed work; attachments remain unavailable until that response
+settles, and an empty composer keeps the explicit Stop action. Accepted corrections remain
+ordinary user rows after reload even when Hermes delivered one at a safe tool-result boundary
+without a distinct HTTP history row.
 
 ### Realtime voice with your own key
 

@@ -372,6 +372,98 @@ test('keeps cancellation busy until cleanup settles, then returns to neutral idl
   assert.equal(state.error, undefined);
 });
 
+test('places, queues, and rejects optimistic turn corrections deterministically', () => {
+  const start = () =>
+    waveChatReducer(initialWaveChatState, {
+      assistantId: 'assistant-local',
+      input: 'Original request',
+      type: 'send',
+      userId: 'user-local',
+    });
+  const request = (state: ReturnType<typeof start>) =>
+    waveChatReducer(state, {
+      messageId: 'correction-local',
+      text: 'Use SQLite instead',
+      type: 'correction.requested',
+    });
+
+  const requested = request(start());
+  assert.deepEqual(
+    requested.messages.map((message) => [message.id, message.role]),
+    [
+      ['user-local', 'user'],
+      ['correction-local', 'user'],
+      ['assistant-local', 'assistant'],
+    ],
+  );
+  assert.deepEqual(requested.correction, {
+    messageId: 'correction-local',
+    text: 'Use SQLite instead',
+  });
+
+  const redirected = waveChatReducer(requested, {
+    messageId: 'correction-local',
+    status: 'redirected',
+    type: 'correction.resolved',
+  });
+  assert.equal(redirected.correction, undefined);
+  assert.deepEqual(
+    redirected.messages.map((message) => message.id),
+    ['user-local', 'correction-local', 'assistant-local'],
+  );
+
+  const queued = waveChatReducer(request(start()), {
+    messageId: 'correction-local',
+    status: 'queued',
+    type: 'correction.resolved',
+  });
+  assert.deepEqual(
+    queued.messages.map((message) => message.id),
+    ['user-local', 'assistant-local', 'correction-local'],
+  );
+
+  const rejected = waveChatReducer(request(start()), {
+    messageId: 'correction-local',
+    status: 'rejected',
+    type: 'correction.resolved',
+  });
+  assert.deepEqual(
+    rejected.messages.map((message) => message.id),
+    ['user-local', 'assistant-local'],
+  );
+  assert.match(rejected.correctionError?.message ?? '', /no longer/);
+});
+
+test('a correction transport failure removes only its optimistic message', () => {
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'assistant-local',
+    input: 'Original request',
+    type: 'send',
+    userId: 'user-local',
+  });
+  state = waveChatReducer(state, {
+    messageId: 'correction-local',
+    text: 'Keep the draft',
+    type: 'correction.requested',
+  });
+  state = waveChatReducer(state, {
+    message: 'Wave lost the connection to Hermes.',
+    messageId: 'correction-local',
+    retryable: true,
+    type: 'correction.failed',
+  });
+
+  assert.deepEqual(
+    state.messages.map((message) => message.id),
+    ['user-local', 'assistant-local'],
+  );
+  assert.deepEqual(state.correctionError, {
+    message: 'Wave lost the connection to Hermes.',
+    retryable: true,
+  });
+  assert.equal(state.status, 'submitting');
+});
+
 function event(
   value:
     | { type: 'turn.started' }

@@ -48,6 +48,14 @@ export interface WaveChatState {
   /** The prompt currently awaiting the user, if any. */
   activePrompt?: WaveChatPrompt;
   activeTurnId?: string;
+  correction?: {
+    messageId: string;
+    text: string;
+  };
+  correctionError?: {
+    message: string;
+    retryable: boolean;
+  };
   error?: {
     message: string;
     retryable: boolean;
@@ -78,6 +86,22 @@ export type WaveChatAction =
     }
   | { type: 'cancel.requested' }
   | { type: 'cancelled' }
+  | {
+      messageId: string;
+      text: string;
+      type: 'correction.requested';
+    }
+  | {
+      messageId: string;
+      status: 'queued' | 'redirected' | 'rejected';
+      type: 'correction.resolved';
+    }
+  | {
+      message: string;
+      messageId: string;
+      retryable: boolean;
+      type: 'correction.failed';
+    }
   | {
       message: string;
       retryable: boolean;
@@ -147,6 +171,50 @@ export function waveChatReducer(
         activePrompt: undefined,
         activeTurnId: undefined,
         status: 'cancelling',
+      };
+    case 'correction.requested':
+      return {
+        ...state,
+        correction: { messageId: action.messageId, text: action.text },
+        correctionError: undefined,
+        messages: insertCorrection(
+          state.messages,
+          action.messageId,
+          action.text,
+        ),
+      };
+    case 'correction.resolved':
+      if (state.correction?.messageId !== action.messageId) return state;
+      if (action.status === 'rejected') {
+        return {
+          ...state,
+          correction: undefined,
+          correctionError: {
+            message: 'That response was no longer accepting corrections.',
+            retryable: false,
+          },
+          messages: removeMessage(state.messages, action.messageId),
+        };
+      }
+      return {
+        ...state,
+        correction: undefined,
+        correctionError: undefined,
+        messages:
+          action.status === 'queued'
+            ? moveMessageToTail(state.messages, action.messageId)
+            : state.messages,
+      };
+    case 'correction.failed':
+      if (state.correction?.messageId !== action.messageId) return state;
+      return {
+        ...state,
+        correction: undefined,
+        correctionError: {
+          message: action.message,
+          retryable: action.retryable,
+        },
+        messages: removeMessage(state.messages, action.messageId),
       };
     case 'transport.error':
       return {
@@ -371,6 +439,36 @@ function updateAssistant(
   return messages.map((message, messageIndex) =>
     messageIndex === index ? update(message) : message,
   );
+}
+
+function insertCorrection(
+  messages: WaveChatMessage[],
+  messageId: string,
+  text: string,
+) {
+  const correction: WaveChatMessage = {
+    id: messageId,
+    parts: [{ text, type: 'text' }],
+    role: 'user',
+  };
+  const assistantIndex = messages.findLastIndex(
+    (message) => message.role === 'assistant',
+  );
+  if (assistantIndex < 0) return [...messages, correction];
+  return [
+    ...messages.slice(0, assistantIndex),
+    correction,
+    ...messages.slice(assistantIndex),
+  ];
+}
+
+function moveMessageToTail(messages: WaveChatMessage[], messageId: string) {
+  const message = messages.find((entry) => entry.id === messageId);
+  return message ? [...removeMessage(messages, messageId), message] : messages;
+}
+
+function removeMessage(messages: WaveChatMessage[], messageId: string) {
+  return messages.filter((message) => message.id !== messageId);
 }
 
 function appendAssistantText(parts: WaveChatPart[], delta: string) {

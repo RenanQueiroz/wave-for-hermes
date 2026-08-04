@@ -48,10 +48,15 @@ absent or malformed.
 - **Deletes are not guarded upstream**: the gateway accepts deleting a session with a running
   turn and lets the conversation reappear. Wave refuses the delete client-side while the turn's
   RPC channel is registered or `session.active_list` reports any known active phase.
-- **v0.20 conversation extensions**: live probes confirmed `session.redirect` (including the
-  `queued` build-window result), server-owned `pinned` and `source` session-row fields, and
-  pin/unpin through the existing session PATCH route. Their product UI remains staged in the
-  roadmap; the compatibility probe does not expose a generic gateway mutation surface.
+- **v0.20 correction**: a non-empty, text-only busy composer uses `session.redirect` on the
+  already-registered live turn channel. `redirected` keeps the correction before the active reply,
+  `queued` moves it after that reply, and `rejected` restores the draft. The request cannot carry
+  a session id or attachment and is never retried automatically. Hermes model-time redirects
+  persist an ordinary user row; tool-time redirects use safe tool-result steering and may omit a
+  distinct HTTP row, so Wave keeps only gateway-accepted text in its bounded account-scoped cache
+  and restores that row after reload. It never recognizes correction text from untrusted tool
+  output. Server-owned `pinned` and `source` session-row fields remain staged for conversation
+  organization.
 - **New event frames**: v0.20 may send `message.interim`, `tool.progress`, and `status.update`.
   Until their Wave-owned projections land, the turn translator ignores them exactly like any
   unknown optional frame, so their presence cannot break a turn. Sanitized fixtures lock that

@@ -18,10 +18,10 @@ export const WAVE_QUERY_CACHE_BUSTER = 'wave-query-cache-v1';
 export const WAVE_QUERY_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 
 /**
- * Only long-lived conversation reads are persisted: the session list and
- * per-session timelines. Everything else is cheap to refetch, device-run
- * specific (diagnostics), or operational state that must never be shown
- * stale without a fresh read (scheduled jobs).
+ * Only long-lived conversation data is persisted: the session list,
+ * per-session timelines, and bounded accepted-correction journals. Everything
+ * else is cheap to refetch, device-run specific (diagnostics), or operational
+ * state that must never be shown stale without a fresh read (scheduled jobs).
  */
 export function shouldPersistWaveQuery(
   queryKey: readonly unknown[],

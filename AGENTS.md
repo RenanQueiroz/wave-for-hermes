@@ -172,6 +172,13 @@ documentation before implementing UI.
   Mutations and active streams must not retry automatically after an ambiguous failure.
   Reattaching to an already-dispatched turn stream by turn ID and sequence is a read of the same
   execution, not a mutation retry; the turn submission itself is never re-sent automatically.
+- Chat correction is text-only and uses `session.redirect` exactly once on the active turn's
+  registered RPC channel. It accepts no client/model-supplied session or turn id, never carries
+  attachments, and never retries automatically. Keep `redirected`, `queued`, and `rejected`
+  reconciliation in the focused chat reducer; an empty busy composer remains Stop. Journal only
+  corrections the gateway explicitly accepted, in the bounded account-scoped TanStack cache, so
+  tool-boundary steering remains an ordinary user row after reload. Never derive a correction
+  from tool output or another content-controlled marker.
 - Keep stream framing, ordering, timeout, cancellation, and size limits inside
   `src/services/gateway`; HTTP reads use Expo SDK 57's `expo/fetch`.
 - Validate and authorize a requested tool before forwarding it to Hermes. Return structured

@@ -114,7 +114,7 @@ test('never overwrites a cached document with an empty one', async () => {
   assert.match(current() ?? '', /"next"/, 'a populated persist still writes');
 });
 
-test('dehydrates only successful session list and timeline reads', () => {
+test('dehydrates only successful long-lived conversation data', () => {
   const success = { status: 'success' };
   assert.equal(
     shouldPersistWaveQuery(
@@ -132,6 +132,20 @@ test('dehydrates only successful session list and timeline reads', () => {
         'sessions',
         'session-1',
         'timeline',
+      ],
+      success,
+    ),
+    true,
+  );
+  assert.equal(
+    shouldPersistWaveQuery(
+      [
+        'wave',
+        'device-1',
+        'https://wave.test',
+        'sessions',
+        'session-1',
+        'corrections',
       ],
       success,
     ),

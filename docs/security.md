@@ -111,6 +111,14 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   primary signal for work Wave started locally.
 - Realtime calls are bounded to one per conversation surface, expire client-side after 30
   minutes, and are hung up explicitly on stop, error, backgrounding, and unmount.
+- Chat correction accepts one bounded text field with no session/turn identifier or attachment.
+  The client binds it to the registered live RPC channel for the displayed conversation and sends
+  `session.redirect` exactly once. A raced completion, rejection, malformed response, or network
+  ambiguity removes the optimistic correction, restores the draft, reports no success, and never
+  retries automatically; liveness and the canonical timeline decide the settled state. Only a
+  gateway-accepted correction enters the bounded account-scoped correction journal used to keep
+  its ordinary user row after reload. Tool output and content-derived markers can never create a
+  journal entry or impersonate the user.
 
 ### Resource exhaustion and malformed content
 
@@ -135,9 +143,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
   provider identifiers are persisted anywhere. Work delegated through `ask_hermes` lands as
   ordinary turns in canonical Hermes history.
-- The mobile offline read cache stores only normalized session-list and timeline responses as
-  one JSON file in the app sandbox (platform encryption at rest, no credentials or provider
-  identifiers), expires after seven days, and is purged on sign-in and sign-out.
+- The mobile offline read cache stores normalized session-list/timeline responses and up to 32
+  gateway-accepted correction rows per session as one JSON file in the app sandbox (platform
+  encryption at rest, no credentials or provider identifiers), expires after seven days, and is
+  purged on sign-in and sign-out.
 - A cold start whose saved-connection recheck fails for connectivity-shaped reasons degrades to
   reading that local cache with the stored tokens; it grants no new authority. An unauthorized
   recheck never degrades — it returns the device to the connect screen.

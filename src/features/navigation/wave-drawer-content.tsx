@@ -29,7 +29,10 @@ import { LegendList } from '@/components/legend-list';
 import { OfflineNotice } from '@/components/offline-notice';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
-import { waveSessionQueryKey } from '@/features/sessions/session-query-keys';
+import {
+  waveSessionDataQueryKey,
+  waveSessionQueryKey,
+} from '@/features/sessions/session-query-keys';
 import {
   flattenWaveSessions,
   useWaveSessions,
@@ -119,6 +122,13 @@ function ConnectedWaveDrawerContent({
       if (activeSessionId === result.sessionId) {
         await activeSessionStore.clear().catch(() => undefined);
       }
+      queryClient.removeQueries({
+        queryKey: waveSessionDataQueryKey(
+          connectionId,
+          baseUrl,
+          result.sessionId,
+        ),
+      });
       setDeleteSession(undefined);
       void queryClient.invalidateQueries({ queryKey: sessionsKey });
       if (pathname.includes(result.sessionId)) {

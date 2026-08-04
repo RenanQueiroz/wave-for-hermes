@@ -14,17 +14,7 @@ clause-streamed speech, signed outbound webhooks, and Agent-to-Agent support. Wa
 conversation capabilities that improve a focused mobile client without becoming a Hermes
 administration console.
 
-### 1. Correct a running Hermes turn
-
-- While a turn is active, a non-empty text composer becomes a correction action backed by
-  `session.redirect`; an empty composer remains Stop.
-- Start with text only. Attachments remain unavailable during an active turn until queue semantics
-  are deliberately designed.
-- Bind the correction to the active turn's trusted live session, render it as an ordinary user
-  message, reconcile from Hermes history, and never automatically retry after an ambiguous
-  transport failure.
-
-### 2. Preserve narration and bounded live progress
+### 1. Preserve narration and bounded live progress
 
 - Preserve `message.interim` narration as sealed assistant segments so final completion cannot
   replace or duplicate it.
@@ -34,7 +24,7 @@ administration console.
 - Keep streaming updates confined to memoized active-tail rows so cost stays independent of
   transcript length.
 
-### 3. Organize every user-facing conversation
+### 2. Organize every user-facing conversation
 
 - Adopt server-owned pins, source metadata, date groups, and richer liveness.
 - Keep all user-facing top-level sources discoverable, including A2A and automation-created
@@ -70,8 +60,9 @@ remains Wave's full-duplex mode.
 - Refine the Realtime prompt for unclear audio, background speech and silence, within-utterance
   self-correction, literal values, concise preambles, and tool failures.
 - Add deterministic whole-utterance Stop handling without persisting the transcript.
-- After chat redirect is stable, deliberately extend the current one-tool contract with a strict
-  `correct_hermes({ instruction })` operation. It may target only the one active Hermes execution
+- Build on the stable chat-redirect contract by deliberately extending the current one-tool
+  contract with a strict `correct_hermes({ instruction })` operation. It may target only the one
+  active Hermes execution
   bound to trusted call state, accepts no model-controlled identifiers, is rate-bounded, and never
   retries automatically.
 - Use Realtime's dynamic session-update flow to keep the complete tool list at `[ask_hermes]` while

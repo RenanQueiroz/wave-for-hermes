@@ -8,6 +8,7 @@ import {
 import { WaveToolDetailSchema } from './tool-details.ts';
 
 export const WAVE_MAX_IMAGE_ATTACHMENT_BYTES = 4_000_000;
+export const WAVE_MAX_REDIRECT_CHARS = 32_000;
 export const WAVE_MAX_TEXT_ATTACHMENT_CHARS = 128_000;
 export const WAVE_MAX_TURN_ATTACHMENTS = 4;
 const WAVE_MAX_IMAGE_DATA_URL_CHARS = 5_400_128;
@@ -157,6 +158,24 @@ export const WaveCancelTurnResponseSchema = WaveResponseMetadataSchema.extend({
   turnId: WaveIdentifierSchema,
 }).strict();
 
+/**
+ * A text-only correction for the one active turn already bound by trusted
+ * client state. Session and turn identifiers deliberately do not belong in
+ * this model-controlled/user-entered payload.
+ */
+export const WaveRedirectTurnRequestSchema = z
+  .object({
+    text: z.string().trim().min(1).max(WAVE_MAX_REDIRECT_CHARS),
+  })
+  .strict();
+
+export const WaveRedirectTurnResponseSchema = WaveResponseMetadataSchema.extend(
+  {
+    sessionId: WaveIdentifierSchema,
+    status: z.enum(['queued', 'redirected', 'rejected']),
+  },
+).strict();
+
 export const WaveActiveTurnResponseSchema = WaveResponseMetadataSchema.extend({
   activeTurn: z
     .object({
@@ -179,6 +198,12 @@ export type WaveConversationMessage = z.infer<
 >;
 export type WaveDeleteSessionResponse = z.infer<
   typeof WaveDeleteSessionResponseSchema
+>;
+export type WaveRedirectTurnRequest = z.infer<
+  typeof WaveRedirectTurnRequestSchema
+>;
+export type WaveRedirectTurnResponse = z.infer<
+  typeof WaveRedirectTurnResponseSchema
 >;
 export type WaveSessionHistoryResponse = z.infer<
   typeof WaveSessionHistoryResponseSchema

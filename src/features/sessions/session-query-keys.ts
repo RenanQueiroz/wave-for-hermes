@@ -5,17 +5,21 @@ export function waveSessionQueryKey(connectionId: string, baseUrl: string) {
   return ['wave', connectionId, baseUrl, 'session-list'] as const;
 }
 
+export function waveSessionDataQueryKey(
+  connectionId: string,
+  baseUrl: string,
+  sessionId: string,
+) {
+  return ['wave', connectionId, baseUrl, 'sessions', sessionId] as const;
+}
+
 export function waveTimelineQueryKey(
   connectionId: string,
   baseUrl: string,
   sessionId: string,
 ) {
   return [
-    'wave',
-    connectionId,
-    baseUrl,
-    'sessions',
-    sessionId,
+    ...waveSessionDataQueryKey(connectionId, baseUrl, sessionId),
     'timeline',
   ] as const;
 }

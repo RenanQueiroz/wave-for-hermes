@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
   WAVE_TOOL_DETAIL_MAX_CHARS,
+  WAVE_MAX_REDIRECT_CHARS,
   WAVE_MAX_IMAGE_ATTACHMENT_BYTES,
   WAVE_API_VERSION,
   WaveAssistantDeltaEventSchema,
@@ -12,6 +13,8 @@ import {
   WaveAskHermesToolResultSchema,
   WaveEndRealtimeCallResponseSchema,
   WaveErrorSchema,
+  WaveRedirectTurnRequestSchema,
+  WaveRedirectTurnResponseSchema,
   WaveSessionHistoryResponseSchema,
   WaveStartRealtimeCallResponseSchema,
   WaveToolDetailSchema,
@@ -150,6 +153,50 @@ test('accepts bounded attachment turns', () => {
         type: 'image',
       },
     ]).success,
+    false,
+  );
+});
+
+test('accepts only strict bounded text-only turn corrections', () => {
+  assert.deepEqual(
+    WaveRedirectTurnRequestSchema.parse({ text: '  use SQLite instead  ' }),
+    { text: 'use SQLite instead' },
+  );
+  assert.equal(
+    WaveRedirectTurnRequestSchema.safeParse({
+      sessionId: 'model-controlled-session',
+      text: 'use SQLite',
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveRedirectTurnRequestSchema.safeParse({ text: ' ' }).success,
+    false,
+  );
+  assert.equal(
+    WaveRedirectTurnRequestSchema.safeParse({
+      text: 'x'.repeat(WAVE_MAX_REDIRECT_CHARS + 1),
+    }).success,
+    false,
+  );
+
+  for (const status of ['queued', 'redirected', 'rejected'] as const) {
+    assert.equal(
+      WaveRedirectTurnResponseSchema.safeParse({
+        apiVersion: WAVE_API_VERSION,
+        sessionId: 'session-1',
+        status,
+      }).success,
+      true,
+    );
+  }
+  assert.equal(
+    WaveRedirectTurnResponseSchema.safeParse({
+      apiVersion: WAVE_API_VERSION,
+      rawCallId: 'must-not-cross',
+      sessionId: 'session-1',
+      status: 'redirected',
+    }).success,
     false,
   );
 });
