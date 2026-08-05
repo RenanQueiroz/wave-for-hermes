@@ -90,8 +90,12 @@ absent or malformed.
   probe throws on request failure so the bounded retry policy owns recovery rather than caching
   a false "no providers". v0.20 also accepts an authenticated
   `/api/audio/speak-stream` WebSocket and returned the protocol's safe `fallback` control frame in
-  the live Homelab probe. Native PCM playback remains behind the roadmap's physical-device gate.
-  Speech calls run on a longer timeout than REST reads because both are model work.
+  the live Homelab probe. Wave now has a bounded foreground native PCM module and a development
+  proof: clean iOS and Android builds pass, and iOS simulator scheduling, exact drain, format
+  restart, cancellation, and background teardown pass. The product WebSocket client remains
+  unimplemented until the physical-device audio gates in
+  [`pcm-playback-foundation.md`](./pcm-playback-foundation.md) pass. Speech calls run on a longer
+  timeout than REST reads because both are model work.
 
 ## Attachments
 

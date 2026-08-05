@@ -56,6 +56,10 @@ currently includes:
 - Uniwind and Tailwind CSS v4 for PanelUI themes and utility styling;
 - the Expo SDK 57-native [`react-native-webrtc` foundation](./docs/webrtc-foundation.md), including
   an audio-only development proof validated on iOS and Android;
+- a bounded foreground-only
+  [`streaming PCM playback foundation`](./docs/pcm-playback-foundation.md) for Hermes v0.20
+  gateway speech, with an iOS simulator proof and clean iOS/Android native builds; production
+  gateway voice stays on buffered speech until physical-device validation passes;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
 - a typed gateway client (`src/services/gateway`) that signs in with the gateway's password
@@ -176,7 +180,8 @@ The root is also the npm workspace root; compile `packages/contracts` with
 Create and run a local development build when native dependencies change. The current client
 requires `react-native-webrtc`, `react-native-legal`, `expo-secure-store`,
 `react-native-keyboard-controller`, `expo-image-picker`, `expo-document-picker`, and
-`expo-file-system`, so an older installed development client cannot run it:
+`expo-file-system`, plus the local `wave-pcm-player` module, so an older installed development
+client cannot run it:
 
 ```bash
 npx expo prebuild --clean
@@ -184,6 +189,20 @@ npx expo run:ios
 # or
 npx expo run:android
 ```
+
+### Streaming PCM playback proof
+
+The development client includes a focused native proof for the raw Int16 PCM stream returned by
+Hermes v0.20. Open **Settings → Development** while connected, or open `wave://development`
+directly in a development build, then run **Streaming PCM playback proof**. It checks bounded
+20 ms chunk scheduling, exact drain, a sample-rate restart, cancellation, and cleanup. The route
+is development-only; it does not connect to the gateway or replace production buffered speech.
+
+The automated iOS simulator proof and both native builds pass. Clean audio, hardware routes, OS
+interruptions, and release behavior still require physical iOS and Android validation before the
+streaming gateway client is implemented. See
+[`docs/pcm-playback-foundation.md`](./docs/pcm-playback-foundation.md) for the exact contract and
+remaining gates.
 
 Native identifiers are configured in `app.json`:
 

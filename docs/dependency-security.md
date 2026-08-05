@@ -4,7 +4,7 @@ This is the current point-in-time review for Wave's Expo application, developer 
 shared contracts. Re-run it before the first signed release and whenever the Expo SDK or
 production dependencies change.
 
-Reviewed: 2026-08-02.
+Reviewed: 2026-08-05.
 
 ## JavaScript dependency graph
 
@@ -38,6 +38,12 @@ npm audit --omit=dev --workspace @wave/contracts
 `npx expo install --check`, both native production export scans, and the normal repository gates
 remain required. Do not use `npm audit fix --force`: its proposed Expo 46 and splash-screen 55
 changes are incompatible with the SDK 57 source-of-truth graph.
+
+Two native packages deliberately sit ahead of Expo SDK 57's bundled dependency map:
+`react-native-gesture-handler` 3.1.0 and `react-native-keyboard-controller` 1.22.2. Both are explicit
+`expo.install.exclude` entries rather than silent check failures. Keep their focused iOS and
+Android gesture, drawer, swipe-back, composer, and keyboard validation gates; remove each
+exclusion when Expo's supported map catches up.
 
 ## Accepted residual work
 

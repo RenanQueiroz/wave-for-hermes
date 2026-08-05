@@ -93,6 +93,12 @@ not require `ANDROID_HOME` to be exported into the editor process.
 9. Delete the Appium session when finished. Disconnect cleanup also deletes any owned
    session.
 
+Wave's development-only `wave://development` route registers bounded proof providers while it is
+mounted. `webrtc-proof` reports the native loopback proof and `pcm-playback-proof` reports only the
+PCM proof phase, first-playing latency, expected/drained frame counts, format restart, and
+cancellation outcome. These providers expose no audio, credential, URL, transcript, arbitrary
+JavaScript, or production state.
+
 The MCP server adds these Wave-specific tools to Appium's standard tool set:
 
 - Environment: `mobile_doctor`, `mobile_list_devices`, `mobile_get_capabilities`,

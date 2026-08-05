@@ -89,6 +89,11 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
   version and never adopt beta/next/canary builds; the lockfile records the validated build, the
   manifest records the policy.
+- `react-native-gesture-handler` 3.1 is a deliberate SDK 57 compatibility exception: Expo's
+  bundled dependency map still recommends 2.32 even though Wave deliberately uses the stable 3.1
+  line and clean iOS and Android builds pass. Keep it listed in `expo.install.exclude`, re-run
+  drawer, swipe-back, and gesture flows after changing it, and remove the exclusion once Expo's
+  supported version catches up.
 - `react-native-keyboard-controller` 1.22.2 is a deliberate SDK 57 compatibility exception: Expo's
   bundled dependency map still recommends 1.21.9, so keep the exact application version listed in
   `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
@@ -300,6 +305,14 @@ documentation before implementing UI.
 - Gateway voice mode is deliberately half-duplex. `expo-audio` exposes no speaker-routing override,
   so an open recorder forces iOS playback to the earpiece: close the recorder before speaking and
   offer an explicit interrupt control rather than acoustic barge-in.
+- Raw gateway-speech output lives only in the local `modules/wave-pcm-player` Expo module behind
+  the singleton `src/native/pcm-player.ts` owner. Keep it foreground-only, Int16 little-endian,
+  format/chunk/queue bounded, microphone- and network-free, and deterministic on drain, Stop,
+  background, interruption, and destruction. Gateway protocol and fallback behavior never enter
+  the module.
+- The PCM card under `src/dev` is a development-only feasibility proof. Do not connect
+  `/api/audio/speak-stream` to production voice until the physical iOS and Android quality,
+  routing, interruption, background, and release gates in `docs/pcm-playback-foundation.md` pass.
 - Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
   SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
   native edits or repository-owned config plugin.

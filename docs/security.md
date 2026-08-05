@@ -191,6 +191,12 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   user says in gateway voice mode becomes an ordinary conversation turn — it is persisted by
   Hermes exactly like typed text, which is the deliberate difference from ephemeral Realtime
   transcripts.
+- The local streaming PCM foundation is foreground-only and has one owner. JavaScript and native
+  code both reject unsupported formats, empty or oversized chunks, incomplete Int16 frames, and
+  more than 12 seconds of queued audio; background, interruption, destruction, and explicit Stop
+  release the native player. It receives no token, URL, provider, transcript, or conversation
+  identifier, and it neither stores nor logs audio bytes. Production gateway streaming remains
+  disabled until its separate physical-device and transport gates pass.
 
 ### Transport and deployment
 

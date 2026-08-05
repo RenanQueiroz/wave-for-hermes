@@ -2,13 +2,11 @@ import { Redirect } from 'expo-router';
 import { Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
 
+import { PcmPlaybackProofCard } from '@/dev/pcm-playback-proof-card';
 import { WebRtcProofCard } from '@/dev/webrtc-proof-card';
-import { useWaveConnection } from '@/features/connection/connection-provider';
 
 export function DevelopmentScreen() {
-  const { state } = useWaveConnection();
-
-  if (!__DEV__ || state.phase !== 'connected') {
+  if (!__DEV__) {
     return <Redirect href="/" />;
   }
 
@@ -23,6 +21,7 @@ export function DevelopmentScreen() {
           Development-only checks for native foundations used by Wave.
         </Typography.Paragraph>
       </View>
+      <PcmPlaybackProofCard />
       <WebRtcProofCard />
     </ScrollView>
   );
