@@ -74,15 +74,14 @@ Raw buffers need none of those codec or background features. The package's Andro
 iOS native render path remain enabled. Any future package upgrade must preserve these restrictions
 and rerun clean Prebuild plus both native builds.
 
-Wave pins `react-native-audio-api` to 0.13.2 and applies
-`patches/react-native-audio-api+0.13.2.patch` through the root `postinstall`. The two-line Android
-patch changes Oboe from exclusive/low-latency to shared/non-low-latency output. On the Pixel 8 Pro,
-both the package default and shared low-latency mode selected the MMAP path and remained
-intermittently audible even with exact queue accounting. Shared/non-low-latency selected the Legacy
-mixer path; combined with one context/focus lifecycle, it passed the repeated built-in-speaker proof
-below. Do not broaden the dependency range while the versioned patch exists. A package upgrade must
-reassess the upstream implementation, regenerate or remove the patch deliberately, and repeat the
-physical Android proof.
+Wave pins `react-native-audio-api` to the device-validated 0.13.2 release and uses its stock Android
+exclusive/low-latency output settings. After the final batching, ramping, silence hold, and bounded
+context/focus lifecycle were in place, a controlled A/B rebuilt that exact player without Wave's
+former shared/non-low-latency source patch. All six Pixel 8 Pro runs were clean while native traces
+confirmed an MMAP low-latency stream with 96-frame bursts, balanced start/stop/close calls, and one
+balanced transient-focus lifecycle per proof. The source patch and `patch-package` were therefore
+removed. Keep the dependency exact until an upgrade reassesses the upstream implementation and
+repeats clean native builds plus the physical Android proof.
 
 ## Why the focused local module was retired
 
@@ -137,16 +136,17 @@ Replacement validation reconciled on 2026-08-06:
 | Android debug native build                | Passed                                                                   |
 | iOS debug native build                    | Passed                                                                   |
 | iOS simulator proof                       | Exact proof passed; all four sounds were clean                           |
-| Pixel 8 Pro built-in-speaker proof        | Passed: cold screen plus six clean runs; 40,080 frames, zero underruns   |
+| Pixel 8 Pro built-in-speaker proof        | Passed: stock RNAA, six clean runs; 40,080 frames, zero underruns        |
 | Android emulator runtime                  | Pending; Radon's emulator is not ADB-visible outside its private runtime |
 | Physical iOS and remaining hardware gates | Pending                                                                  |
 
-The Pixel series used the final shared/non-low-latency Android stream and a cold JavaScript runtime.
-All seven consecutive runs played three ordered rising tones plus the short cancellation tone with
-no startup pop, crackle, gap, or cancellation pop. Every run reported 40,080/40,080 drained source
-frames, zero feed underruns, a passed 48 kHz format restart, and a stopped cancellation. Native
-traces showed one Legacy/performance-none stream and one transient focus request per proof; stream
-close and focus release occurred only after the five-second idle window.
+The retained Pixel series used RNAA's stock exclusive/low-latency request and a cold application
+process. All six consecutive runs played three ordered rising tones plus the short cancellation
+tone with no startup pop, crackle, gap, or cancellation pop. Every run reported 40,080/40,080
+drained source frames, zero feed underruns, a passed 48 kHz format restart, and a stopped
+cancellation. Native traces showed an MMAP low-latency stream with 96-frame bursts and balanced
+transient-focus ownership; stream close and focus release occurred only after the five-second idle
+window.
 
 Before Stage 4b may use this boundary in gateway voice, verify on the current backend:
 

@@ -20,9 +20,10 @@ PCM while the turn is still generating. Wave has a bounded development proof beh
 adapter. The original focused native player passed exact accounting but remained intermittently
 audible on the Pixel 8 Pro, so its `AudioTrack`/`AVAudioEngine` implementation was retired in favor
 of `react-native-audio-api`'s maintained native audio-buffer queue. Clean Prebuild, iOS and Android
-builds and the iOS simulator proof pass. A cold screening plus six consecutive Pixel 8 Pro
-built-in-speaker runs also pass without pops or crackles. Physical iOS, remaining hardware routes,
-interruptions, and release behavior still need validation. The tracked evidence and exact gate are in
+builds and the iOS simulator proof pass. With RNAA's stock Android output settings, a cold-started
+series of six consecutive Pixel 8 Pro built-in-speaker runs also passes without pops or crackles.
+Physical iOS, remaining hardware routes, interruptions, and release behavior still need validation.
+The tracked evidence and exact gate are in
 [`pcm-playback-foundation.md`](./pcm-playback-foundation.md).
 
 After that gate passes, add the authenticated streaming client, feed only normalized assistant

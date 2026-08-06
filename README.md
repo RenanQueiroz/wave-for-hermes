@@ -203,10 +203,11 @@ development-only; it does not connect to the gateway or replace production buffe
 
 The original focused native player passed exact accounting but crackled intermittently on the
 Pixel 8 Pro, so Wave replaced it with `react-native-audio-api`'s native audio-buffer queue. Clean
-Prebuild and iOS/Android builds pass, as does the iOS simulator proof. A cold screening plus six
-consecutive Pixel 8 Pro built-in-speaker runs drained exactly with zero feed underruns and no pops
-or crackles. Physical iOS, the remaining hardware routes, OS interruptions, and release behavior
-still require validation before the streaming gateway client is implemented. See
+Prebuild and iOS/Android builds pass, as does the iOS simulator proof. With RNAA's stock Android
+output settings, a cold-started series of six consecutive Pixel 8 Pro built-in-speaker runs drained
+exactly with zero feed underruns and no pops or crackles. Physical iOS, the remaining hardware
+routes, OS interruptions, and release behavior still require validation before the streaming
+gateway client is implemented. See
 [`docs/pcm-playback-foundation.md`](./docs/pcm-playback-foundation.md) for the exact contract and
 remaining gates.
 

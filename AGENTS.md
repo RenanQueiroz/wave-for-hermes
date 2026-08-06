@@ -98,12 +98,11 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   bundled dependency map still recommends 1.21.9, so keep the exact application version listed in
   `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
   and remove the exclusion once Expo's supported version catches up.
-- `react-native-audio-api` 0.13.2 is exact because Wave carries
-  `patches/react-native-audio-api+0.13.2.patch`. The patch selects Oboe shared/non-low-latency
-  output on Android; the package defaults selected the Pixel 8 Pro's intermittently audible MMAP
-  path. Keep `patch-package` in `postinstall`, never broaden the package range while the patch is
-  present, and regenerate or remove the patch only with clean native builds plus repeated physical
-  Android listening.
+- `react-native-audio-api` 0.13.2 is the exact device-validated playback foundation. Keep the
+  application version exact until an upgrade passes clean native builds and repeated physical
+  listening on both platforms. Wave uses the package's stock Android output settings: the final
+  player lifecycle passed six consecutive Pixel 8 Pro runs with its MMAP low-latency stream, so do
+  not carry a native source patch without a newly reproduced regression and an isolated A/B test.
 
 ## UI system
 

@@ -57,7 +57,6 @@
     "eslint-config-expo": "~57.0.1",
     "eslint-config-prettier": "^10.1.8",
     "expo-mcp": "~0.2.1",
-    "patch-package": "^8.0.1",
     "prettier": "^3.9.6",
     "typescript": "~6.0.3"
   },
@@ -105,8 +104,7 @@
     "mobile:smoke:android": "npm --prefix tools/mobile-agent run smoke:android --",
     "mobile:smoke:observability": "npm --prefix tools/mobile-agent run smoke:observability --",
     "mobile:smoke:ios": "npm --prefix tools/mobile-agent run smoke:ios --",
-    "mobile:smoke:production": "npm --prefix tools/mobile-agent run smoke:production --",
-    "postinstall": "patch-package"
+    "mobile:smoke:production": "npm --prefix tools/mobile-agent run smoke:production --"
   },
   "private": true
 }
