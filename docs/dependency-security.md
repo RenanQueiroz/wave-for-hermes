@@ -4,13 +4,26 @@ This is the current point-in-time review for Wave's Expo application, developer 
 shared contracts. Re-run it before the first signed release and whenever the Expo SDK or
 production dependencies change.
 
-Reviewed: 2026-08-05.
+Reviewed: 2026-08-06.
 
 ## JavaScript dependency graph
 
 `npm audit` reports 12 repository-wide moderate findings and no high or critical findings. Those
 aggregate counts do not describe one runtime, so the dependency paths and reachability were
 reviewed separately.
+
+This review updated the seven packages reported by Expo Doctor to their SDK 57-compatible patch
+versions: `expo@57.0.11`, `expo-asset@57.0.9`, `expo-build-properties@57.0.9`,
+`expo-file-system@57.0.2`, `expo-image-picker@57.0.8`, `expo-router@57.0.11`, and
+`expo-symbols@57.0.2`. The Expo patch includes `expo/fetch` stream-ordering, cancellation, and
+teardown fixes used by Wave's gateway reads. Expo Doctor and `npx expo install --check` pass with
+the two deliberate exclusions below.
+
+The same review found the high-severity
+[`js-yaml` advisory](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj) in the shared Node tooling
+copy used by ESLint and Expo's `xcpretty`. Every installed consumer accepts the patched 4.x line,
+so the lockfile now resolves `js-yaml@4.3.1` without a manifest override. The high finding is gone;
+`js-yaml` is build/development tooling and is not imported into the native production bundle.
 
 The moderate production-labeled findings roll up through Expo's CLI/config packages and
 `@expo/config-plugins -> xcode@3.0.1 -> uuid@7.0.3`. The
