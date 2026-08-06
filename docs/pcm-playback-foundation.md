@@ -25,6 +25,7 @@ The Wave-owned surface accepts only:
 - at most 512 KiB per chunk and 12 seconds of queued audio;
 - exactly one playback owner, explicit finish/drain, and deterministic Stop;
 - bounded written, queued, played, and feed-underrun accounting;
+- a bounded 0–1 RMS level for the native buffer at the playback head;
 - teardown on app background or audio interruption;
 - no microphone, URL, file, network, persistence, transcript, or provider data.
 
@@ -44,11 +45,16 @@ producer actually lets it empty. Wave counts that transition as a feed underrun,
 buffers without restarting the audio context. This counter measures Wave queue starvation; it is
 not a device-driver xrun metric.
 
-The adapter selects an iOS playback/spoken-audio session, requests transient Android audio focus,
-and observes system interruptions. Drain keeps its device-rate `AudioContext` for up to five idle
-seconds so a following clause or format change does not reactivate the Pixel audio path. A new
-source can use a different input sample rate because Wave's stateful resampler targets that
-unchanged device context.
+The adapter calculates one RMS envelope per native buffer after resampling. It publishes the first
+buffer's level only when playback starts and advances the meter on native buffer-ended events, so a
+waveform follows audible queue position rather than a faster network producer. The level is
+ephemeral, contains no audio samples, and returns to zero on teardown.
+
+The adapter selects an iOS playback/spoken-audio session, allows AirPlay, requests transient
+Android audio focus, and observes system interruptions. Drain keeps its device-rate `AudioContext`
+for up to five idle seconds so a following clause or format change does not reactivate the Pixel
+audio path. A new source can use a different input sample rate because Wave's stateful resampler
+targets that unchanged device context.
 
 Normal Stop anchors a 15 ms gain ramp at the current audio time, holds silence for another mixer
 period, and publishes `stopped`. On Android the silenced queue node and the context's one transient
@@ -56,8 +62,9 @@ focus request remain retained until the same five-second idle close; Wave does n
 re-request focus for an immediate format restart. That lifecycle avoids mutating an active Pixel
 output graph at the cancellation boundary. Failure, interruption, or confirmed background still
 closes immediately. Context close cleans any retired nodes, then relinquishes focus/session
-ownership. Gateway voice remains half-duplex: its `expo-audio` recorder must close before this
-player can own output.
+ownership. A transient iOS `inactive` state alone does not destroy active playback; a confirmed
+background transition does, while calls and alarms use the native interruption path. Gateway voice
+remains half-duplex: its `expo-audio` recorder must close before this player can own output.
 
 ## Native configuration
 
@@ -165,6 +172,13 @@ control frames, binary-frame bounds, text-clause feed, timeouts, `done`, `stop`,
 buffered `/api/audio/speak`. Network data and gateway protocol types remain in
 `src/services/gateway`; the PCM player accepts only validated audio bytes and never sees a URL,
 token, provider identifier, transcript, or conversation identifier.
+
+The product client will apply a six-second queued-duration high-water below the player's hard
+12-second capacity and test instantaneous plus sustained 4x-real-time bursts. It will never retry
+or replay an ambiguously failed socket. Full buffered fallback is safe only before streamed audio
+became audible; after that it may speak only a suffix proven not to have been heard. If the clause
+boundary is uncertain, Wave stops audio and preserves the full reply as text rather than risk
+duplicating speech.
 
 Gateway voice remains half-duplex. Wave closes the `expo-audio` recorder before this player can
 own output, and Realtime WebRTC remains mutually exclusive with both.

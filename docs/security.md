@@ -171,7 +171,9 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   else; raw source strings, peer URLs, credentials, Agent Cards, audit paths, and A2A configuration
   never enter the render or persisted contract. Unknown sources stay reachable in Activity/All.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
-  provider identifiers are persisted anywhere. Work delegated through `ask_hermes` and accepted
+  provider identifiers are persisted anywhere. Realtime waveform levels are reduced inside the
+  transport from local-source and remote-inbound WebRTC stats; raw reports, identifiers, samples,
+  and level history never enter state or storage. Work delegated through `ask_hermes` and accepted
   corrections land through ordinary Hermes turn/redirect lanes in canonical history. A final exact
   stop utterance is consumed as local call control before it enters even the ephemeral transcript
   state.
@@ -190,7 +192,8 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   the background, and Wave closes the recording session before playing anything back. What the
   user says in gateway voice mode becomes an ordinary conversation turn — it is persisted by
   Hermes exactly like typed text, which is the deliberate difference from ephemeral Realtime
-  transcripts.
+  transcripts. Its recorder dBFS and already-playing `expo-audio` samples drive only the current
+  waveform and are not retained.
 - The local streaming PCM foundation is foreground-only and has one owner. JavaScript and native
   code both reject unsupported formats, empty or oversized chunks, incomplete Int16 frames, and
   more than 12 seconds of queued audio; background, interruption, destruction, and explicit Stop

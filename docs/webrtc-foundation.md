@@ -3,7 +3,7 @@
 Status: direct Realtime path validated on simulators and physical Android; remaining production
 gates are tracked below
 
-Validated: 2026-08-02
+Validated: 2026-08-06
 
 Wave uses `react-native-webrtc` as the native media foundation for the OpenAI Realtime
 voice transport. The dependency is installed through `npx expo install`; the validated lockfile
@@ -63,7 +63,8 @@ The production boundary is split across:
 - `src/services/realtime/realtime-transport.ts` for normalized, bounded transport events and the
   provider-independent interface;
 - `src/services/realtime/react-native-realtime-transport.ts` for microphone acquisition, SDP,
-  peer/data-channel state, remote audio tracks, reconnect bounds, timers, and native cleanup;
+  peer/data-channel state, remote audio tracks, bounded audio-level polling, reconnect bounds,
+  timers, and native cleanup;
 - `src/features/realtime/realtime-controller.ts` for call ownership, cancellation, expiry,
   bounded reconnection, safe UI state, transcript bounds, and explicit backend call termination;
 - `src/services/realtime/openai-realtime-backend.ts` for the direct SDP exchange, the
@@ -77,6 +78,13 @@ media and hangs up the provider call. A failed cleanup remains visible and retry
 not silently start a second call. A transient peer disconnect gets a grace window for ICE
 self-recovery, then up to three full re-offers with the shared jitter policy before the call
 fails explicitly.
+
+The transport samples one native stats report at 5 Hz and reduces only standardized local audio
+source/outbound-audio and remote inbound-audio entries to current bounded 0–1 levels. A direct
+`audioLevel` is preferred; cumulative `totalAudioEnergy` and `totalSamplesDuration` use the
+standards-defined interval RMS fallback. Raw reports, track/provider identifiers, samples, and
+level history never leave the transport. Missing or failed stats degrade to PanelUI's phase
+animation and never affect call health or reconnection.
 
 Microphone denial produces a retryable, content-free permission error and an accessible system
 settings action. Android requests `RECORD_AUDIO` explicitly before native media acquisition; iOS
@@ -141,13 +149,19 @@ The foundation proof passed with:
 - a Radon-managed arm64 emulator on Android 16 / API 36;
 - one local microphone track, one remote receiver track, connected peers, a received data echo,
   and explicit cleanup on both platforms;
-- generated iOS and Android permission output with microphone access and no Android camera
-  permission.
+- generated iOS and Android permission output with microphone access; Android camera permission is
+  separately attributable to the user-invoked chat attachment flow, not voice setup.
 
 The direct user-keyed path passed on the iOS simulator and, on 2026-08-02, end to end on a physical
 Pixel 8 Pro: a real spoken Realtime conversation with audible bidirectional audio, barge-in,
 microphone mute/unmute, explicit teardown, return to chat, and Wave delegating work to Hermes
 mid-call through `ask_hermes`.
+
+On 2026-08-06, another physical Pixel 8 Pro call validated measured waveform telemetry end to end:
+the local meter rose with speech, the remote meter rose with assistant playback, phases advanced
+through user and assistant speech, both returned to zero at rest, and explicit teardown produced no
+new warning or error logs. This confirms the built-in speaker/microphone path, not the alternate
+route or release gates below.
 
 On 2026-07-31, both Radon-managed platforms additionally passed denial and later recovery of
 microphone permission, the system-settings recovery action, a successful subsequent call reaching
@@ -193,4 +207,5 @@ production controller now exists.
 - [Expo SDK 57 app configuration](https://docs.expo.dev/versions/v57.0.0/config/app/)
 - [Expo `with-webrtc` example](https://github.com/expo/examples/tree/master/with-webrtc)
 - [React Native WebRTC](https://github.com/react-native-webrtc/react-native-webrtc)
+- [W3C WebRTC Stats](https://www.w3.org/TR/webrtc-stats/)
 - [`@config-plugins/react-native-webrtc`](https://github.com/expo/config-plugins/tree/master/packages/react-native-webrtc)

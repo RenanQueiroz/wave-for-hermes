@@ -119,22 +119,32 @@ test('connects, reduces safe activity, controls the microphone, and cleans up ex
     count: 1,
     type: 'remote_audio_tracks',
   });
+  transport.emit({
+    assistant: 0.75,
+    type: 'audio_levels',
+    user: 0.4,
+  });
   assert.deepEqual(
     {
+      assistantAudioLevel: controller.getState().assistantAudioLevel,
       assistantTranscript: controller.getState().assistantTranscript,
       phase: controller.getState().phase,
       remoteAudioTracks: controller.getState().remoteAudioTracks,
+      userAudioLevel: controller.getState().userAudioLevel,
     },
     {
+      assistantAudioLevel: 0.75,
       assistantTranscript: 'Hello',
       phase: 'user_speaking',
       remoteAudioTracks: 1,
+      userAudioLevel: 0.4,
     },
   );
 
   controller.setMicrophoneEnabled(false);
   assert.equal(transport.prepared.microphoneEnabled, false);
   assert.equal(controller.getState().microphoneEnabled, false);
+  assert.equal(controller.getState().userAudioLevel, 0);
 
   await controller.stop();
   assert.equal(transport.prepared.closed, true);

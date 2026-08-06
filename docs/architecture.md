@@ -104,9 +104,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   at a time; and `use-gateway-voice.ts` drives the continuous loop — listen, transcribe, run the
   transcript as an ordinary turn, speak the reply — abandoning any cycle whose generation has
   been superseded by stop or unmount. Recordings are mono 16 kHz, uploaded as a data URL, and
-  deleted from the device cache immediately afterwards. The affordances are gated on a cached
-  probe of what the server actually has configured, and disable with honest copy when it has
-  neither provider.
+  deleted from the device cache immediately afterwards. The user waveform consumes the recorder's
+  dBFS meter, and the assistant waveform consumes ephemeral normalized PCM samples from audio that
+  `expo-audio` is already playing; neither samples nor level history are retained. The affordances
+  are gated on a cached probe of what the server actually has configured, and disable with honest
+  copy when it has neither provider.
 - `src/native/pcm-player.ts` is the one Wave owner for `react-native-audio-api`'s native
   `AudioBufferQueueSourceNode`. It validates little-endian interleaved Int16 PCM, converts it to
   bounded planar audio buffers, coalesces transport chunks into 600 ms native batches, and admits
@@ -115,9 +117,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   clauses and input format changes avoid another hardware activation. Stop fades immediately; on
   Android its muted queue node is retained until that bounded close, and transient audio focus is
   requested once per context. Failure, interruption, and confirmed background close immediately.
-  The adapter exposes only deterministic drain, Stop, and bounded accounting — not the package's
-  general audio-engine surface. This boundary currently serves only the development proof in
-  `src/dev`; no production screen or gateway transport writes into it yet. A future streaming speech client stays in
+  The adapter also reports the RMS of the buffer at the native playback head so a future production
+  waveform tracks audible audio rather than incoming socket timing. It exposes only deterministic
+  drain, Stop, and bounded accounting — not the package's general audio-engine surface. This
+  boundary currently serves only the development proof in `src/dev`; no production screen or
+  gateway transport writes into it yet. A future streaming speech client stays in
   `src/services/gateway` and may pass only validated audio bytes across this boundary after the
   physical-device gates in `docs/pcm-playback-foundation.md` pass.
 - The Realtime mode is keyed by the user-owned OpenAI key. `OpenAiKeyStore` keeps the key in
@@ -140,7 +144,10 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   app-owned state: no gateway version, tool, skill, MCP, A2A, Agent Card, or configuration metadata
   can enter the OpenAI session.
 - `ReactNativeRealtimeTransport` owns audio-only microphone acquisition, SDP negotiation, the
-  native peer and data channel, remote audio tracks, and cleanup. `WaveRealtimeController` owns
+  native peer and data channel, remote audio tracks, and cleanup. It samples WebRTC stats at a
+  bounded rate and reduces only the local audio source and remote inbound audio to ephemeral 0–1
+  levels; raw reports and track/provider identifiers never leave the transport. Missing metrics
+  fall back to phase-driven animation without affecting the call. `WaveRealtimeController` owns
   call lifecycle, cancellation/expiry, bounded reconnection (grace for ICE self-recovery, then
   up to three full re-offers with the shared jitter policy), normalized activity state, and final
   exact stop-command teardown. The

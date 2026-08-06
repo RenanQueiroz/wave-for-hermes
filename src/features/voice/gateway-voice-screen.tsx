@@ -15,6 +15,7 @@ import {
 } from '@/features/voice/gateway-voice-machine';
 import { useGatewayVoice } from '@/features/voice/use-gateway-voice';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
+import { dbfsToAudioLevel } from '@/services/audio/audio-level';
 
 /**
  * Voice mode against the user's own Hermes gateway: speech in and out runs
@@ -115,11 +116,16 @@ export function GatewayVoiceScreen({
     return registerMobileAgentStateProvider({
       name: 'wave-gateway-voice',
       read: () => ({
+        assistantAudioLevel: voice.state.assistantAudioLevel,
         canListen,
         canSpeak,
         error: voice.state.error,
         meter: voice.meterDebug.current,
         phase: voice.state.phase,
+        userAudioLevel:
+          voice.state.level === undefined
+            ? undefined
+            : dbfsToAudioLevel(voice.state.level),
         userTranscript: voice.state.userTranscript,
       }),
     });
@@ -175,6 +181,11 @@ export function GatewayVoiceScreen({
               }
               bars={32}
               height={48}
+              level={
+                voice.state.level === undefined
+                  ? undefined
+                  : dbfsToAudioLevel(voice.state.level)
+              }
               mode="scrolling"
               state={userWaveState(phase)}
               testID="gateway-voice-user-wave"
@@ -199,6 +210,7 @@ export function GatewayVoiceScreen({
                 phase === 'speaking' ? 'Wave is speaking' : 'Wave is waiting'
               }
               height={56}
+              level={voice.state.assistantAudioLevel}
               state={assistantWaveState(phase)}
               testID="gateway-voice-assistant-wave"
               variant="line"

@@ -23,12 +23,20 @@ of `react-native-audio-api`'s maintained native audio-buffer queue. Clean Prebui
 builds and the iOS simulator proof pass. With RNAA's stock Android output settings, a cold-started
 series of six consecutive Pixel 8 Pro built-in-speaker runs also passes without pops or crackles.
 Physical iOS, remaining hardware routes, interruptions, and release behavior still need validation.
+The PCM boundary now reports the native buffer currently at the playback head, matching the
+measured recorder/playback waveform already used by buffered gateway voice; Realtime independently
+reduces local and remote WebRTC audio stats for the same actual-sound behavior.
+On 2026-08-06, a physical Pixel 8 Pro live check confirmed nonzero input and playback levels in
+both voice modes, the expected speech phases, return to zero at rest, and no new runtime warnings or
+errors. Alternate routes, release builds, and physical iOS remain separate gates.
 The tracked evidence and exact gate are in
 [`pcm-playback-foundation.md`](./pcm-playback-foundation.md).
 
 After that gate passes, add the authenticated streaming client, feed only normalized assistant
 narration while the turn runs, and keep buffered `/api/audio/speak` as the explicit fallback for
-older gateways, unsupported providers, socket failure, or a server `fallback` control frame.
+older gateways, unsupported providers, socket failure, or a server `fallback` control frame. Apply
+a six-second queued-audio high-water under the player's hard bound, prove burst behavior, never
+retry an ambiguous speech socket, and never replay a clause that may already have been heard.
 
 The first product integration remains half-duplex: Wave closes the recorder before playback and
 keeps an explicit interrupt control. Full-duplex gateway voice requires a separate native proof

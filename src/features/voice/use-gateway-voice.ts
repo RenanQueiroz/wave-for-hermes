@@ -32,9 +32,11 @@ import {
   type GatewayVoicePhase,
 } from '@/features/voice/gateway-voice-machine';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
+import { pcmChannelsToAudioLevel } from '@/services/audio/audio-level';
 
 /** How often the recorder's metering is folded into the utterance tracker. */
 const SAMPLE_INTERVAL_MS = 250;
+const PLAYBACK_LEVEL_INTERVAL_MS = 80;
 
 /**
  * Playback backstop for a player that reports neither completion nor failure.
@@ -55,6 +57,8 @@ const VOICE_RECORDING_OPTIONS: RecordingOptions = {
 };
 
 export interface GatewayVoiceState {
+  /** Measured assistant playback level, normalized to 0-1 when supported. */
+  assistantAudioLevel?: number;
   /** Wave's reply for the turn in flight, accumulated from the stream. */
   assistantText: string;
   error?: string;
@@ -72,6 +76,7 @@ export interface GatewayVoiceState {
 }
 
 type Player = ReturnType<typeof createAudioPlayer>;
+type PlayerSubscription = { remove(): void };
 
 const IDLE_STATE: GatewayVoiceState = {
   assistantText: '',
@@ -113,6 +118,9 @@ export function useGatewayVoice({
   // sees a newer one, which is how stop/unmount unwind a mid-flight cycle.
   const generationRef = useRef(0);
   const playerRef = useRef<Player | undefined>(undefined);
+  const playerSampleSubscriptionRef = useRef<PlayerSubscription | undefined>(
+    undefined,
+  );
   const turnAbortRef = useRef<AbortController | undefined>(undefined);
   const submitNowRef = useRef(false);
   const skipSpeakingRef = useRef(false);
@@ -120,6 +128,12 @@ export function useGatewayVoice({
   const meterDebugRef = useRef<Record<string, unknown>>({});
 
   const releasePlayer = useCallback(() => {
+    try {
+      playerSampleSubscriptionRef.current?.remove();
+    } catch {
+      // The native player may already have removed its event subscriptions.
+    }
+    playerSampleSubscriptionRef.current = undefined;
     const player = playerRef.current;
     playerRef.current = undefined;
     if (!player) return;
@@ -334,10 +348,15 @@ export function useGatewayVoice({
       }).catch(() => undefined);
       if (generationRef.current !== generation) return;
 
-      setState((current) => ({ ...current, phase: 'speaking' }));
+      setState((current) => ({
+        ...current,
+        assistantAudioLevel: undefined,
+        phase: 'speaking',
+      }));
       const player = createAudioPlayer({ uri: speech.dataUrl });
       playerRef.current = player;
       let finished = false;
+      let lastLevelUpdateAt = 0;
       player.addListener('playbackStatusUpdate', (status) => {
         if (status.didJustFinish) finished = true;
         // A player that cannot decode or route the audio never reaches
@@ -345,6 +364,35 @@ export function useGatewayVoice({
         // until the wait cap.
         if (status.playbackState === 'failed') finished = true;
       });
+      if (player.isAudioSamplingSupported) {
+        try {
+          player.setAudioSamplingEnabled(true);
+          playerSampleSubscriptionRef.current = player.addListener(
+            'audioSampleUpdate',
+            (sample) => {
+              if (
+                generationRef.current !== generation ||
+                playerRef.current !== player
+              ) {
+                return;
+              }
+              const now = Date.now();
+              if (now - lastLevelUpdateAt < PLAYBACK_LEVEL_INTERVAL_MS) return;
+              lastLevelUpdateAt = now;
+              const assistantAudioLevel = pcmChannelsToAudioLevel(
+                sample.channels.map((channel) => channel.frames),
+              );
+              setState((current) => ({
+                ...current,
+                assistantAudioLevel,
+              }));
+            },
+          );
+        } catch {
+          // Sampling is presentation-only. Keep PanelUI's phase animation on
+          // platforms that expose the method but cannot enable it at runtime.
+        }
+      }
       player.play();
       const deadline = Date.now() + MAX_PLAYBACK_WAIT_MS;
       while (
@@ -356,6 +404,9 @@ export function useGatewayVoice({
         await delay(100);
       }
       releasePlayer();
+      if (generationRef.current === generation) {
+        setState((current) => ({ ...current, assistantAudioLevel: 0 }));
+      }
     },
     [releasePlayer],
   );
@@ -398,6 +449,7 @@ export function useGatewayVoice({
         await teardown();
         setState((current) => ({
           ...current,
+          assistantAudioLevel: undefined,
           error:
             error instanceof Error
               ? error.message

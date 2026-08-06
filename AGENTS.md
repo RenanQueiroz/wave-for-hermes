@@ -229,9 +229,9 @@ documentation before implementing UI.
   same structured result; model retries must not duplicate work, while a later user turn may
   deliberately repeat the request.
 - Realtime transcripts are ephemeral: store no raw audio, no partial or final transcripts, no
-  provider identifiers, and no hidden reasoning. Work Wave hands to Hermes through `ask_hermes`
-  lands as ordinary turns in the bound session; accepted corrections use that turn's ordinary
-  redirect lane, and Hermes remains canonical for its own turns.
+  provider identifiers, no audio-meter history, and no hidden reasoning. Work Wave hands to Hermes
+  through `ask_hermes` lands as ordinary turns in the bound session; accepted corrections use that
+  turn's ordinary redirect lane, and Hermes remains canonical for its own turns.
 - Realtime model choice is an app-owned allowlist containing exactly `gpt-realtime-2.1-mini` and
   `gpt-realtime-2.1`; mini is the default. Persist it separately from the key and voice in a strict
   versioned device record, reject free-form ids, and snapshot it into the initial call — never
@@ -309,7 +309,9 @@ documentation before implementing UI.
   the audio session at once.
 - Gateway voice mode is deliberately half-duplex. `expo-audio` exposes no speaker-routing override,
   so an open recorder forces iOS playback to the earpiece: close the recorder before speaking and
-  offer an explicit interrupt control rather than acoustic barge-in.
+  offer an explicit interrupt control rather than acoustic barge-in. Its live waveform may consume
+  the current recorder meter and `expo-audio` samples from audio already being played; never retain
+  those samples or start another recorder to animate it.
 - Raw gateway-speech output lives only behind the singleton `src/native/pcm-player.ts` owner, which
   adapts `react-native-audio-api`'s native `AudioBufferQueueSourceNode`. Keep the Wave surface
   foreground-only, Int16 little-endian, format/chunk/queue bounded, microphone- and network-free,
@@ -332,6 +334,10 @@ documentation before implementing UI.
   on both affected platforms. Do not call voice production-ready until the physical-device,
   routing, interruption, release-build, and real Realtime gates in
   `docs/webrtc-foundation.md` pass.
+- Realtime waveform metering stays inside `RealtimeTransport`: reduce only standards-defined local
+  audio-source and remote inbound-audio stats to bounded 0-1 Wave levels, and never expose raw
+  WebRTC stats, track/provider identifiers, or meter history to controllers or screens. Missing
+  native stats degrade to PanelUI's phase animation and never affect call health or reconnection.
 
 ## Verification
 

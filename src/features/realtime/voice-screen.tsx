@@ -229,11 +229,13 @@ function ConnectedVoiceScreen({
     return registerMobileAgentStateProvider({
       name: 'wave-realtime',
       read: () => ({
+        assistantAudioLevel: state.assistantAudioLevel,
         cleanupPending: state.cleanupPending,
         errorKind: state.error?.kind,
         microphoneEnabled: state.microphoneEnabled,
         phase: state.phase,
         remoteAudioTracks: state.remoteAudioTracks,
+        userAudioLevel: state.userAudioLevel,
       }),
     });
   }, [state]);
@@ -282,6 +284,7 @@ function ConnectedVoiceScreen({
               accessibilityLabel={userWaveLabel(state.phase)}
               bars={32}
               height={48}
+              level={state.microphoneEnabled ? state.userAudioLevel : 0}
               mode="scrolling"
               state={userWaveState(state.phase)}
               testID="voice-user-wave"
@@ -304,6 +307,7 @@ function ConnectedVoiceScreen({
             <Soundwave
               accessibilityLabel={assistantWaveLabel(state.phase)}
               height={56}
+              level={state.assistantAudioLevel}
               state={assistantWaveState(state.phase)}
               testID="voice-assistant-wave"
               variant="line"

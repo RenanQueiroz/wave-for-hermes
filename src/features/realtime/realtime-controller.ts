@@ -41,6 +41,7 @@ export type WaveRealtimePhase =
   | 'user_speaking';
 
 export interface WaveRealtimeState {
+  assistantAudioLevel?: number;
   assistantTranscript: string;
   cleanupPending: boolean;
   error?: {
@@ -52,6 +53,7 @@ export interface WaveRealtimeState {
   microphoneEnabled: boolean;
   phase: WaveRealtimePhase;
   remoteAudioTracks: number;
+  userAudioLevel?: number;
   userTranscript: string;
 }
 
@@ -236,7 +238,10 @@ export class WaveRealtimeController {
       return;
     }
     this.transportSession?.setMicrophoneEnabled(enabled);
-    this.patchState({ microphoneEnabled: enabled });
+    this.patchState({
+      microphoneEnabled: enabled,
+      ...(enabled ? {} : { userAudioLevel: 0 }),
+    });
   }
 
   async stop() {
@@ -382,6 +387,14 @@ export class WaveRealtimeController {
         return;
       case 'remote_audio_tracks':
         this.patchState({ remoteAudioTracks: event.count });
+        return;
+      case 'audio_levels':
+        this.patchState({
+          assistantAudioLevel: event.assistant ?? undefined,
+          userAudioLevel: this.state.microphoneEnabled
+            ? (event.user ?? undefined)
+            : 0,
+        });
         return;
       case 'transcript':
         if (

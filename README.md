@@ -95,7 +95,7 @@ currently includes:
   settled; secret/sudo requests are declined with copy that says why;
 - gateway voice mode (default): half-duplex speech on the gateway's speech-to-text and
   text-to-speech endpoints with adaptive silence detection tuned per platform, an explicit
-  interrupt control, a stop word, and composer dictation;
+  interrupt control, a stop word, composer dictation, and measured input/playback waveforms;
 - opt-in Realtime live voice keyed by the user's own OpenAI key: SDP exchange directly against
   `POST /v1/realtime/calls`, the authenticated WebSocket sideband, an audio-only native
   `RealtimeTransport` and focused lifecycle controller with bounded reconnection, strictly
@@ -103,8 +103,8 @@ currently includes:
   serialization and coalescing, dynamically advertised `correct_hermes` steering of only the one
   trusted active execution, serialized and acknowledged Realtime tool-surface updates,
   response-safe result delivery, a fixed metadata-free delegation prompt, exact whole-utterance
-  stop handling, ephemeral in-call transcripts, and unified-timeline refresh before returning to
-  text chat;
+  stop handling, ephemeral in-call transcripts and local/remote WebRTC sound levels, and
+  unified-timeline refresh before returning to text chat;
 - an OpenAI key card in Settings that validates the key before saving, stores it with
   `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, exposes presence (never the value) to the UI, can remove it,
   plus separate per-device Realtime model and voice pickers. The model picker accepts only

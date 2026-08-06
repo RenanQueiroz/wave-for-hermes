@@ -5,6 +5,7 @@ import {
 } from 'react-native-webrtc';
 import { PermissionsAndroid, Platform } from 'react-native';
 
+import { RealtimeAudioLevelMeter } from './realtime-audio-level-meter';
 import {
   parseRealtimeServerEvent,
   RealtimeTransportError,
@@ -19,6 +20,9 @@ const ICE_GATHERING_TIMEOUT_MS = 12_000;
 const CONNECTION_TIMEOUT_MS = 30_000;
 const RECONNECT_TIMEOUT_MS = 15_000;
 const CONDITION_POLL_MS = 50;
+// A full native stats map crosses the React Native bridge. Five samples per
+// second are responsive enough for the waveform without competing with audio.
+const AUDIO_LEVEL_POLL_MS = 200;
 
 type DataChannel = ReturnType<RTCPeerConnection['createDataChannel']>;
 
@@ -91,6 +95,8 @@ interface ReactNativePreparedRealtimeTransportOptions {
 }
 
 class ReactNativePreparedRealtimeTransport implements PreparedRealtimeTransport {
+  private readonly audioLevelMeter = new RealtimeAudioLevelMeter();
+  private audioLevelTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
   private readonly dataChannel: DataChannel;
   private readonly localStream: MediaStream;
@@ -148,6 +154,7 @@ class ReactNativePreparedRealtimeTransport implements PreparedRealtimeTransport 
       });
       await waitForConnected(this.peer, this.dataChannel, signal);
       this.emitConnection('connected');
+      this.scheduleAudioLevelPoll(0);
     } catch (error) {
       throw normalizeTransportError(error);
     }
@@ -162,6 +169,8 @@ class ReactNativePreparedRealtimeTransport implements PreparedRealtimeTransport 
     this.dataChannel.onopen = null;
     this.peer.onconnectionstatechange = null;
     this.peer.ontrack = null;
+    this.clearAudioLevelTimer();
+    this.audioLevelMeter.reset();
     this.clearReconnectTimer();
     this.dataChannel.close();
     this.peer.close();
@@ -245,6 +254,36 @@ class ReactNativePreparedRealtimeTransport implements PreparedRealtimeTransport 
   private clearReconnectTimer() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = undefined;
+  }
+
+  private clearAudioLevelTimer() {
+    if (this.audioLevelTimer) clearTimeout(this.audioLevelTimer);
+    this.audioLevelTimer = undefined;
+  }
+
+  private scheduleAudioLevelPoll(delayMs = AUDIO_LEVEL_POLL_MS) {
+    if (this.closed || this.audioLevelTimer) return;
+    this.audioLevelTimer = setTimeout(() => {
+      this.audioLevelTimer = undefined;
+      void this.pollAudioLevels();
+    }, delayMs);
+  }
+
+  private async pollAudioLevels() {
+    if (this.closed) return;
+    try {
+      const report = await this.peer.getStats();
+      if (this.closed) return;
+      const levels = this.audioLevelMeter.read(report);
+      if (levels.assistant !== null || levels.user !== null) {
+        this.onEvent({ ...levels, type: 'audio_levels' });
+      }
+    } catch {
+      // Metering is presentation-only. An unavailable stats field must never
+      // disrupt or reconnect an otherwise healthy voice call.
+    } finally {
+      this.scheduleAudioLevelPoll();
+    }
   }
 
   private emitConnection(state: RealtimeConnectionState) {

@@ -16,6 +16,7 @@ import {
   validatePcmChunk,
   validatePcmFormat,
 } from '@/native/pcm-player-contract';
+import { pcmChannelsToAudioLevel } from '@/services/audio/audio-level';
 
 // Queue enough audio to absorb ordinary React Native scheduling stalls while
 // still beginning playback well before a complete Hermes response arrives.
@@ -47,6 +48,8 @@ export interface PcmPlaybackCompletion {
 
 export interface PcmPlaybackEvent {
   channels: number;
+  /** RMS of the native buffer currently at the head of playback, 0-1. */
+  level: number;
   playedFrames: number;
   queuedDurationMs: number;
   reason?: PcmPlaybackOutcome;
@@ -73,6 +76,7 @@ interface PendingPcmChunk {
 interface PcmPlaybackSession {
   appStateSubscription?: NativeEventSubscription;
   bufferFrames: Map<string, number>;
+  bufferLevels: Map<string, number>;
   cleanupPromise?: Promise<PcmPlaybackCompletion>;
   context: AudioContext;
   drainTimer?: ReturnType<typeof setTimeout>;
@@ -84,6 +88,7 @@ interface PcmPlaybackSession {
   gainRampEndsAt?: number;
   gainRampStartedAt?: number;
   interruptionSubscription?: AudioEventSubscription;
+  level: number;
   pendingByteLength: number;
   pendingChunks: PendingPcmChunk[];
   playedFrames: number;
@@ -127,7 +132,7 @@ class PcmStreamPlayer {
       AudioManager.setAudioSessionOptions({
         iosCategory: 'playback',
         iosMode: 'spokenAudio',
-        iosOptions: ['allowAirPlay', 'allowBluetoothA2DP'],
+        iosOptions: ['allowAirPlay'],
         iosNotifyOthersOnDeactivation: true,
       });
       if (!this.interruptionObservationActive) {
@@ -159,11 +164,13 @@ class PcmStreamPlayer {
     const finishDeferred = deferred<PcmPlaybackCompletion>();
     const session: PcmPlaybackSession = {
       bufferFrames: new Map<string, number>(),
+      bufferLevels: new Map<string, number>(),
       context,
       finishDeferred,
       finishing: false,
       format: { ...format },
       gain,
+      level: 0,
       pendingByteLength: 0,
       pendingChunks: [],
       playedFrames: 0,
@@ -183,7 +190,10 @@ class PcmStreamPlayer {
     session.appStateSubscription = AppState.addEventListener(
       'change',
       (nextState) => {
-        if (nextState === 'background' || nextState === 'inactive') {
+        // iOS enters `inactive` for permission sheets and Control Center. A
+        // real background transition is authoritative; calls and alarms use
+        // the separate native interruption event below.
+        if (nextState === 'background') {
           void this.completeSession(session, 'backgrounded');
         }
       },
@@ -390,8 +400,16 @@ class PcmStreamPlayer {
       audioBuffer.copyToChannel(channelData[channel], channel);
     }
 
+    const queueWasEmpty = session.bufferFrames.size === 0;
     const bufferId = session.source.enqueueBuffer(audioBuffer);
     session.bufferFrames.set(bufferId, sourceFrames);
+    session.bufferLevels.set(bufferId, pcmChannelsToAudioLevel(channelData));
+    // After a real producer underrun, the newly admitted buffer is the one
+    // the queue will render next. Ordinary ahead-of-playback enqueueing must
+    // not move the meter early.
+    if (session.started && queueWasEmpty) {
+      session.level = session.bufferLevels.get(bufferId) ?? 0;
+    }
   }
 
   private beginPlayback(session: PcmPlaybackSession) {
@@ -408,6 +426,7 @@ class PcmStreamPlayer {
       session.gain.gain.linearRampToValueAtTime(1, rampEndsAt);
       session.source.start(0, 0);
       session.started = true;
+      session.level = session.bufferLevels.values().next().value ?? 0;
       session.state = session.finishing ? 'draining' : 'playing';
     } catch (error) {
       const message = normalizeError(error);
@@ -425,6 +444,8 @@ class PcmStreamPlayer {
     if (frames === undefined) return;
 
     session.bufferFrames.delete(event.bufferId);
+    session.bufferLevels.delete(event.bufferId);
+    session.level = session.bufferLevels.values().next().value ?? 0;
     session.queuedFrames = Math.max(0, session.queuedFrames - frames);
     session.playedFrames += frames;
 
@@ -544,6 +565,7 @@ class PcmStreamPlayer {
 
     this.emit({
       channels: session.format.channels,
+      level: 0,
       playedFrames: session.playedFrames,
       queuedDurationMs: 0,
       reason: outcome,
@@ -652,6 +674,7 @@ class PcmStreamPlayer {
   private statusForSession(session: PcmPlaybackSession): PcmPlaybackEvent {
     return {
       channels: session.format.channels,
+      level: session.level,
       playedFrames: session.playedFrames,
       queuedDurationMs: Math.round(
         (session.queuedFrames / session.format.sampleRate) * 1_000,
@@ -675,6 +698,7 @@ function deferred<T>(): Deferred<T> {
 function idleStatus(): PcmPlaybackEvent {
   return {
     channels: 0,
+    level: 0,
     playedFrames: 0,
     queuedDurationMs: 0,
     sampleRate: 0,

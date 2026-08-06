@@ -21,6 +21,11 @@ export type RealtimeTransportEvent =
       type: 'remote_audio_tracks';
     }
   | {
+      assistant: number | null;
+      type: 'audio_levels';
+      user: number | null;
+    }
+  | {
       final: boolean;
       role: 'assistant' | 'user';
       text: string;
