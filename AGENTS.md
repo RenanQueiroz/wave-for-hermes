@@ -98,6 +98,12 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   bundled dependency map still recommends 1.21.9, so keep the exact application version listed in
   `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
   and remove the exclusion once Expo's supported version catches up.
+- `react-native-audio-api` 0.13.2 is exact because Wave carries
+  `patches/react-native-audio-api+0.13.2.patch`. The patch selects Oboe shared/non-low-latency
+  output on Android; the package defaults selected the Pixel 8 Pro's intermittently audible MMAP
+  path. Keep `patch-package` in `postinstall`, never broaden the package range while the patch is
+  present, and regenerate or remove the patch only with clean native builds plus repeated physical
+  Android listening.
 
 ## UI system
 
@@ -305,11 +311,15 @@ documentation before implementing UI.
 - Gateway voice mode is deliberately half-duplex. `expo-audio` exposes no speaker-routing override,
   so an open recorder forces iOS playback to the earpiece: close the recorder before speaking and
   offer an explicit interrupt control rather than acoustic barge-in.
-- Raw gateway-speech output lives only in the local `modules/wave-pcm-player` Expo module behind
-  the singleton `src/native/pcm-player.ts` owner. Keep it foreground-only, Int16 little-endian,
-  format/chunk/queue bounded, microphone- and network-free, and deterministic on drain, Stop,
-  background, interruption, and destruction. Gateway protocol and fallback behavior never enter
-  the module.
+- Raw gateway-speech output lives only behind the singleton `src/native/pcm-player.ts` owner, which
+  adapts `react-native-audio-api`'s native `AudioBufferQueueSourceNode`. Keep the Wave surface
+  foreground-only, Int16 little-endian, format/chunk/queue bounded, microphone- and network-free,
+  and deterministic on drain, Stop, background, and interruption. Keep the app plugin configured
+  without background audio, foreground services, extra Android permissions, FFmpeg, or bundled
+  codec libraries. Normal Stop fades immediately but may retain the muted Android source and its
+  audio focus until the bounded five-second context close; format restarts must reuse one focus
+  request instead of abandoning/re-requesting it mid-proof. Gateway protocol and fallback behavior
+  never enter the player.
 - The PCM card under `src/dev` is a development-only feasibility proof. Do not connect
   `/api/audio/speak-stream` to production voice until the physical iOS and Android quality,
   routing, interruption, background, and release gates in `docs/pcm-playback-foundation.md` pass.

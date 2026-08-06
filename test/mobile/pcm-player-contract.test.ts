@@ -3,7 +3,10 @@ import test from 'node:test';
 
 import {
   createToneChunk,
+  decodeInterleavedInt16Pcm,
   PCM_MAX_CHUNK_BYTES,
+  resamplePlanarPcm,
+  StreamingPcmResampler,
   validatePcmChunk,
   validatePcmFormat,
 } from '../../src/native/pcm-player-contract.ts';
@@ -42,6 +45,49 @@ test('PCM chunks require bounded complete interleaved Int16 frames', () => {
   assert.throws(
     () => validatePcmChunk(new Uint8Array(PCM_MAX_CHUNK_BYTES + 2), 1),
     /between/,
+  );
+});
+
+test('PCM conversion preserves interleaving, byte offsets, and signed amplitude', () => {
+  const storage = new Uint8Array(12);
+  const view = new DataView(storage.buffer);
+  view.setInt16(2, -32_768, true);
+  view.setInt16(4, 16_384, true);
+  view.setInt16(6, 32_767, true);
+  view.setInt16(8, -16_384, true);
+
+  const [left, right] = decodeInterleavedInt16Pcm(storage.subarray(2, 10), 2);
+
+  assert.deepEqual(Array.from(left), [-1, 32_767 / 32_768]);
+  assert.deepEqual(Array.from(right), [0.5, -0.5]);
+});
+
+test('PCM resampling preserves duration, channels, and bounded interpolation', () => {
+  const source = [new Float32Array([0, 1]), new Float32Array([1, 0])];
+  const [left, right] = resamplePlanarPcm(source, 2, 4);
+
+  assert.deepEqual(Array.from(left), [0, 0.5, 1, 1]);
+  assert.deepEqual(Array.from(right), [1, 0.5, 0, 0]);
+  assert.equal(resamplePlanarPcm(source, 4, 4), source);
+  assert.throws(
+    () => resamplePlanarPcm([new Float32Array()], 24_000, 48_000),
+    /non-empty/,
+  );
+});
+
+test('streaming PCM resampling interpolates continuously across buffers', () => {
+  const resampler = new StreamingPcmResampler(2, 4);
+  const first = resampler.append([new Float32Array([0, 1, 0])]);
+  const second = resampler.append([new Float32Array([-1, 0])]);
+  const tail = resampler.finish();
+
+  assert.deepEqual(
+    [first, second, tail].map((block) => block.sourceFrames),
+    [2, 2, 1],
+  );
+  assert.deepEqual(
+    [first, second, tail].flatMap((block) => Array.from(block.channelData[0])),
+    [0, 0.5, 1, 0.5, 0, -0.5, -1, -0.5, 0, 0],
   );
 });
 

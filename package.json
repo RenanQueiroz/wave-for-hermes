@@ -37,6 +37,7 @@
     "panelui-native": "^0.38.0",
     "react": "19.2.3",
     "react-native": "0.86.2",
+    "react-native-audio-api": "0.13.2",
     "react-native-gesture-handler": "~3.1.0",
     "react-native-keyboard-controller": "1.22.2",
     "react-native-legal": "^1.6.3",
@@ -56,6 +57,7 @@
     "eslint-config-expo": "~57.0.1",
     "eslint-config-prettier": "^10.1.8",
     "expo-mcp": "~0.2.1",
+    "patch-package": "^8.0.1",
     "prettier": "^3.9.6",
     "typescript": "~6.0.3"
   },
@@ -103,7 +105,8 @@
     "mobile:smoke:android": "npm --prefix tools/mobile-agent run smoke:android --",
     "mobile:smoke:observability": "npm --prefix tools/mobile-agent run smoke:observability --",
     "mobile:smoke:ios": "npm --prefix tools/mobile-agent run smoke:ios --",
-    "mobile:smoke:production": "npm --prefix tools/mobile-agent run smoke:production --"
+    "mobile:smoke:production": "npm --prefix tools/mobile-agent run smoke:production --",
+    "postinstall": "patch-package"
   },
   "private": true
 }

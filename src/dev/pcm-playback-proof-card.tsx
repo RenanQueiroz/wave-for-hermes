@@ -49,8 +49,8 @@ export function PcmPlaybackProofCard() {
       <Card.Header>
         <Card.Title>Streaming PCM playback proof</Card.Title>
         <Card.Description>
-          Plays three contiguous tones from 20 ms Int16 chunks, drains them,
-          restarts at a new sample rate, and cancels immediately.
+          Streams three smoothly separated tones from 20 ms Int16 chunks, drains
+          them, restarts at a new sample rate, and cancels immediately.
         </Card.Description>
       </Card.Header>
 
@@ -69,6 +69,11 @@ export function PcmPlaybackProofCard() {
           label="Drained frames"
           testID="pcm-proof-drained-frames"
           value={`${state.drainedFrames} / ${state.expectedFrames}`}
+        />
+        <ProofRow
+          label="Feed underruns"
+          testID="pcm-proof-underruns"
+          value={state.underrunCount}
         />
         <ProofRow
           label="Format restart"
@@ -110,12 +115,11 @@ export function PcmPlaybackProofCard() {
       </Card.Content>
 
       <Card.Footer>
-        <View
-          className={state.phase === 'passed' ? 'flex-1 opacity-50' : 'flex-1'}>
+        <View className={running ? 'flex-1 opacity-50' : 'flex-1'}>
           <Button
             fullWidth
             accessibilityLabel="Start streaming PCM playback proof"
-            disabled={state.phase === 'passed'}
+            disabled={running}
             loading={running}
             testID="pcm-proof-start"
             onPress={() => void proof.start()}>
@@ -123,7 +127,9 @@ export function PcmPlaybackProofCard() {
               ? 'Running…'
               : state.phase === 'failed'
                 ? 'Retry'
-                : 'Start proof'}
+                : state.phase === 'passed'
+                  ? 'Run again'
+                  : 'Start proof'}
           </Button>
         </View>
         <View

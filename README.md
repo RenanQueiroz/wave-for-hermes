@@ -58,8 +58,10 @@ currently includes:
   an audio-only development proof validated on iOS and Android;
 - a bounded foreground-only
   [`streaming PCM playback foundation`](./docs/pcm-playback-foundation.md) for Hermes v0.20
-  gateway speech, with an iOS simulator proof and clean iOS/Android native builds; production
-  gateway voice stays on buffered speech until physical-device validation passes;
+  gateway speech, now backed by Software Mansion's native audio-buffer queue after the focused
+  Android `AudioTrack` prototype remained intermittently audible; its repeated Pixel 8 Pro
+  built-in-speaker proof now passes, while production gateway voice stays on buffered speech until
+  the remaining device-route and lifecycle gates pass;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
 - a typed gateway client (`src/services/gateway`) that signs in with the gateway's password
@@ -180,8 +182,8 @@ The root is also the npm workspace root; compile `packages/contracts` with
 Create and run a local development build when native dependencies change. The current client
 requires `react-native-webrtc`, `react-native-legal`, `expo-secure-store`,
 `react-native-keyboard-controller`, `expo-image-picker`, `expo-document-picker`, and
-`expo-file-system`, plus the local `wave-pcm-player` module, so an older installed development
-client cannot run it:
+`expo-file-system`, plus `react-native-audio-api`, so an older installed development client cannot
+run it:
 
 ```bash
 npx expo prebuild --clean
@@ -195,12 +197,16 @@ npx expo run:android
 The development client includes a focused native proof for the raw Int16 PCM stream returned by
 Hermes v0.20. Open **Settings → Development** while connected, or open `wave://development`
 directly in a development build, then run **Streaming PCM playback proof**. It checks bounded
-20 ms chunk scheduling, exact drain, a sample-rate restart, cancellation, and cleanup. The route
-is development-only; it does not connect to the gateway or replace production buffered speech.
+20 ms chunk scheduling, exact drain, feed underruns, a sample-rate restart, cancellation, and
+cleanup. After a pass, **Run again** starts another proof without requiring Stop. The route is
+development-only; it does not connect to the gateway or replace production buffered speech.
 
-The automated iOS simulator proof and both native builds pass. Clean audio, hardware routes, OS
-interruptions, and release behavior still require physical iOS and Android validation before the
-streaming gateway client is implemented. See
+The original focused native player passed exact accounting but crackled intermittently on the
+Pixel 8 Pro, so Wave replaced it with `react-native-audio-api`'s native audio-buffer queue. Clean
+Prebuild and iOS/Android builds pass, as does the iOS simulator proof. A cold screening plus six
+consecutive Pixel 8 Pro built-in-speaker runs drained exactly with zero feed underruns and no pops
+or crackles. Physical iOS, the remaining hardware routes, OS interruptions, and release behavior
+still require validation before the streaming gateway client is implemented. See
 [`docs/pcm-playback-foundation.md`](./docs/pcm-playback-foundation.md) for the exact contract and
 remaining gates.
 

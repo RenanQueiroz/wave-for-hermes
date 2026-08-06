@@ -95,9 +95,9 @@ not require `ANDROID_HOME` to be exported into the editor process.
 
 Wave's development-only `wave://development` route registers bounded proof providers while it is
 mounted. `webrtc-proof` reports the native loopback proof and `pcm-playback-proof` reports only the
-PCM proof phase, first-playing latency, expected/drained frame counts, format restart, and
-cancellation outcome. These providers expose no audio, credential, URL, transcript, arbitrary
-JavaScript, or production state.
+PCM proof phase, first-playing latency, expected/drained frame counts, feed-underrun count, format
+restart, and cancellation outcome. These providers expose no audio, credential, URL, transcript,
+arbitrary JavaScript, or production state.
 
 The MCP server adds these Wave-specific tools to Appium's standard tool set:
 

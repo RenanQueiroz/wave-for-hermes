@@ -1,9 +1,0 @@
-{
-  "platforms": ["apple", "android"],
-  "apple": {
-    "modules": ["WavePcmPlayerModule"]
-  },
-  "android": {
-    "modules": ["expo.modules.wavepcmplayer.WavePcmPlayerModule"]
-  }
-}

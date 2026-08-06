@@ -34,12 +34,11 @@ Wave backend workspace, server-only credential plumbing, or forbidden backend im
 
 ## Workspace boundaries
 
-| Path                      | Runtime                    | Responsibility                                                       |
-| ------------------------- | -------------------------- | -------------------------------------------------------------------- |
-| `src/`                    | Expo / React Native        | Native mobile routes, UI, features, and client-side service adapters |
-| `modules/wave-pcm-player` | Swift / Kotlin             | Bounded foreground raw-PCM output; no network or microphone          |
-| `packages/contracts/`     | Runtime-neutral TypeScript | Strict Zod schemas and inferred types for normalized Wave data       |
-| `tools/mobile-agent/`     | Development tooling        | Repository-local native automation and observability                 |
+| Path                  | Runtime                    | Responsibility                                                       |
+| --------------------- | -------------------------- | -------------------------------------------------------------------- |
+| `src/`                | Expo / React Native        | Native mobile routes, UI, features, and client-side service adapters |
+| `packages/contracts/` | Runtime-neutral TypeScript | Strict Zod schemas and inferred types for normalized Wave data       |
+| `tools/mobile-agent/` | Development tooling        | Repository-local native automation and observability                 |
 
 The repository root remains both the Expo application and npm workspace root. Do not move it into
 an `apps/mobile` directory.
@@ -108,13 +107,19 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   deleted from the device cache immediately afterwards. The affordances are gated on a cached
   probe of what the server actually has configured, and disable with honest copy when it has
   neither provider.
-- `src/native/pcm-player.ts` is the one JavaScript owner for the local `wave-pcm-player` Expo
-  module. Both sides validate little-endian interleaved Int16 PCM, one or two channels, 8–48 kHz,
-  512 KiB chunks, and at most 12 seconds queued. Native lifecycle hooks stop output on background,
-  interruption, and destruction. This boundary currently serves only the development proof in
-  `src/dev`; no production screen or gateway transport writes into it yet. A future streaming
-  speech client stays in `src/services/gateway` and may pass only validated audio bytes across
-  this boundary after the physical-device gates in `docs/pcm-playback-foundation.md` pass.
+- `src/native/pcm-player.ts` is the one Wave owner for `react-native-audio-api`'s native
+  `AudioBufferQueueSourceNode`. It validates little-endian interleaved Int16 PCM, converts it to
+  bounded planar audio buffers, coalesces transport chunks into 600 ms native batches, and admits
+  one or two channels, 8–48 kHz, 512 KiB chunks, and at most 12 seconds queued. The device-rate
+  context may remain warm for five seconds after a clean drain or normal Stop so consecutive
+  clauses and input format changes avoid another hardware activation. Stop fades immediately; on
+  Android its muted queue node is retained until that bounded close, and transient audio focus is
+  requested once per context. Failure, interruption, and confirmed background close immediately.
+  The adapter exposes only deterministic drain, Stop, and bounded accounting — not the package's
+  general audio-engine surface. This boundary currently serves only the development proof in
+  `src/dev`; no production screen or gateway transport writes into it yet. A future streaming speech client stays in
+  `src/services/gateway` and may pass only validated audio bytes across this boundary after the
+  physical-device gates in `docs/pcm-playback-foundation.md` pass.
 - The Realtime mode is keyed by the user-owned OpenAI key. `OpenAiKeyStore` keeps the key in
   platform secure storage (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`); the Settings card validates a key
   against `GET /v1/models` before saving and exposes presence — never the value — through the

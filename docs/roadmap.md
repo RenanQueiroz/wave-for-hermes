@@ -16,11 +16,13 @@ administration console.
 ### Stream gateway speech safely
 
 Hermes v0.20 can accept assistant deltas over `/api/audio/speak-stream` and return clause-level raw
-PCM while the turn is still generating. Wave now has the smallest bounded Expo SDK 57 local
-playback module and development proof: clean iOS and Android builds pass, and the iOS simulator
-passed first-frame scheduling, exact drain, sample-rate restart, cancellation, and background
-teardown. Physical iOS and Android still need to prove clean audio, hardware routing,
-interruptions, and release behavior. The tracked evidence and exact gate are in
+PCM while the turn is still generating. Wave has a bounded development proof behind one app-owned
+adapter. The original focused native player passed exact accounting but remained intermittently
+audible on the Pixel 8 Pro, so its `AudioTrack`/`AVAudioEngine` implementation was retired in favor
+of `react-native-audio-api`'s maintained native audio-buffer queue. Clean Prebuild, iOS and Android
+builds and the iOS simulator proof pass. A cold screening plus six consecutive Pixel 8 Pro
+built-in-speaker runs also pass without pops or crackles. Physical iOS, remaining hardware routes,
+interruptions, and release behavior still need validation. The tracked evidence and exact gate are in
 [`pcm-playback-foundation.md`](./pcm-playback-foundation.md).
 
 After that gate passes, add the authenticated streaming client, feed only normalized assistant

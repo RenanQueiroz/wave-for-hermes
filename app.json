@@ -84,6 +84,17 @@
           "includeOptionalDeps": true,
           "transitiveDepsMode": "all"
         }
+      ],
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": false,
+          "androidPermissions": [],
+          "androidForegroundService": false,
+          "androidFSTypes": [],
+          "disableFFmpeg": true,
+          "disableStaticExternalLibs": true
+        }
       ]
     ],
     "experiments": {
