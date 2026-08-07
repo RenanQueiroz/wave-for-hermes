@@ -418,10 +418,13 @@ export class WaveRealtimeController {
   private applyTranscript(
     event: Extract<RealtimeTransportEvent, { type: 'transcript' }>,
   ) {
-    const key =
-      event.role === 'assistant' ? 'assistantTranscript' : 'userTranscript';
-    const previous = this.state[key];
+    const role = event.role === 'assistant' ? 'assistant' : 'user';
+    const key = role === 'assistant' ? 'assistantTranscript' : 'userTranscript';
+    // A delta after a final belongs to a NEW turn: start fresh instead of
+    // gluing the new turn's first word onto the previous turn's period.
+    const previous = this.transcriptSealed[role] ? '' : this.state[key];
     const text = event.final ? event.text : `${previous}${event.text}`;
+    this.transcriptSealed[role] = event.final;
     this.patchState({
       [key]: text.slice(0, MAX_TRANSCRIPT_LENGTH),
     });
@@ -432,6 +435,9 @@ export class WaveRealtimeController {
       operation === this.operation && !this.abortController?.signal.aborted
     );
   }
+
+  /** Whether each role's transcript currently holds a completed turn. */
+  private transcriptSealed = { assistant: false, user: false };
 
   private patchState(patch: Partial<WaveRealtimeState>) {
     this.replaceState({ ...this.state, ...patch });

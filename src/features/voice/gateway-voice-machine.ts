@@ -175,7 +175,7 @@ export function voicePhaseTitle(phase: GatewayVoicePhase): string {
 export function voicePhaseDescription(phase: GatewayVoicePhase): string {
   switch (phase) {
     case 'listening':
-      return 'Say what you need. Wave sends it when you pause.';
+      return 'Say what you need. Hermes hears it when you pause.';
     case 'transcribing':
       return 'Turning your words into a message…';
     case 'thinking':

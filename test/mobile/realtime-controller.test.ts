@@ -413,3 +413,48 @@ test('stopping during a reconnect wins over further attempts', async () => {
   await new Promise((resolve) => setTimeout(resolve, 2_500));
   assert.equal(backend.startCalls, startsAtStop);
 });
+
+test('a delta after a final transcript starts a fresh turn, never glued text', async () => {
+  const backend = new FakeRealtimeBackend();
+  const transport = new FakeRealtimeTransport();
+  const controller = new WaveRealtimeController({ backend, transport });
+
+  await controller.start('session-1');
+  transport.emit({
+    final: false,
+    role: 'assistant',
+    text: 'First answer',
+    type: 'transcript',
+  });
+  transport.emit({
+    final: true,
+    role: 'assistant',
+    text: 'First answer.',
+    type: 'transcript',
+  });
+  assert.equal(controller.getState().assistantTranscript, 'First answer.');
+
+  // The next turn's opening delta replaces the sealed turn instead of
+  // concatenating onto its period.
+  transport.emit({
+    final: false,
+    role: 'assistant',
+    text: 'Second',
+    type: 'transcript',
+  });
+  transport.emit({
+    final: false,
+    role: 'assistant',
+    text: ' answer',
+    type: 'transcript',
+  });
+  assert.equal(controller.getState().assistantTranscript, 'Second answer');
+  transport.emit({
+    final: true,
+    role: 'assistant',
+    text: 'Second answer.',
+    type: 'transcript',
+  });
+  assert.equal(controller.getState().assistantTranscript, 'Second answer.');
+  await controller.stop();
+});

@@ -64,6 +64,8 @@ export interface GatewayVoiceState {
   error?: string;
   /** Live input level in dBFS while listening, when the platform reports it. */
   level?: number;
+  /** True while the microphone is deliberately off between utterances. */
+  muted: boolean;
   phase: GatewayVoicePhase;
   /**
    * A mid-turn prompt (approval/clarify/secret) blocking the turn. The voice
@@ -80,6 +82,7 @@ type PlayerSubscription = { remove(): void };
 
 const IDLE_STATE: GatewayVoiceState = {
   assistantText: '',
+  muted: false,
   phase: 'idle',
   userTranscript: '',
 };
@@ -124,6 +127,7 @@ export function useGatewayVoice({
   const turnAbortRef = useRef<AbortController | undefined>(undefined);
   const submitNowRef = useRef(false);
   const skipSpeakingRef = useRef(false);
+  const mutedRef = useRef(false);
   /** Dev-only snapshot of the live silence detection, for the mobile agent. */
   const meterDebugRef = useRef<Record<string, unknown>>({});
 
@@ -191,9 +195,19 @@ export function useGatewayVoice({
       let tracker = initialUtteranceTracker;
       let elapsedMs = 0;
       let sawMetering = false;
-      while (generationRef.current === generation && !submitNowRef.current) {
+      while (
+        generationRef.current === generation &&
+        !submitNowRef.current &&
+        !mutedRef.current
+      ) {
         await delay(SAMPLE_INTERVAL_MS);
-        if (generationRef.current !== generation || submitNowRef.current) break;
+        if (
+          generationRef.current !== generation ||
+          submitNowRef.current ||
+          mutedRef.current
+        ) {
+          break;
+        }
         const status = recorder.getStatus();
         elapsedMs = status.durationMillis || elapsedMs + SAMPLE_INTERVAL_MS;
         if (status.metering !== undefined) {
@@ -232,6 +246,12 @@ export function useGatewayVoice({
       if (generationRef.current !== generation) {
         deleteRecording(uri);
         return undefined;
+      }
+      // Muting means "do not send what the microphone heard" — the capture
+      // is discarded whole, even if speech had already registered.
+      if (mutedRef.current) {
+        deleteRecording(uri);
+        return '';
       }
       // A platform that reports no metering cannot tell speech from silence,
       // so its recordings are always worth sending; a metered recording that
@@ -420,6 +440,10 @@ export function useGatewayVoice({
     async (generation: number) => {
       try {
         while (generationRef.current === generation) {
+          while (mutedRef.current && generationRef.current === generation) {
+            await delay(200);
+          }
+          if (generationRef.current !== generation) return;
           await setAudioModeAsync({
             allowsRecording: true,
             playsInSilentMode: true,
@@ -474,9 +498,16 @@ export function useGatewayVoice({
     }
     generationRef.current += 1;
     const generation = generationRef.current;
+    mutedRef.current = false;
     setState({ ...IDLE_STATE, phase: 'listening' });
     void runLoop(generation);
   }, [runLoop]);
+
+  /** Turn the microphone off (and back on) between utterances. */
+  const setMuted = useCallback((muted: boolean) => {
+    mutedRef.current = muted;
+    setState((current) => ({ ...current, muted }));
+  }, []);
 
   /** Stop listening and send what has been said so far. */
   const submitNow = useCallback(() => {
@@ -491,6 +522,7 @@ export function useGatewayVoice({
   return {
     meterDebug: meterDebugRef,
     respondToPrompt,
+    setMuted,
     skipSpeaking,
     start,
     state,

@@ -283,6 +283,9 @@ export function createOpenAiRealtimeSessionConfig(
     audio: {
       input: {
         noise_reduction: { type: 'near_field' },
+        // Display-only: the live "You" transcript on the voice screen.
+        // Nothing is stored — Realtime transcripts stay ephemeral.
+        transcription: { model: 'gpt-4o-mini-transcribe' },
         turn_detection: {
           create_response: true,
           interrupt_response: true,

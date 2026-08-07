@@ -6,6 +6,7 @@ import {
   Button,
   ChevronRightIcon,
   MicIcon,
+  Response,
   SendIcon,
   Soundwave,
   Typography,
@@ -130,6 +131,7 @@ export function GatewayVoiceScreen({
         canSpeak,
         error: voice.state.error,
         meter: voice.meterDebug.current,
+        muted: voice.state.muted,
         phase: voice.state.phase,
         userAudioLevel:
           voice.state.level === undefined
@@ -176,8 +178,8 @@ export function GatewayVoiceScreen({
           half-duplex, so the glow naturally follows one party at a time;
           the phase title and description remain the accessible status. */}
       <Soundwave
-        level={ambientLevel}
-        state={ambientVoiceState(phase)}
+        level={voice.state.muted ? undefined : ambientLevel}
+        state={voice.state.muted ? 'idle' : ambientVoiceState(phase)}
         testID="gateway-voice-ambient-glow"
         variant="ambient"
       />
@@ -188,10 +190,14 @@ export function GatewayVoiceScreen({
         <View className="flex-1 items-center justify-center gap-8">
           <View className="w-full max-w-md items-center gap-3">
             <Typography.Heading type="h1">
-              {voicePhaseTitle(phase)}
+              {voice.state.muted && phase === 'listening'
+                ? 'Muted'
+                : voicePhaseTitle(phase)}
             </Typography.Heading>
             <Typography.Paragraph muted className="text-center">
-              {voicePhaseDescription(phase)}
+              {voice.state.muted && phase === 'listening'
+                ? 'The microphone is off. Unmute to keep talking.'
+                : voicePhaseDescription(phase)}
             </Typography.Paragraph>
           </View>
 
@@ -209,16 +215,16 @@ export function GatewayVoiceScreen({
                 </Typography.Paragraph>
               </View>
             ) : null}
-            {voice.state.assistantText ? (
-              <View className="gap-1">
+            {voice.state.assistantText.trim() ? (
+              <View
+                className="gap-1"
+                testID="gateway-voice-assistant-transcript">
                 <Typography.Paragraph type="small" weight="semibold">
-                  Wave
+                  Hermes
                 </Typography.Paragraph>
-                <Typography.Paragraph
-                  selectable
-                  testID="gateway-voice-assistant-transcript">
-                  {voice.state.assistantText}
-                </Typography.Paragraph>
+                <Response isStreaming={phase === 'thinking'}>
+                  {voice.state.assistantText.trim()}
+                </Response>
               </View>
             ) : null}
           </View>
@@ -305,6 +311,17 @@ export function GatewayVoiceScreen({
             </>
           ) : (
             <View className="flex-row gap-3">
+              <Button
+                className="flex-1"
+                variant="outline"
+                accessibilityLabel={
+                  voice.state.muted ? 'Unmute microphone' : 'Mute microphone'
+                }
+                testID="gateway-voice-mute-button"
+                onPress={() => voice.setMuted(!voice.state.muted)}>
+                <MicIcon size={18} />
+                {voice.state.muted ? 'Unmute' : 'Mute'}
+              </Button>
               <Button
                 className="flex-1"
                 variant="outline"
