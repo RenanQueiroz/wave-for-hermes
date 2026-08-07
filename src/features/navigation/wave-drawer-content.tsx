@@ -336,6 +336,16 @@ function ConnectedWaveDrawerContent({
         </View>
       ) : null}
 
+      {/* The filter is a control over the list, not list content: it stays
+          pinned so switching tabs never requires scrolling back to the top.
+          Its wrapper mirrors the padding it had inside the list container. */}
+      <View className="px-2 pt-3">
+        <DrawerSessionFilters
+          value={sessionFilter}
+          onChange={setSessionFilter}
+        />
+      </View>
+
       {/* Recycled: mounting a fresh Menu-bearing row for every item during a
           fast fling cannot keep up and leaves the viewport blank. The row
           resets its menu state on recycle, and drawDistance buffers rows
@@ -347,7 +357,7 @@ function ConnectedWaveDrawerContent({
           recycleItems
           drawDistance={500}
           className="flex-1"
-          contentContainerClassName="px-2 py-3"
+          contentContainerClassName="px-2 pb-3"
           contentInsetAdjustmentBehavior="automatic"
           data={sessionListItems}
           getItemType={(item) => item.kind}
@@ -364,18 +374,12 @@ function ConnectedWaveDrawerContent({
             )
           }
           ListHeaderComponent={
-            <>
-              <DrawerSessionFilters
-                value={sessionFilter}
-                onChange={setSessionFilter}
+            showingCachedSessions ? (
+              <OfflineNotice
+                label="Offline — showing cached conversations"
+                testID="drawer-offline-notice"
               />
-              {showingCachedSessions ? (
-                <OfflineNotice
-                  label="Offline — showing cached conversations"
-                  testID="drawer-offline-notice"
-                />
-              ) : null}
-            </>
+            ) : null
           }
           onEndReached={() => {
             if (

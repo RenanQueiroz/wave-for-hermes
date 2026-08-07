@@ -179,7 +179,8 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   screen lives in that stack, so screens get native headers, push transitions, and swipe-back,
   while the drawer stays a conversation switcher rather than a sibling navigator. Cold launch
   and **New conversation** create a Hermes session immediately; sticky top actions provide new
-  and title/message search. Paginated account history fills the middle with a server-owned Pinned
+  and title/message search, and the conversation filter stays pinned with them while only the
+  list scrolls. Paginated account history fills the middle with a server-owned Pinned
   section followed by Today / Yesterday / Previous 7 days / Older groups. Chats is the quiet
   default; Other sources holds everything else — normalized automation, messaging/A2A, and
   unknown future sources. The two filters partition every source exactly, so together they keep
