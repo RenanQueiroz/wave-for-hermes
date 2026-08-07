@@ -90,7 +90,10 @@ import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { ActiveSessionStore } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
-import type { WaveChatClient } from '@/services/wave/wave-chat-client';
+import {
+  isPendingSessionId,
+  type WaveChatClient,
+} from '@/services/wave/wave-chat-client';
 
 interface ChatScreenProps {
   sessionId: string;
@@ -395,6 +398,10 @@ function ConnectedChatScreen({
     () => emptyStateTitleForSession(sessionId),
     [sessionId],
   );
+  // A pending id is a chat the user just started on this phone; a stored id
+  // with an empty timeline is an existing Hermes conversation that has no
+  // messages Wave can show. The two must not present identically.
+  const pendingSession = isPendingSessionId(sessionId);
   // The native header shows the conversation's Hermes title, resolved from the
   // sessions list the drawer already caches.
   const sessions = useWaveSessions({ baseUrl, client, connectionId });
@@ -404,8 +411,16 @@ function ConnectedChatScreen({
     );
     if (summary?.title) return summary.title;
     if (timeline.isPending) return undefined;
-    return messages.length === 0 ? 'New chat' : 'Untitled chat';
-  }, [messages.length, sessionId, sessions.data, timeline.isPending]);
+    return pendingSession && messages.length === 0
+      ? 'New chat'
+      : 'Untitled chat';
+  }, [
+    messages.length,
+    pendingSession,
+    sessionId,
+    sessions.data,
+    timeline.isPending,
+  ]);
   const busy =
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
@@ -730,13 +745,15 @@ function ConnectedChatScreen({
         {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"
-            className="absolute inset-0 items-center justify-center gap-2 px-6">
+            className="absolute inset-0 items-center justify-center gap-2 px-6"
+            testID={pendingSession ? 'chat-empty-new' : 'chat-empty-existing'}>
             <Typography.Heading type="h2" className="text-center">
-              {emptyStateTitle}
+              {pendingSession ? emptyStateTitle : 'No messages yet'}
             </Typography.Heading>
             <Typography.Paragraph muted className="text-center">
-              Chat naturally. Wave delegates work when your Hermes agent is
-              needed.
+              {pendingSession
+                ? 'Chat naturally. Wave delegates work when your Hermes agent is needed.'
+                : 'This conversation is on your Hermes server without any messages Wave can show. Send one to continue it here.'}
             </Typography.Paragraph>
           </View>
         ) : null}

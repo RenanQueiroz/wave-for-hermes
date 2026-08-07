@@ -16,11 +16,11 @@ import {
 import {
   GatewayClient,
   isGatewaySessionActive,
-  isPendingSessionId,
   normalizeGatewayCompatibilityStatus,
   normalizeGatewaySessionLiveState,
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
+import { isPendingSessionId } from '../../src/services/wave/wave-chat-client.ts';
 import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
 import { WaveBackendError } from '../../src/services/wave/wave-backend-error.ts';
 import {
@@ -663,6 +663,8 @@ test('caps session pages at the v0.19/v0.20 shared limit', async () => {
     'false',
   );
   assert.equal(new URL(requestedUrl).searchParams.get('order'), 'recent');
+  // Messageless session shells stay hidden, mirroring Hermes Desktop.
+  assert.equal(new URL(requestedUrl).searchParams.get('min_messages'), '1');
 });
 
 test('pins a persisted session with one non-retrying PATCH', async () => {

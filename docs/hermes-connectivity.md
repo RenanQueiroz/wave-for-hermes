@@ -63,7 +63,10 @@ absent or malformed.
 - **v0.20 organization**: `pinned` is durable server metadata changed with one non-retrying
   `PATCH /api/sessions/{id}` and reconciled after an optimistic mobile projection. Wave requests
   recent top-level rows, advances pagination by the server page limit so pin backfills cannot skip
-  ordinary rows, and leaves upstream-internal child sessions excluded. The open-ended `source`
+  ordinary rows, and leaves upstream-internal child sessions excluded. List requests pass
+  `min_messages=1` (the same filter Hermes Desktop's sidebar uses, honored by the shared `total`
+  count) so messageless session shells never reach the drawer; a brand-new Wave chat is a local
+  pending id until its first turn persists, so the filter does not hide it. The open-ended `source`
   value becomes only `chat`, `automation`, `external`, or `other`; missing v0.19 metadata defaults
   to an unpinned idle chat, and unknown future values remain reachable in Activity/All. The legacy
   list `is_active` heuristic means "recent and not ended", so Wave does not misreport it as a

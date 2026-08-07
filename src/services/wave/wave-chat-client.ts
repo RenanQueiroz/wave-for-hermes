@@ -21,6 +21,19 @@ import type {
 } from '@wave/contracts';
 
 /**
+ * The local placeholder id `createSession` mints before the first send. A
+ * pending id is not yet a Hermes conversation: the gateway session is
+ * created when the first turn dispatches. Screens may use this to
+ * distinguish a brand-new chat from an existing conversation that happens
+ * to have no messages.
+ */
+export const PENDING_SESSION_PREFIX = 'wave-pending-';
+
+export function isPendingSessionId(sessionId: string): boolean {
+  return sessionId.startsWith(PENDING_SESSION_PREFIX);
+}
+
+/**
  * One page of conversations, without transport envelope fields — screens
  * must not depend on anything the normalized Wave contract does not carry.
  */

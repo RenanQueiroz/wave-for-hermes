@@ -47,6 +47,10 @@ import {
   isTrustedPlainHttpHost,
 } from '../wave/base-url-policy.ts';
 import { WaveBackendError } from '../wave/wave-backend-error.ts';
+import {
+  isPendingSessionId,
+  PENDING_SESSION_PREFIX,
+} from '../wave/wave-chat-client.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const TURN_IDLE_TIMEOUT_MS = 120_000;
@@ -276,8 +280,14 @@ export class GatewayClient {
   }> {
     const limit = Math.min(Math.max(input.limit ?? 50, 1), SESSION_PAGE_LIMIT);
     const offset = Math.max(input.offset ?? 0, 0);
+    // min_messages=1 hides messageless session shells (abandoned API-server
+    // creates, test leftovers) the same way Hermes Desktop's sidebar does;
+    // the server computes `total` under the same filter, so paging stays
+    // consistent. A brand-new Wave chat is unaffected: it is a local pending
+    // id until the first send, and the gateway row it creates becomes
+    // listable when that first turn's transcript persists.
     const body = await this.request(
-      `/api/sessions?limit=${limit}&offset=${offset}&include_children=false&order=recent`,
+      `/api/sessions?limit=${limit}&offset=${offset}&include_children=false&order=recent&min_messages=1`,
       { signal },
     );
     const sessions = normalizeSessionRows(body);
@@ -1367,12 +1377,7 @@ export class GatewayClient {
   }
 }
 
-const PENDING_SESSION_PREFIX = 'wave-pending-';
 const TURN_STREAM_FAILED = Symbol('turn-stream-failed');
-
-export function isPendingSessionId(sessionId: string): boolean {
-  return sessionId.startsWith(PENDING_SESSION_PREFIX);
-}
 
 /**
  * Async queue bridging socket callbacks to the turn generator. Exported for

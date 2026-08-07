@@ -47,10 +47,6 @@ export default function AppStackLayout() {
         options={{ headerShown: false, presentation: 'modal' }}
       />
       <Stack.Screen name="search" options={{ title: 'Search conversations' }} />
-      <Stack.Screen
-        name="operations/jobs"
-        options={{ title: 'Scheduled jobs' }}
-      />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="development" options={{ title: 'Development' }} />
     </Stack>
