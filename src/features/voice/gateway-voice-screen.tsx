@@ -1,7 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Alert, Button, Soundwave, Typography } from 'panelui-native';
+import {
+  Alert,
+  Button,
+  ChevronRightIcon,
+  MicIcon,
+  SendIcon,
+  Soundwave,
+  Typography,
+  XIcon,
+} from 'panelui-native';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, ScrollView, View } from 'react-native';
 
@@ -152,187 +161,188 @@ export function GatewayVoiceScreen({
 
   const phase = voice.state.phase;
   const idle = phase === 'idle';
+  const userLevel =
+    voice.state.level === undefined
+      ? undefined
+      : dbfsToAudioLevel(voice.state.level);
+  const ambientLevel =
+    userLevel !== undefined || voice.state.assistantAudioLevel !== undefined
+      ? Math.max(userLevel ?? 0, voice.state.assistantAudioLevel ?? 0)
+      : undefined;
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerClassName="flex-grow gap-8 px-6 py-8">
-      <View className="flex-1 items-center justify-center gap-8">
-        <View className="w-full max-w-md items-center gap-3">
-          <Typography.Heading type="h1">
-            {voicePhaseTitle(phase)}
-          </Typography.Heading>
-          <Typography.Paragraph muted className="text-center">
-            {voicePhaseDescription(phase)}
-          </Typography.Paragraph>
-        </View>
-
-        <View className="w-full max-w-md gap-8">
-          <View className="gap-3">
-            <Typography.Paragraph type="small" weight="semibold">
-              You
+    <View className="flex-1 bg-background">
+      {/* Decorative conversation glow behind the content. Voice mode is
+          half-duplex, so the glow naturally follows one party at a time;
+          the phase title and description remain the accessible status. */}
+      <Soundwave
+        level={ambientLevel}
+        state={ambientVoiceState(phase)}
+        testID="gateway-voice-ambient-glow"
+        variant="ambient"
+      />
+      <ScrollView
+        className="flex-1"
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerClassName="flex-grow gap-8 px-6 py-8">
+        <View className="flex-1 items-center justify-center gap-8">
+          <View className="w-full max-w-md items-center gap-3">
+            <Typography.Heading type="h1">
+              {voicePhaseTitle(phase)}
+            </Typography.Heading>
+            <Typography.Paragraph muted className="text-center">
+              {voicePhaseDescription(phase)}
             </Typography.Paragraph>
-            <Soundwave
-              accessibilityLabel={
-                phase === 'listening'
-                  ? 'Your microphone is listening'
-                  : 'Your microphone is off'
-              }
-              bars={32}
-              height={48}
-              level={
-                voice.state.level === undefined
-                  ? undefined
-                  : dbfsToAudioLevel(voice.state.level)
-              }
-              mode="scrolling"
-              state={userWaveState(phase)}
-              testID="gateway-voice-user-wave"
-              variant="bars"
-            />
+          </View>
+
+          <View className="w-full max-w-md gap-6">
             {voice.state.userTranscript ? (
-              <Typography.Paragraph
-                selectable
-                muted
-                testID="gateway-voice-user-transcript">
-                {voice.state.userTranscript}
-              </Typography.Paragraph>
+              <View className="gap-1">
+                <Typography.Paragraph type="small" weight="semibold">
+                  You
+                </Typography.Paragraph>
+                <Typography.Paragraph
+                  selectable
+                  muted
+                  testID="gateway-voice-user-transcript">
+                  {voice.state.userTranscript}
+                </Typography.Paragraph>
+              </View>
             ) : null}
-          </View>
-
-          <View className="gap-3">
-            <Typography.Paragraph type="small" weight="semibold">
-              Wave
-            </Typography.Paragraph>
-            <Soundwave
-              accessibilityLabel={
-                phase === 'speaking' ? 'Wave is speaking' : 'Wave is waiting'
-              }
-              height={56}
-              level={voice.state.assistantAudioLevel}
-              state={assistantWaveState(phase)}
-              testID="gateway-voice-assistant-wave"
-              variant="line"
-            />
             {voice.state.assistantText ? (
-              <Typography.Paragraph
-                selectable
-                testID="gateway-voice-assistant-transcript">
-                {voice.state.assistantText}
-              </Typography.Paragraph>
+              <View className="gap-1">
+                <Typography.Paragraph type="small" weight="semibold">
+                  Wave
+                </Typography.Paragraph>
+                <Typography.Paragraph
+                  selectable
+                  testID="gateway-voice-assistant-transcript">
+                  {voice.state.assistantText}
+                </Typography.Paragraph>
+              </View>
             ) : null}
           </View>
-        </View>
 
-        {voice.state.prompt ? (
-          <View className="w-full max-w-md">
-            <PromptCard
-              busy={promptBusy}
-              error={promptError}
-              prompt={voice.state.prompt}
-              onRespond={answerPrompt}
-            />
-          </View>
-        ) : null}
+          {voice.state.prompt ? (
+            <View className="w-full max-w-md">
+              <PromptCard
+                busy={promptBusy}
+                error={promptError}
+                prompt={voice.state.prompt}
+                onRespond={answerPrompt}
+              />
+            </View>
+          ) : null}
 
-        {/* "Not set up" is a claim about the server's configuration, so it
+          {/* "Not set up" is a claim about the server's configuration, so it
             only renders when the probe actually answered — a failed probe
             keeps retrying through the query layer instead. */}
-        {speech.data && (!canListen || !canSpeak) ? (
-          <Alert
-            className="w-full max-w-md"
-            variant="default"
-            testID="gateway-voice-unavailable">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{unavailableTitle(canListen, canSpeak)}</Alert.Title>
-              <Alert.Description>
-                {unavailableDescription(canListen, canSpeak)}
-              </Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
+          {speech.data && (!canListen || !canSpeak) ? (
+            <Alert
+              className="w-full max-w-md"
+              variant="default"
+              testID="gateway-voice-unavailable">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>
+                  {unavailableTitle(canListen, canSpeak)}
+                </Alert.Title>
+                <Alert.Description>
+                  {unavailableDescription(canListen, canSpeak)}
+                </Alert.Description>
+              </Alert.Content>
+            </Alert>
+          ) : null}
 
-        {voice.state.error ? (
-          <Alert
-            className="w-full max-w-md"
-            variant="destructive"
-            testID="gateway-voice-error">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Voice mode stopped</Alert.Title>
-              <Alert.Description>{voice.state.error}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
-      </View>
+          {voice.state.error ? (
+            <Alert
+              className="w-full max-w-md"
+              variant="destructive"
+              testID="gateway-voice-error">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>Voice mode stopped</Alert.Title>
+                <Alert.Description>{voice.state.error}</Alert.Description>
+              </Alert.Content>
+            </Alert>
+          ) : null}
+        </View>
 
-      <View className="w-full max-w-md self-center gap-3">
-        {voice.state.error?.includes('microphone access') ? (
-          <Button
-            fullWidth
-            accessibilityLabel="Open microphone settings"
-            testID="gateway-voice-open-settings-button"
-            variant="outline"
-            onPress={() => void Linking.openSettings()}>
-            Open microphone settings
-          </Button>
-        ) : null}
-        {idle ? (
-          <>
+        <View className="w-full max-w-md self-center gap-3">
+          {voice.state.error?.includes('microphone access') ? (
             <Button
               fullWidth
-              accessibilityLabel="Start voice mode"
-              disabled={!canListen || !canSpeak}
-              testID="gateway-voice-primary-button"
-              onPress={() => void start()}>
-              Start voice mode
+              accessibilityLabel="Open microphone settings"
+              testID="gateway-voice-open-settings-button"
+              variant="outline"
+              onPress={() => void Linking.openSettings()}>
+              Open microphone settings
             </Button>
-            {/* The screen must be leavable without starting — with no
+          ) : null}
+          {idle ? (
+            <>
+              <Button
+                fullWidth
+                accessibilityLabel="Start voice mode"
+                disabled={!canListen || !canSpeak}
+                testID="gateway-voice-primary-button"
+                onPress={() => void start()}>
+                <MicIcon size={18} />
+                Start voice mode
+              </Button>
+              {/* The screen must be leavable without starting — with no
                 providers configured, Start is disabled and this is the only
                 exit. */}
-            <Button
-              fullWidth
-              variant="outline"
-              accessibilityLabel="Close voice mode"
-              testID="gateway-voice-close-button"
-              onPress={() => void end()}>
-              Close
-            </Button>
-          </>
-        ) : (
-          <View className="flex-row gap-3">
-            <Button
-              className="flex-1"
-              variant="outline"
-              accessibilityLabel={secondaryLabel(phase)}
-              disabled={phase === 'transcribing' || phase === 'thinking'}
-              testID="gateway-voice-secondary-button"
-              onPress={
-                phase === 'speaking' ? voice.skipSpeaking : voice.submitNow
-              }>
-              {secondaryLabel(phase)}
-            </Button>
-            <Button
-              className="flex-1"
-              variant="destructive"
-              accessibilityLabel="End voice mode"
-              testID="gateway-voice-end-button"
-              onPress={() => void end()}>
-              End
-            </Button>
-          </View>
-        )}
-      </View>
-    </ScrollView>
+              <Button
+                fullWidth
+                variant="outline"
+                accessibilityLabel="Close voice mode"
+                testID="gateway-voice-close-button"
+                onPress={() => void end()}>
+                <XIcon size={18} />
+                Close
+              </Button>
+            </>
+          ) : (
+            <View className="flex-row gap-3">
+              <Button
+                className="flex-1"
+                variant="outline"
+                accessibilityLabel={secondaryLabel(phase)}
+                disabled={phase === 'transcribing' || phase === 'thinking'}
+                testID="gateway-voice-secondary-button"
+                onPress={
+                  phase === 'speaking' ? voice.skipSpeaking : voice.submitNow
+                }>
+                {phase === 'speaking' ? (
+                  <ChevronRightIcon size={18} />
+                ) : phase === 'listening' ? (
+                  <SendIcon size={18} />
+                ) : null}
+                {secondaryLabel(phase)}
+              </Button>
+              <Button
+                className="flex-1"
+                variant="destructive"
+                accessibilityLabel="End voice mode"
+                testID="gateway-voice-end-button"
+                onPress={() => void end()}>
+                <XIcon size={18} />
+                End
+              </Button>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-function assistantWaveState(
+function ambientVoiceState(
   phase: GatewayVoicePhase,
-): 'idle' | 'speaking' | 'thinking' {
+): 'idle' | 'listening' | 'speaking' | 'thinking' {
   if (phase === 'speaking') return 'speaking';
+  if (phase === 'listening') return 'listening';
   if (phase === 'thinking' || phase === 'transcribing') return 'thinking';
   return 'idle';
 }
@@ -355,12 +365,4 @@ function unavailableDescription(canListen: boolean, canSpeak: boolean) {
 function unavailableTitle(canListen: boolean, canSpeak: boolean) {
   if (!canListen && !canSpeak) return 'Voice is not set up on this server';
   return canListen ? 'This server cannot speak' : 'This server cannot listen';
-}
-
-function userWaveState(
-  phase: GatewayVoicePhase,
-): 'idle' | 'listening' | 'thinking' {
-  if (phase === 'listening') return 'listening';
-  if (phase === 'transcribing') return 'thinking';
-  return 'idle';
 }

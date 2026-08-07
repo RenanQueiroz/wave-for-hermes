@@ -1,7 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { Alert, Button, MicIcon, Soundwave, Typography } from 'panelui-native';
+import {
+  Alert,
+  Button,
+  MicIcon,
+  RotateCcwIcon,
+  Soundwave,
+  Typography,
+  XIcon,
+} from 'panelui-native';
 import {
   useCallback,
   useEffect,
@@ -250,171 +258,167 @@ function ConnectedVoiceScreen({
   }, [stopAndRefresh]);
 
   const canStart = state.phase === 'idle' || state.phase === 'error';
+  const userLevel = state.microphoneEnabled ? state.userAudioLevel : undefined;
+  const ambientLevel =
+    userLevel !== undefined || state.assistantAudioLevel !== undefined
+      ? Math.max(userLevel ?? 0, state.assistantAudioLevel ?? 0)
+      : undefined;
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerClassName="flex-grow gap-8 px-6 py-8">
-      <View className="flex-1 items-center justify-center gap-8">
-        <View className="w-full max-w-md items-center gap-3">
-          <Typography.Heading type="h1">
-            {phaseTitle(state.phase)}
-          </Typography.Heading>
-          <Typography.Paragraph muted className="text-center">
-            {phaseDescription(state.phase)}
-          </Typography.Paragraph>
-          {ephemeralTranscripts ? (
-            <Typography.Paragraph
-              muted
-              className="text-center text-xs"
-              testID="voice-ephemeral-note">
-              Live voice is not saved to this chat. Work Wave hands to Hermes
-              shows up in the conversation afterward.
+    <View className="flex-1 bg-background">
+      {/* Decorative conversation glow behind the content: one bloom breathing
+          on whichever party is louder. Missing native stats leave the level
+          undefined so the phase animation carries it; the phase title and
+          description remain the accessible status. */}
+      <Soundwave
+        level={ambientLevel}
+        state={ambientVoiceState(state.phase)}
+        testID="voice-ambient-glow"
+        variant="ambient"
+      />
+      <ScrollView
+        className="flex-1"
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerClassName="flex-grow gap-8 px-6 py-8">
+        <View className="flex-1 items-center justify-center gap-8">
+          <View className="w-full max-w-md items-center gap-3">
+            <Typography.Heading type="h1">
+              {phaseTitle(state.phase)}
+            </Typography.Heading>
+            <Typography.Paragraph muted className="text-center">
+              {phaseDescription(state.phase)}
             </Typography.Paragraph>
+            {ephemeralTranscripts ? (
+              <Typography.Paragraph
+                muted
+                className="text-center text-xs"
+                testID="voice-ephemeral-note">
+                Live voice is not saved to this chat. Work Wave hands to Hermes
+                shows up in the conversation afterward.
+              </Typography.Paragraph>
+            ) : null}
+          </View>
+
+          <View className="w-full max-w-md gap-6">
+            {state.userTranscript ? (
+              <View className="gap-1">
+                <Typography.Paragraph type="small" weight="semibold">
+                  You
+                </Typography.Paragraph>
+                <Typography.Paragraph
+                  selectable
+                  muted
+                  testID="voice-user-transcript">
+                  {state.userTranscript}
+                </Typography.Paragraph>
+              </View>
+            ) : null}
+            {state.assistantTranscript ? (
+              <View className="gap-1">
+                <Typography.Paragraph type="small" weight="semibold">
+                  Wave
+                </Typography.Paragraph>
+                <Typography.Paragraph
+                  selectable
+                  testID="voice-assistant-transcript">
+                  {state.assistantTranscript}
+                </Typography.Paragraph>
+              </View>
+            ) : null}
+          </View>
+
+          {state.error ? (
+            <Alert
+              className="w-full max-w-md"
+              variant="destructive"
+              testID="voice-error">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>Live voice interrupted</Alert.Title>
+                <Alert.Description>{state.error.message}</Alert.Description>
+              </Alert.Content>
+            </Alert>
           ) : null}
         </View>
 
-        <View className="w-full max-w-md gap-8">
-          <View className="gap-3">
-            <Typography.Paragraph type="small" weight="semibold">
-              You
-            </Typography.Paragraph>
-            <Soundwave
-              accessibilityLabel={userWaveLabel(state.phase)}
-              bars={32}
-              height={48}
-              level={state.microphoneEnabled ? state.userAudioLevel : 0}
-              mode="scrolling"
-              state={userWaveState(state.phase)}
-              testID="voice-user-wave"
-              variant="bars"
-            />
-            {state.userTranscript ? (
-              <Typography.Paragraph
-                selectable
-                muted
-                testID="voice-user-transcript">
-                {state.userTranscript}
-              </Typography.Paragraph>
-            ) : null}
-          </View>
-
-          <View className="gap-3">
-            <Typography.Paragraph type="small" weight="semibold">
-              Wave
-            </Typography.Paragraph>
-            <Soundwave
-              accessibilityLabel={assistantWaveLabel(state.phase)}
-              height={56}
-              level={state.assistantAudioLevel}
-              state={assistantWaveState(state.phase)}
-              testID="voice-assistant-wave"
-              variant="line"
-            />
-            {state.assistantTranscript ? (
-              <Typography.Paragraph
-                selectable
-                testID="voice-assistant-transcript">
-                {state.assistantTranscript}
-              </Typography.Paragraph>
-            ) : null}
-          </View>
-        </View>
-
-        {state.error ? (
-          <Alert
-            className="w-full max-w-md"
-            variant="destructive"
-            testID="voice-error">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Live voice interrupted</Alert.Title>
-              <Alert.Description>{state.error.message}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
-      </View>
-
-      <View className="w-full max-w-md self-center gap-3">
-        {state.error?.kind === 'media_permission' ? (
-          <Button
-            fullWidth
-            accessibilityLabel="Open microphone settings"
-            testID="voice-open-settings-button"
-            variant="outline"
-            onPress={() => void Linking.openSettings()}>
-            Open microphone settings
-          </Button>
-        ) : null}
-        {state.error?.kind === 'model_unavailable' ? (
-          <Button
-            fullWidth
-            accessibilityLabel="Choose a different Realtime model"
-            testID="voice-open-model-settings-button"
-            variant="outline"
-            onPress={() => router.replace('/settings')}>
-            Review model in Settings
-          </Button>
-        ) : null}
-        {state.cleanupPending ? (
-          <Button
-            fullWidth
-            accessibilityLabel="Retry ending call"
-            testID="voice-primary-button"
-            onPress={retryStop}>
-            Retry ending call
-          </Button>
-        ) : canStart ? (
-          <Button
-            fullWidth
-            accessibilityLabel="Start voice"
-            testID="voice-primary-button"
-            onPress={start}>
-            Start voice
-          </Button>
-        ) : (
-          <View className="flex-row gap-3">
+        <View className="w-full max-w-md self-center gap-3">
+          {state.error?.kind === 'media_permission' ? (
             <Button
-              className="flex-1"
+              fullWidth
+              accessibilityLabel="Open microphone settings"
+              testID="voice-open-settings-button"
               variant="outline"
-              accessibilityLabel={
-                state.microphoneEnabled
-                  ? 'Mute microphone'
-                  : 'Unmute microphone'
-              }
-              testID="voice-microphone-button"
-              onPress={() =>
-                controller.setMicrophoneEnabled(!state.microphoneEnabled)
-              }>
-              <MicIcon size={18} />
-              {state.microphoneEnabled ? 'Mute' : 'Unmute'}
+              onPress={() => void Linking.openSettings()}>
+              Open microphone settings
             </Button>
+          ) : null}
+          {state.error?.kind === 'model_unavailable' ? (
             <Button
-              className="flex-1"
-              variant="destructive"
-              accessibilityLabel="End live voice"
-              testID="voice-end-button"
-              onPress={() => void end()}>
-              End
+              fullWidth
+              accessibilityLabel="Choose a different Realtime model"
+              testID="voice-open-model-settings-button"
+              variant="outline"
+              onPress={() => router.replace('/settings')}>
+              Review model in Settings
             </Button>
-          </View>
-        )}
-      </View>
-    </ScrollView>
+          ) : null}
+          {state.cleanupPending ? (
+            <Button
+              fullWidth
+              accessibilityLabel="Retry ending call"
+              testID="voice-primary-button"
+              onPress={retryStop}>
+              <RotateCcwIcon size={18} />
+              Retry ending call
+            </Button>
+          ) : canStart ? (
+            <Button
+              fullWidth
+              accessibilityLabel="Start voice"
+              testID="voice-primary-button"
+              onPress={start}>
+              <MicIcon size={18} />
+              Start voice
+            </Button>
+          ) : (
+            <View className="flex-row gap-3">
+              <Button
+                className="flex-1"
+                variant="outline"
+                accessibilityLabel={
+                  state.microphoneEnabled
+                    ? 'Mute microphone'
+                    : 'Unmute microphone'
+                }
+                testID="voice-microphone-button"
+                onPress={() =>
+                  controller.setMicrophoneEnabled(!state.microphoneEnabled)
+                }>
+                <MicIcon size={18} />
+                {state.microphoneEnabled ? 'Mute' : 'Unmute'}
+              </Button>
+              <Button
+                className="flex-1"
+                variant="destructive"
+                accessibilityLabel="End live voice"
+                testID="voice-end-button"
+                onPress={() => void end()}>
+                <XIcon size={18} />
+                End
+              </Button>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-function assistantWaveLabel(phase: WaveRealtimePhase) {
-  return phase === 'assistant_speaking'
-    ? 'Wave is speaking'
-    : 'Wave is waiting';
-}
-
-function assistantWaveState(
+function ambientVoiceState(
   phase: WaveRealtimePhase,
-): 'idle' | 'speaking' | 'thinking' {
+): 'idle' | 'listening' | 'speaking' | 'thinking' {
   if (phase === 'assistant_speaking') return 'speaking';
+  if (phase === 'user_speaking' || phase === 'listening') return 'listening';
   if (
     phase === 'connecting' ||
     phase === 'reconnecting' ||
@@ -470,27 +474,4 @@ function phaseTitle(phase: WaveRealtimePhase) {
     case 'idle':
       return 'Live voice';
   }
-}
-
-function userWaveLabel(phase: WaveRealtimePhase) {
-  return phase === 'user_speaking'
-    ? 'Your microphone is receiving speech'
-    : 'Your microphone is listening';
-}
-
-function userWaveState(
-  phase: WaveRealtimePhase,
-): 'idle' | 'listening' | 'thinking' {
-  if (phase === 'user_speaking' || phase === 'listening') {
-    return 'listening';
-  }
-  if (
-    phase === 'connecting' ||
-    phase === 'reconnecting' ||
-    phase === 'requesting_permission' ||
-    phase === 'stopping'
-  ) {
-    return 'thinking';
-  }
-  return 'idle';
 }

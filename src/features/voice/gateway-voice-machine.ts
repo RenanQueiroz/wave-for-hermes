@@ -17,10 +17,12 @@ export const MIN_UTTERANCE_MS = 500;
 /** Silence that ends an utterance. */
 export const SILENCE_HOLD_MS = 1_200;
 /**
- * Consecutive above-threshold samples before the silence countdown resets.
- * Real speech always sustains across polls; an isolated peak (a rustle, a
- * distant noise — Android meters peaks) must not restart the whole hold,
- * which is what made auto-send feel slow "sometimes" on the Pixel.
+ * Consecutive above-threshold samples before speech counts at all: for
+ * latching "this recording contained speech" and for resetting the silence
+ * countdown. Real speech always sustains across polls; an isolated peak (a
+ * rustle, a keyboard clack — Android meters peaks) must neither restart the
+ * hold nor, worse, latch an all-noise recording as speech and auto-submit
+ * it after the hold elapses.
  */
 export const SUSTAINED_SPEECH_SAMPLES = 2;
 /** A single utterance never runs longer than this. */
@@ -106,14 +108,15 @@ export function observeUtterance(
     sample.level > utteranceSpeechThreshold({ ...tracker, recentLevels });
   const speakingStreak = speaking ? tracker.speakingStreak + 1 : 0;
   const sustained = speakingStreak >= SUSTAINED_SPEECH_SAMPLES;
-  // The countdown measures silence AFTER speech. The first heard speech
+  // The countdown measures silence AFTER speech. The first sustained speech
   // discards any leading silence (else the opening word of an utterance
   // that followed a long quiet would submit itself instantly); sustained
-  // speech keeps resetting it; an isolated blip mid-pause merely holds it,
-  // so a stray peak — Android meters peaks — cannot restart the whole hold.
-  const firstSpeech = speaking && !tracker.heardSpeech;
+  // speech keeps resetting it; an isolated blip mid-pause merely holds it.
+  // Only sustained speech latches heardSpeech — a stray peak must not turn
+  // an all-noise recording into a submittable utterance.
+  const firstSpeech = sustained && !tracker.heardSpeech;
   const next: UtteranceTracker = {
-    heardSpeech: tracker.heardSpeech || speaking,
+    heardSpeech: tracker.heardSpeech || sustained,
     recentLevels,
     silentForMs:
       sustained || firstSpeech

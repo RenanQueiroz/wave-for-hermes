@@ -959,7 +959,9 @@ function ConnectedChatScreen({
                 disabled={chat.state.status === 'cancelling'}
                 testID="chat-stop-button"
                 onPress={() => void chat.stop()}>
-                ■
+                {/* A drawn square: the icon set has no stop glyph, and a
+                    text character sits off-baseline and renders unevenly. */}
+                <View className="h-3.5 w-3.5 rounded-[2px] bg-foreground" />
               </Button>
             ) : input.trim() ? (
               <View

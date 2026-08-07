@@ -47,8 +47,12 @@ test('ends an utterance on a held silence that followed real speech', () => {
   }
   assert.equal(tracker.heardSpeech, false);
 
-  // Speech, then a pause shorter than the hold: still listening.
+  // One speech-loud sample alone is not yet speech — only sustained
+  // speech (two consecutive samples) latches the recording as speech, so
+  // a stray peak can never make an all-noise recording submittable.
   assert.deepEqual(feed(-15), { type: 'continue' });
+  assert.equal(tracker.heardSpeech, false);
+  assert.deepEqual(feed(-14), { type: 'continue' });
   assert.equal(tracker.heardSpeech, true);
   const shortPause = Math.floor(SILENCE_HOLD_MS / interval) - 1;
   for (let i = 0; i < shortPause; i += 1) {
@@ -100,8 +104,10 @@ test('ends an utterance on Android-style peak metering over a loud floor', () =>
   }
   assert.equal(tracker.heardSpeech, false);
 
-  // Speech peaks well above the floor register as speech.
+  // Sustained speech peaks well above the floor register as speech.
   assert.deepEqual(feed(-10), { type: 'continue' });
+  assert.equal(tracker.heardSpeech, false);
+  assert.deepEqual(feed(-9), { type: 'continue' });
   assert.equal(tracker.heardSpeech, true);
 
   // Back to the same loud room tone: silence accumulates and submits.
@@ -221,4 +227,31 @@ test('describes every voice phase for the user', () => {
     assert.ok(voicePhaseDescription(phase).length > 0);
   }
   assert.notEqual(voicePhaseTitle('listening'), voicePhaseTitle('speaking'));
+});
+
+test('a stray peak in a silent room never becomes a submittable utterance', () => {
+  // The reported bug: Android peak metering registers a chair scrape or
+  // keyboard clack as one loud sample; the old tracker latched heardSpeech
+  // on it and auto-submitted pure room noise after the silence hold.
+  const interval = 250;
+  let tracker = initialUtteranceTracker;
+  let elapsed = 0;
+  const feed = (level: number) => {
+    elapsed += interval;
+    const result = observeUtterance(
+      tracker,
+      { elapsedMs: elapsed, level },
+      interval,
+    );
+    tracker = result.tracker;
+    return result.decision;
+  };
+
+  for (let i = 0; i < 8; i += 1) feed(-60);
+  // One isolated clack, then a long silence: no submission, ever.
+  feed(-12);
+  for (let i = 0; i < 40; i += 1) {
+    assert.deepEqual(feed(-60), { type: 'continue' });
+  }
+  assert.equal(tracker.heardSpeech, false);
 });

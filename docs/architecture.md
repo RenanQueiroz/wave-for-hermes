@@ -104,9 +104,12 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   at a time; and `use-gateway-voice.ts` drives the continuous loop — listen, transcribe, run the
   transcript as an ordinary turn, speak the reply — abandoning any cycle whose generation has
   been superseded by stop or unmount. Recordings are mono 16 kHz, uploaded as a data URL, and
-  deleted from the device cache immediately afterwards. The user waveform consumes the recorder's
-  dBFS meter, and the assistant waveform consumes ephemeral normalized PCM samples from audio that
-  `expo-audio` is already playing; neither samples nor level history are retained. The affordances
+  deleted from the device cache immediately afterwards. Both voice screens render one decorative
+  Soundwave ambient glow behind the content, breathing on the instantaneous maximum of the user
+  and assistant levels (recorder dBFS meter and ephemeral playback PCM for gateway voice; local
+  and remote WebRTC stats for Realtime); missing levels degrade to the phase animation, neither
+  samples nor level history are retained, and the phase title/description stay the accessible
+  status. The affordances
   are gated on a cached probe of what the server actually has configured, and disable with honest
   copy when it has neither provider.
 - `src/native/pcm-player.ts` is the one Wave owner for `react-native-audio-api`'s native
