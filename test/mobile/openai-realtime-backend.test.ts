@@ -292,3 +292,23 @@ test('backend wires active execution to acknowledged correction availability', a
   );
   await backend.endRealtimeCall('call-wiring');
 });
+
+test('input transcription is opt-in and uses the turn-committed model', () => {
+  // Default: no transcription block — captions bill separately on the
+  // user's key, so fresh installs pay nothing extra.
+  const off = createOpenAiRealtimeSessionConfig(
+    'gpt-realtime-2.1-mini',
+    'marin',
+  );
+  assert.equal(JSON.stringify(off).includes('transcription'), false);
+
+  const on = createOpenAiRealtimeSessionConfig(
+    'gpt-realtime-2.1-mini',
+    'marin',
+    true,
+  );
+  assert.deepEqual(
+    (on.audio.input as { transcription?: { model: string } }).transcription,
+    { model: 'gpt-transcribe' },
+  );
+});

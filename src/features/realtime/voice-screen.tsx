@@ -29,6 +29,7 @@ import {
   type RealtimeBackend,
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
+import { realtimeCaptionPreferenceStore } from '@/features/realtime/realtime-caption-preference';
 import {
   realtimeVoicePreferenceQueryKey,
   realtimeVoicePreferenceStore,
@@ -56,7 +57,13 @@ export function KeyedRealtimeVoiceScreen({
 }) {
   const { state: connection } = useWaveConnection();
   const [configuration, setConfiguration] = useState<
-    { apiKey: string; model: WaveRealtimeModelId } | null | undefined
+    | {
+        apiKey: string;
+        captions: boolean;
+        model: WaveRealtimeModelId;
+      }
+    | null
+    | undefined
   >(undefined);
 
   useEffect(() => {
@@ -64,10 +71,11 @@ export function KeyedRealtimeVoiceScreen({
     void Promise.all([
       openAiKeyStore.load(),
       realtimeModelPreferenceStore.load(),
+      realtimeCaptionPreferenceStore.load(),
     ])
-      .then(([apiKey, model]) => {
+      .then(([apiKey, model, captions]) => {
         if (!cancelled) {
-          setConfiguration(apiKey ? { apiKey, model } : null);
+          setConfiguration(apiKey ? { apiKey, captions, model } : null);
         }
       })
       .catch(() => {
@@ -94,6 +102,7 @@ export function KeyedRealtimeVoiceScreen({
       connectionId={connection.identity.id}
       model={configuration.model}
       sessionId={sessionId}
+      transcribeInput={configuration.captions}
     />
   );
 }
@@ -105,6 +114,7 @@ function KeyedRealtimeVoiceScreenReady({
   connectionId,
   model,
   sessionId,
+  transcribeInput,
 }: {
   apiKey: string;
   baseUrl: string;
@@ -112,6 +122,7 @@ function KeyedRealtimeVoiceScreenReady({
   connectionId: string;
   model: WaveRealtimeModelId;
   sessionId: string;
+  transcribeInput: boolean;
 }) {
   const backend = useMemo(
     () =>
@@ -126,8 +137,9 @@ function KeyedRealtimeVoiceScreenReady({
           sessionId,
         }),
         model,
+        transcribeInput,
       }),
-    [apiKey, client, model, sessionId],
+    [apiKey, client, model, sessionId, transcribeInput],
   );
   return (
     <ConnectedVoiceScreen

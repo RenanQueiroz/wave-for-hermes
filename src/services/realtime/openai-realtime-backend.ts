@@ -64,6 +64,8 @@ export interface OpenAiRealtimeBackendOptions {
   ): Promise<WaveCorrectHermesToolResult>;
   fetchImpl?: typeof globalThis.fetch;
   model?: WaveRealtimeModelId;
+  /** Opt-in paid captions of the user's speech; snapshotted per call. */
+  transcribeInput?: boolean;
   socketFactory?: (url: string, apiKey: string) => WebSocket;
 }
 
@@ -80,6 +82,7 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly model: WaveRealtimeModelId;
   private readonly socketFactory: (url: string, apiKey: string) => WebSocket;
+  private readonly transcribeInput: boolean;
 
   constructor(options: OpenAiRealtimeBackendOptions) {
     this.apiKey = options.apiKey;
@@ -97,6 +100,7 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
     // A backend snapshots one app-validated model for its entire lifetime.
     // Settings changes therefore apply only after a new backend/call exists.
     this.model = model;
+    this.transcribeInput = options.transcribeInput === true;
     this.socketFactory =
       options.socketFactory ??
       ((url, apiKey) => {
@@ -125,7 +129,11 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
     form.append(
       'session',
       JSON.stringify(
-        createOpenAiRealtimeSessionConfig(this.model, voiceId ?? 'marin'),
+        createOpenAiRealtimeSessionConfig(
+          this.model,
+          voiceId ?? 'marin',
+          this.transcribeInput,
+        ),
       ),
     );
 
@@ -272,6 +280,7 @@ function parseCallId(location: string | null): string | undefined {
 export function createOpenAiRealtimeSessionConfig(
   model: WaveRealtimeModelId,
   voice: WaveRealtimeVoiceId,
+  transcribeInput = false,
 ) {
   if (!isWaveRealtimeModelId(model)) {
     throw new OpenAiRealtimeBackendError(
@@ -283,9 +292,14 @@ export function createOpenAiRealtimeSessionConfig(
     audio: {
       input: {
         noise_reduction: { type: 'near_field' },
-        // Display-only: the live "You" transcript on the voice screen.
-        // Nothing is stored — Realtime transcripts stay ephemeral.
-        transcription: { model: 'gpt-4o-mini-transcribe' },
+        // Display-only live captions of the user's speech, opt-in from
+        // Settings because transcription bills separately on the user's
+        // key. gpt-transcribe transcribes each committed turn — exactly
+        // the one final event Wave consumes — instead of streaming deltas
+        // it would ignore. Nothing is stored; transcripts stay ephemeral.
+        ...(transcribeInput
+          ? { transcription: { model: 'gpt-transcribe' } }
+          : {}),
         turn_detection: {
           create_response: true,
           interrupt_response: true,

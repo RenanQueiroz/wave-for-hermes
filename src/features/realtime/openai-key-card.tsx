@@ -14,6 +14,10 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import {
+  realtimeCaptionPreferenceQueryKey,
+  realtimeCaptionPreferenceStore,
+} from '@/features/realtime/realtime-caption-preference';
+import {
   openAiKeyStore,
   OPENAI_KEY_PATTERN,
 } from '@/services/realtime/openai-key-store';
@@ -94,6 +98,19 @@ export function OpenAiKeyCard() {
       openAiKeyStore.saveRealtimeEnabled(enabled),
     onSettled: () => void invalidate(),
   });
+  const captions = useQuery({
+    queryFn: () => realtimeCaptionPreferenceStore.load(),
+    queryKey: realtimeCaptionPreferenceQueryKey,
+    staleTime: Infinity,
+  });
+  const setCaptions = useMutation({
+    mutationFn: (enabled: boolean) =>
+      realtimeCaptionPreferenceStore.save(enabled),
+    onSettled: () =>
+      void queryClient.invalidateQueries({
+        queryKey: realtimeCaptionPreferenceQueryKey,
+      }),
+  });
 
   const hasKey = state.data?.hasKey === true;
   const realtimeEnabled = state.data?.realtimeEnabled !== false;
@@ -139,6 +156,24 @@ export function OpenAiKeyCard() {
                   disabled={setRealtimeEnabled.isPending}
                   value={realtimeEnabled}
                   onValueChange={(value) => setRealtimeEnabled.mutate(value)}
+                />
+              </View>
+            </View>
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-1 gap-0.5">
+                <Typography.Paragraph weight="medium">
+                  Live captions
+                </Typography.Paragraph>
+                <Typography.Paragraph muted type="body-sm">
+                  Show what you said during live voice. Adds about half a cent
+                  per minute of transcription billed to your key.
+                </Typography.Paragraph>
+              </View>
+              <View testID="realtime-captions-switch">
+                <Switch
+                  disabled={setCaptions.isPending || captions.isPending}
+                  value={captions.data === true}
+                  onValueChange={(value) => setCaptions.mutate(value)}
                 />
               </View>
             </View>

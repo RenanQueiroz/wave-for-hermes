@@ -49,7 +49,10 @@ one deliberate exception to "the mobile process never holds an upstream key."
   env-var name in exported bundles, reporting a label rather than the match.
 - Model choice is a separate strict versioned device preference, not key material. Only the two
   app-supported ids can reach call setup; missing, corrupt, or retired values become
-  `gpt-realtime-2.1-mini`, and the selected id is snapshotted for the call. A setup rejection is
+  `gpt-realtime-2.1-mini`, and the selected id is snapshotted for the call. Live captions of the
+  user's speech are a separate strict versioned preference, off by default because input
+  transcription bills separately on the user's key; when enabled, calls request the fixed
+  `gpt-transcribe` model and the transcript remains display-only and ephemeral. A setup rejection is
   attempted once and becomes bounded model-setting guidance without parsing or displaying the
   OpenAI response body.
 - Realtime tool calls are validated client-side. `ask_hermes` uses strict arguments, trusted
