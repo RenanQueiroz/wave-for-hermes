@@ -1211,10 +1211,11 @@ const ChatTurn = memo(
 );
 
 /**
- * The turn's reasoning trace: PanelUI's Reasoning disclosure over bounded
- * inert plain text. A live trace streams (shimmering trigger, self-measured
- * duration, auto-open/close); a stored trace arrives folded under a plain
- * "Reasoning" label. Never markdown, never content-derived behavior.
+ * The turn's reasoning trace: PanelUI's Reasoning disclosure over the same
+ * bounded `Response` markdown pipeline assistant text uses (model-authored
+ * prose, links outside the allowlist stay inert). A live trace streams
+ * (shimmering trigger, self-measured duration, auto-open/close); a stored
+ * trace arrives folded under a plain "Reasoning" label.
  */
 function ChatReasoning({
   reasoning,
@@ -1245,9 +1246,16 @@ function ChatReasoning({
             })}
       />
       <Reasoning.Content testID={`${testID}-content`}>
-        {reasoning.truncated
-          ? `${reasoning.text}\n\n(truncated)`
-          : reasoning.text}
+        {/* Same markdown pipeline as the final response, dimmed as a
+            subtree so the trace reads as background thought, not answer. */}
+        <View className="opacity-70">
+          <Response isStreaming={streaming === true}>{reasoning.text}</Response>
+        </View>
+        {reasoning.truncated ? (
+          <Typography className="text-sm text-muted-foreground">
+            (truncated)
+          </Typography>
+        ) : null}
       </Reasoning.Content>
     </Reasoning>
   );

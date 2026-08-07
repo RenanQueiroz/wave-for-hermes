@@ -196,8 +196,8 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   agent output is full width — assistant text through `Response` markdown (streaming tail via
   `isStreaming`, sealed and completed text parsed once), tool and handoff records as `Marker`
   action rows with bounded one-line derived labels, a per-turn `Reasoning` disclosure over the
-  bounded inert reasoning trace (streaming live, folded for history), and waiting states as
-  `Shimmer` text. The
+  bounded reasoning trace rendered with the same `Response` markdown pipeline (streaming live,
+  folded for history), and waiting states as `Shimmer` text. The
   Wave-owned `ConversationScroller` wraps Legend List with the transcript scroll contract
   (at-end pinning, jump-to-newest, stable prepends, anchored opening). Raw tool input/output is
   not displayed; upstream event shapes, call IDs, run IDs, and credentials never enter the

@@ -75,7 +75,8 @@ absent or malformed.
 - **Reasoning**: live turns may carry `reasoning.delta` frames (emission gated by the server's
   `show_reasoning` setting), and stored assistant rows may carry plain-text `reasoning`,
   `reasoning_content`, or a string `reasoning_details` — normalized with Hermes Desktop's
-  precedence into one bounded, truncated, inert Wave trace per assistant message. Opaque provider
+  precedence into one bounded, truncated Wave trace per assistant message (rendered through the
+  same markdown pipeline as assistant text). Opaque provider
   reasoning structures never cross. Codex providers additionally narrate progress on a commentary
   channel (`show_commentary`, default on): completed commentary arrives as ordinary
   `message.interim` segments, so the reasoning trace holds only private reasoning.
