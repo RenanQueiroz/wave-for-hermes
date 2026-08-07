@@ -8,27 +8,33 @@ import type { WaveTimelineResponse, WaveTurnInput } from '@wave/contracts';
 import { Redirect, Stack, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
+  AlertTriangleIcon,
   Attachment,
   BottomSheet,
   Button,
+  ChevronRightIcon,
+  CircleIcon,
   FileIcon,
   ImageIcon,
   InputGroup,
   KeyboardAvoider,
+  LinkIcon,
+  Marker,
   Message,
   PaperclipIcon,
   MicIcon,
+  PencilIcon,
   PlayIcon,
   PlusIcon,
   Response,
   // RotateCcwIcon deliberately: the package's runtime entry exports only the
   // counter-clockwise variant even though the typings declare both.
   RotateCcwIcon,
-  ScrollFade,
+  SearchIcon,
   SendIcon,
   Shimmer,
   Soundwave,
-  Task,
+  SparklesIcon,
   Typography,
   XIcon,
 } from 'panelui-native';
@@ -40,18 +46,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import {
-  Keyboard,
-  Pressable,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { Keyboard, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
 import { CameraIcon } from '@/components/icons/camera-icon';
-import { LegendList } from '@/components/legend-list';
+import { ConversationScroller } from '@/components/conversation-scroller';
 import { OfflineNotice } from '@/components/offline-notice';
 import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
@@ -63,12 +63,12 @@ import {
   type WaveChatMessage,
   type WaveChatPart,
 } from '@/features/chat/chat-state';
+import { initialConversationAnchor } from '@/features/chat/conversation-anchor';
 import {
   deriveToolAction,
   toolActionLabel,
 } from '@/features/chat/tool-actions';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
-import { isNearTimelineEnd } from '@/features/chat/timeline-scroll';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useWaveConnection } from '@/features/connection/connection-provider';
 import { useDictation } from '@/features/voice/use-dictation';
@@ -629,20 +629,6 @@ function ConnectedChatScreen({
     ],
   );
 
-  // Legend List gates its maintain-at-end scroll on a cached flag that can go
-  // stale mid-momentum, which yanked the list to the newest message while the
-  // user was reading far-back history and a refetch replaced `data`. Gate the
-  // pin on fresh scroll geometry instead: far from the end, no data change is
-  // allowed to move the list. Starts true because the list opens at the end.
-  const [nearEnd, setNearEnd] = useState(true);
-  const trackNearEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const next = isNearTimelineEnd(event.nativeEvent);
-      setNearEnd((previous) => (previous === next ? previous : next));
-    },
-    [],
-  );
-
   return (
     <View className="flex-1 bg-background">
       {headerTitle ? <Stack.Screen options={{ title: headerTitle }} /> : null}
@@ -693,51 +679,38 @@ function ConnectedChatScreen({
       ) : null}
 
       <View className="flex-1">
-        {/* Orientation is explicit: ScrollFade cannot infer it from a
-            virtualized list the way it can from a ScrollView. */}
-        <ScrollFade className="flex-1" orientation="vertical" size={40}>
-          <LegendList
-            alignItemsAtEnd
-            initialScrollAtEnd
-            maintainScrollAtEnd={nearEnd}
-            // Wide enough that one streaming markdown block (table, fence)
-            // cannot outgrow the at-end band in a single layout pass; the
-            // looser isNearTimelineEnd veto still protects far-back reading.
-            maintainScrollAtEndThreshold={0.3}
-            maintainVisibleContentPosition
-            onScroll={trackNearEnd}
-            // Turns hold disclosure state (expanded Tasks), which recycled
-            // rows would carry between messages — so no recycling; the draw
-            // buffer covers fast flings instead.
-            recycleItems={false}
-            drawDistance={500}
-            className="flex-1"
-            contentContainerClassName="px-4 py-3"
-            data={messages}
-            extraData={rowExtraData}
-            ItemSeparatorComponent={ChatTurnSeparator}
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            keyExtractor={(message) => message.id}
-            ListFooterComponent={
-              chat.state.status === 'submitting' ? (
-                <Thinking label={activityLabel ?? 'Working…'} />
-              ) : null
+        <ConversationScroller
+          initialAnchor={initialConversationAnchor}
+          // Turns hold disclosure state (open Tasks), which recycled rows
+          // would carry between messages — so no recycling; the draw buffer
+          // covers fast flings instead.
+          recycleItems={false}
+          drawDistance={500}
+          contentContainerClassName="px-4 py-3"
+          data={messages}
+          extraData={rowExtraData}
+          ItemSeparatorComponent={ChatTurnSeparator}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={(message) => message.id}
+          ListFooterComponent={
+            chat.state.status === 'submitting' ? (
+              <Thinking label={activityLabel ?? 'Working…'} />
+            ) : null
+          }
+          ListHeaderComponent={
+            timeline.isPending || timeline.isFetchingNextPage ? (
+              <Thinking label="Loading conversation…" />
+            ) : null
+          }
+          onStartReached={() => {
+            if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
+              void timeline.fetchNextPage();
             }
-            ListHeaderComponent={
-              timeline.isPending || timeline.isFetchingNextPage ? (
-                <Thinking label="Loading conversation…" />
-              ) : null
-            }
-            onStartReached={() => {
-              if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
-                void timeline.fetchNextPage();
-              }
-            }}
-            onStartReachedThreshold={0.25}
-            renderItem={renderItem}
-          />
-        </ScrollFade>
+          }}
+          onStartReachedThreshold={0.25}
+          renderItem={renderItem}
+        />
         {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"
@@ -748,8 +721,8 @@ function ConnectedChatScreen({
             </Typography.Heading>
             <Typography.Paragraph muted className="text-center">
               {pendingSession
-                ? 'Chat naturally. Wave delegates work when your Hermes agent is needed.'
-                : 'This conversation is on your Hermes server without any messages Wave can show. Send one to continue it here.'}
+                ? 'Chat naturally with your Hermes agent.'
+                : 'This conversation is on your Hermes server but has no messages yet. Send one to continue it here.'}
             </Typography.Paragraph>
           </View>
         ) : null}
@@ -898,7 +871,7 @@ function ConnectedChatScreen({
               style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
               <Button
                 size="icon"
-                variant="secondary"
+                variant="ghost"
                 accessibilityLabel="Add an attachment"
                 disabled={busy || composerBlocked}
                 className="rounded-full"
@@ -912,6 +885,24 @@ function ConnectedChatScreen({
                 <PlusIcon size={20} />
               </Button>
             </View>
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            multiline
+            accessibilityLabel={
+              busy ? 'Correct the current response' : 'Ask anything'
+            }
+            className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
+            placeholder={busy ? 'Add a correction' : 'Ask anything'}
+            // Clears the overlaid buttons: one prefix button on the left,
+            // mic plus trailing action on the right.
+            style={{ paddingLeft: 60, paddingRight: canDictate ? 104 : 56 }}
+            submitBehavior="submit"
+            testID="chat-composer-input"
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={submitComposer}
+          />
+          <InputGroup.Suffix className="flex-row items-center gap-1 px-2">
             {canDictate ? (
               <View
                 style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
@@ -920,7 +911,7 @@ function ConnectedChatScreen({
                   variant={
                     dictation.state.status === 'recording'
                       ? 'destructive'
-                      : 'secondary'
+                      : 'ghost'
                   }
                   accessibilityLabel={
                     dictation.state.status === 'recording'
@@ -936,22 +927,6 @@ function ConnectedChatScreen({
                 </Button>
               </View>
             ) : null}
-          </InputGroup.Prefix>
-          <InputGroup.Input
-            multiline
-            accessibilityLabel={busy ? 'Correct Wave response' : 'Message Wave'}
-            className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
-            placeholder={busy ? 'Add a correction' : 'Message Wave'}
-            // Clears the prefix buttons, which the InputGroup overlays on the
-            // field: 8 padding + 44 attachment + 44 mic + spacing.
-            style={{ paddingLeft: canDictate ? 116 : 60, paddingRight: 56 }}
-            submitBehavior="submit"
-            testID="chat-composer-input"
-            value={input}
-            onChangeText={setInput}
-            onSubmitEditing={submitComposer}
-          />
-          <InputGroup.Suffix className="px-2">
             {correcting ? (
               <Button
                 size="icon"
@@ -1145,7 +1120,10 @@ const ChatTurn = memo(
   }) {
     if (message.role === 'user') {
       return (
-        <Message align="end" testID={`chat-message-${message.id}`}>
+        <Message
+          align="end"
+          className="my-2"
+          testID={`chat-message-${message.id}`}>
           <Message.Content>
             {message.parts.map((part, index) =>
               part.type === 'text' ? (
@@ -1220,54 +1198,75 @@ const ChatTurn = memo(
 
 /**
  * One contiguous run of tool calls (and handoffs) inside an assistant turn:
- * a Task whose title summarizes the run and whose body lists each call as a
- * bounded one-line action. Raw tool input/output is never displayed.
+ * each call is a Marker row — an action taken, not a message spoken — with
+ * a bounded one-line label. Raw tool input/output is never displayed, and
+ * there is deliberately no disclosure affordance.
  */
 function ChatToolRun({
   parts,
 }: {
   parts: Extract<WaveChatPart, { type: 'task' }>[];
 }) {
-  const actions = parts.map((part) => ({
-    action: deriveToolAction(part),
-    part,
-  }));
-  const live = parts.some(
-    (part) => part.status === 'running' || part.status === 'pending',
-  );
-  const failed = parts.some((part) => part.status === 'error');
-  const status = live ? 'running' : failed ? 'error' : 'complete';
-  const runningAction = [...actions]
-    .reverse()
-    .find(({ part }) => part.status === 'running');
-  const title = live
-    ? runningAction
-      ? toolActionLabel(runningAction.action)
-      : 'Working…'
-    : parts.length === 1
-      ? toolActionLabel(actions[0].action)
-      : `${parts.length} actions`;
-  const runId = parts[0].id;
-
   return (
-    <Task defaultOpen status={status} testID={`chat-tools-${runId}`}>
-      <Task.Trigger
-        accessibilityLabel={`${title}. ${toolStatusDescription(status)}`}
-        testID={`chat-tools-${runId}-trigger`}
-        title={title}
-      />
-      {parts.length > 1 ? (
-        <Task.Content>
-          {actions.map(({ action, part }) => (
-            <Task.Item key={part.id} testID={`chat-task-${part.id}`}>
-              {action.file ? `${action.verb} ` : toolActionLabel(action)}
-              {action.file ? <Task.File>{action.file}</Task.File> : null}
-              {part.status === 'error' ? ' — failed' : null}
-            </Task.Item>
-          ))}
-        </Task.Content>
-      ) : null}
-    </Task>
+    <View className="gap-1">
+      {parts.map((part) => (
+        <ChatToolMarker key={part.id} part={part} />
+      ))}
+    </View>
+  );
+}
+
+function toolActionIcon(verb: string) {
+  switch (verb) {
+    case 'Read':
+    case 'Wrote':
+    case 'Listed':
+      return <FileIcon size={14} />;
+    case 'Edited':
+      return <PencilIcon size={14} />;
+    case 'Ran':
+      return <ChevronRightIcon size={14} />;
+    case 'Searched':
+    case 'Searched the web':
+      return <SearchIcon size={14} />;
+    case 'Fetched':
+      return <LinkIcon size={14} />;
+    case 'Asked Hermes':
+      return <SparklesIcon size={14} />;
+    default:
+      return <CircleIcon size={14} />;
+  }
+}
+
+function ChatToolMarker({
+  part,
+}: {
+  part: Extract<WaveChatPart, { type: 'task' }>;
+}) {
+  const action = deriveToolAction(part);
+  const label = toolActionLabel(action);
+  const failed = part.status === 'error';
+  const destructive = useCSSVariable('--color-destructive');
+  return (
+    <Marker
+      accessibilityLabel={`${label}. ${toolStatusDescription(part.status)}`}
+      testID={`chat-task-${part.id}`}>
+      <Marker.Icon>
+        {failed ? (
+          <AlertTriangleIcon
+            color={typeof destructive === 'string' ? destructive : undefined}
+            size={14}
+          />
+        ) : (
+          toolActionIcon(action.verb)
+        )}
+      </Marker.Icon>
+      <Marker.Content
+        className={failed ? 'text-destructive' : undefined}
+        shimmer={part.status === 'running'}>
+        {failed ? `${label} — failed` : label}
+      </Marker.Content>
+    </Marker>
   );
 }
 
@@ -1279,8 +1278,12 @@ function Thinking({ label }: { label: string }) {
   );
 }
 
-function toolStatusDescription(status: 'complete' | 'error' | 'running') {
+function toolStatusDescription(
+  status: 'complete' | 'error' | 'pending' | 'running',
+) {
   switch (status) {
+    case 'pending':
+      return 'Waiting to run';
     case 'running':
       return 'Running';
     case 'complete':

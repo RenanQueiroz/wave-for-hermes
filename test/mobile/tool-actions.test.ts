@@ -33,7 +33,7 @@ test('maps known tools to verb plus bounded argument', () => {
       input: input(JSON.stringify({ query: 'hermes gateway' })),
       title: 'web_search',
     }),
-    { detail: 'hermes gateway', verb: 'Searched' },
+    { detail: 'for hermes gateway', verb: 'Searched the web' },
   );
 });
 

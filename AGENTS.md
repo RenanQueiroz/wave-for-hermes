@@ -276,20 +276,26 @@ documentation before implementing UI.
 
 - Bubbles belong to user messages only. Agent output renders full width and bubble-free:
   assistant text through PanelUI `Response` (model-authored link schemes outside the component's
-  allowlist stay inert text), consecutive tool and handoff records as one PanelUI `Task` run per
-  contiguous group, and waiting states as `Shimmer` text showing the reviewed activity label when
-  fresh and "Working…" otherwise.
+  allowlist stay inert text), each tool and handoff record as a PanelUI `Marker` action row with
+  no disclosure affordance, and waiting states as `Shimmer` text showing the reviewed activity
+  label when fresh and "Working…" otherwise. Wave presents as one assistant: user-facing copy
+  never frames Wave and Hermes as separate actors.
 - Tool calls render only as bounded one-line actions derived by the Wave-owned mapping in
   `src/features/chat/tool-actions.ts` from the validated tool name plus defensively parsed
   bounded input. Derived lines are single-line inert plain text, never markdown; unknown tools
   fall back to a generic action; handoffs are detected by Wave-constructed ids, never titles;
   raw tool input/output is not displayed.
-- Conversation surfaces render through Legend List v3 (`@legendapp/list` via
-  `src/components/legend-list.tsx`); do not reintroduce FlatList there or adopt PanelUI
-  `MessageScroller` for unbounded histories — it is not virtualized. Keep turn rows memoized with
-  stable `renderItem`/`keyExtractor`, and mark only the active turn as streaming: its arriving
-  tail streams through `Response` `isStreaming` while sealed segments and completed turns parse
-  once and stay memoized. Never call `scrollToEnd` or run layout animation per token.
+- Conversation surfaces render through the Wave-owned `ConversationScroller`
+  (`src/components/conversation-scroller.tsx`), which composes Legend List v3 and owns the
+  transcript scroll contract: pin-to-newest only inside the at-end band, no dragging the reader
+  mid-read, a jump-to-newest button while auto-follow is disengaged, stable history prepends,
+  and a one-time anchored opening at the reader's last message when the tail response overflows.
+  Do not reintroduce FlatList there or adopt PanelUI `MessageScroller` for unbounded histories —
+  it is not virtualized. Keep turn rows memoized with stable `renderItem`/`keyExtractor`, and
+  mark only the active turn as streaming: its arriving tail streams through `Response`
+  `isStreaming` while sealed segments and completed turns parse once and stay memoized. Never
+  call `scrollToEnd` or run layout animation per token; the scroller's reader-initiated jump and
+  opening anchor are the two deliberate exceptions.
 - Do not log access tokens, full authorization headers, request URLs, network addresses, opaque
   conversation identifiers, or sensitive conversation payloads. Production request logs keep only
   the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle

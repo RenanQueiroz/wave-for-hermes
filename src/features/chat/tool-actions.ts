@@ -23,7 +23,6 @@ const MAX_FILE_CHARS = 72;
 /** Collapse to one bounded line with control characters stripped. */
 function singleLine(value: string, max: number): string {
   const collapsed = value
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -78,6 +77,8 @@ function normalizeToolKey(name: string): string {
 
 interface ToolRule {
   argumentKeys: readonly string[];
+  /** Joins the verb and the argument, e.g. `Searched the web for <query>`. */
+  detailPrefix?: string;
   isFile?: boolean;
   verb: string;
 }
@@ -135,7 +136,11 @@ const TOOL_RULES: Record<string, ToolRule> = {
   shell: { argumentKeys: ['command', 'cmd', 'script'], verb: 'Ran' },
   terminal: { argumentKeys: ['command', 'cmd', 'script'], verb: 'Ran' },
   webfetch: { argumentKeys: ['url'], verb: 'Fetched' },
-  websearch: { argumentKeys: ['query', 'q'], verb: 'Searched' },
+  websearch: {
+    argumentKeys: ['query', 'q'],
+    detailPrefix: 'for ',
+    verb: 'Searched the web',
+  },
   write: {
     argumentKeys: ['path', 'file_path', 'file'],
     isFile: true,
@@ -176,7 +181,10 @@ export function deriveToolAction(part: {
   if (!value) return { verb: rule.verb };
   return rule.isFile
     ? { file: singleLine(value, MAX_FILE_CHARS), verb: rule.verb }
-    : { detail: singleLine(value, MAX_DETAIL_CHARS), verb: rule.verb };
+    : {
+        detail: `${rule.detailPrefix ?? ''}${singleLine(value, MAX_DETAIL_CHARS)}`,
+        verb: rule.verb,
+      };
 }
 
 /** The action as one plain string, for Task trigger titles. */

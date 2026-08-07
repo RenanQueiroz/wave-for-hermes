@@ -194,10 +194,12 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   A deleted current session routes to a new conversation.
 - The PanelUI chat route renders normalized conversation data only. User messages keep bubbles;
   agent output is full width — assistant text through `Response` markdown (streaming tail via
-  `isStreaming`, sealed and completed text parsed once), contiguous tool and handoff records as
-  one `Task` run listing bounded one-line derived actions, and waiting states as `Shimmer` text.
-  Raw tool input/output is not displayed; upstream event shapes, call IDs, run IDs, and
-  credentials never enter the mobile render model.
+  `isStreaming`, sealed and completed text parsed once), tool and handoff records as `Marker`
+  action rows with bounded one-line derived labels, and waiting states as `Shimmer` text. The
+  Wave-owned `ConversationScroller` wraps Legend List with the transcript scroll contract
+  (at-end pinning, jump-to-newest, stable prepends, anchored opening). Raw tool input/output is
+  not displayed; upstream event shapes, call IDs, run IDs, and credentials never enter the
+  mobile render model.
   `PanelUIProvider` mounts the keyboard controller's `KeyboardProvider` exactly once at the app
   root — mounting a second one breaks per-frame keyboard animation on Android — and PanelUI's
   `KeyboardAvoider` docks the rounded `InputGroup` composer above the native keyboard, keeping a
@@ -265,8 +267,8 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
 - The connection provider owns only sign-in bootstrap and verification state; it is not a
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
-- Timeline normalization drops empty records and groups entries by stable turn IDs. Tool
-  activity renders as one open `Task` per contiguous run whose items are bounded one-line
+- Timeline normalization drops empty records and groups consecutive assistant-family rows into
+  turns by role. Tool activity renders as `Marker` rows whose labels are bounded one-line
   actions derived from validated tool names and defensively parsed input — inert plain text,
   never Markdown, with raw payloads never displayed.
 - Realtime begins with the strict `ask_hermes({ instruction: string })` operation. While exactly
