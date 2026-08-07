@@ -2,8 +2,8 @@
  * Whether Realtime calls transcribe the user's speech for on-screen captions.
  *
  * Off by default deliberately: input transcription is billed separately on
- * the user's own key (about half a cent per minute), so fresh installs pay
- * nothing extra until the user opts in from Settings.
+ * the user's own key ($0.0045 per minute as of August 2026), so fresh
+ * installs pay nothing extra until the user opts in from Settings.
  */
 export const WAVE_REALTIME_DEFAULT_CAPTIONS = false;
 

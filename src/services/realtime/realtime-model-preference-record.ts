@@ -15,18 +15,22 @@ export type WaveRealtimeModelId = (typeof WAVE_REALTIME_MODEL_IDS)[number];
 export const WAVE_REALTIME_DEFAULT_MODEL: WaveRealtimeModelId =
   'gpt-realtime-2.1-mini';
 
+// Published OpenAI audio-token prices as of August 2026; update alongside
+// any model list change.
 export const WAVE_REALTIME_MODEL_OPTIONS: readonly {
   description: string;
   id: WaveRealtimeModelId;
   testID: string;
 }[] = [
   {
-    description: 'The latency- and cost-oriented default.',
+    description:
+      'The latency- and cost-oriented default. Audio $10 in / $20 out per 1M tokens.',
     id: 'gpt-realtime-2.1-mini',
     testID: 'realtime-model-gpt-realtime-2-1-mini',
   },
   {
-    description: 'The larger-model option.',
+    description:
+      'The larger-model option. Audio $32 in / $64 out per 1M tokens.',
     id: 'gpt-realtime-2.1',
     testID: 'realtime-model-gpt-realtime-2-1',
   },

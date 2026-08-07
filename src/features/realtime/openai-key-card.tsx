@@ -165,8 +165,8 @@ export function OpenAiKeyCard() {
                   Live captions
                 </Typography.Paragraph>
                 <Typography.Paragraph muted type="body-sm">
-                  Show what you said during live voice. Adds about half a cent
-                  per minute of transcription billed to your key.
+                  Show what you said during live voice. Adds $0.0045 per minute
+                  of transcription billed to your key.
                 </Typography.Paragraph>
               </View>
               <View testID="realtime-captions-switch">
