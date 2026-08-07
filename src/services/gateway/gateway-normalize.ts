@@ -314,8 +314,8 @@ export function normalizeTimelineEntries(
       id,
       message,
       source: 'hermes',
-      // The gateway does not group rows into turns; each message stands alone
-      // and the chat screen's turn grouping works from roles.
+      // The gateway does not group rows into turns; each message carries its
+      // own synthetic turn id and the chat grouping works from roles alone.
       turnId: id,
       type: 'message',
     });

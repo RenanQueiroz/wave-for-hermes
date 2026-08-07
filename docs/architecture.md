@@ -192,11 +192,12 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   Pin/unpin, rename, and delete use typed non-retrying lifecycle mutations; pinning updates every
   paginated cache occurrence optimistically, rolls back an error, and reconciles with the server.
   A deleted current session routes to a new conversation.
-- The PanelUI chat route renders normalized conversation data only. Tool events become bounded
-  `Task` parts with a name, status, and optional raw input/output. Disclosures start collapsed
-  and lazily render details as inert `CodeBlock` text; upstream event shapes, call IDs, run IDs,
-  and credentials never enter the mobile render model. Wave avatars align with the bottom of a
-  grouped turn and only its last item keeps the avatar-facing pointer radius.
+- The PanelUI chat route renders normalized conversation data only. User messages keep bubbles;
+  agent output is full width — assistant text through `Response` markdown (streaming tail via
+  `isStreaming`, sealed and completed text parsed once), contiguous tool and handoff records as
+  one `Task` run listing bounded one-line derived actions, and waiting states as `Shimmer` text.
+  Raw tool input/output is not displayed; upstream event shapes, call IDs, run IDs, and
+  credentials never enter the mobile render model.
   `PanelUIProvider` mounts the keyboard controller's `KeyboardProvider` exactly once at the app
   root — mounting a second one breaks per-frame keyboard animation on Android — and PanelUI's
   `KeyboardAvoider` docks the rounded `InputGroup` composer above the native keyboard, keeping a
@@ -265,9 +266,9 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.
 - Timeline normalization drops empty records and groups entries by stable turn IDs. Tool
-  activity renders as collapsed named status rows with the Wave avatar aligned to the last item.
-  Expanding a row lazily renders bounded raw input and output as copyable plain code, never
-  Markdown.
+  activity renders as one open `Task` per contiguous run whose items are bounded one-line
+  actions derived from validated tool names and defensively parsed input — inert plain text,
+  never Markdown, with raw payloads never displayed.
 - Realtime begins with the strict `ask_hermes({ instruction: string })` operation. While exactly
   one ask execution has a registered live gateway lane, a complete acknowledged session snapshot
   also advertises strict `correct_hermes({ instruction: string })`. Neither schema contains a

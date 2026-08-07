@@ -260,6 +260,37 @@ test('timeline groups tool records into one assistant turn and removes empty ava
   assert.equal(JSON.stringify(messages).includes('search results'), true);
 });
 
+test('grouping survives per-row synthetic turn ids from stored history', () => {
+  // normalizeTimelineEntries assigns each stored row its own turn id, so
+  // grouping must work from roles alone or history never forms turns.
+  const messages = timelineToWaveChatMessages(
+    hermesTimeline([
+      { content: 'Do the thing', id: 'u1', role: 'user' },
+      {
+        content: '',
+        id: 't1',
+        role: 'tool',
+        toolName: 'read_file',
+        toolOutput: { text: 'a', truncated: false },
+      },
+      {
+        content: '',
+        id: 't2',
+        role: 'tool',
+        toolName: 'web_search',
+        toolOutput: { text: 'b', truncated: false },
+      },
+      { content: 'Done.', id: 'a1', role: 'assistant' },
+    ]).map((entry) => ({ ...entry, turnId: entry.id })),
+  );
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1]?.role, 'assistant');
+  assert.deepEqual(
+    messages[1]?.parts.map((part) => part.type),
+    ['task', 'task', 'text'],
+  );
+});
+
 test('timeline nests a Hermes handoff between Wave acknowledgement and result', () => {
   const messages = timelineToWaveChatMessages([
     {

@@ -86,8 +86,8 @@ currently includes:
 - TanStack Query-backed paginated session/timeline state plus PanelUI conversation and chat routes
   with batched assistant deltas, lifecycle-safe prompt cancellation, coherent grouped turns,
   sealed interim narration, in-place bounded tool progress, reviewed ephemeral activity and
-  stale-working hints, bottom-aligned Wave avatars, collapsed named tool rows whose disclosures
-  render bounded raw input/output as inert code, current-session tracking, and a keyboard-sticky rounded composer
+  stale-working hints, full-width markdown assistant responses beside user-only bubbles, tool
+  runs summarized as bounded one-line actions, current-session tracking, and a keyboard-sticky rounded composer
   with an internal attachment control and exactly one trailing action: Send when text is present,
   live voice when it is empty, or — during an active turn — Correct for text and Stop when empty;
 - inline mid-turn prompts: Hermes approval and clarify requests render in the turn they belong
@@ -279,9 +279,10 @@ them; list requests hide messageless session shells. Pin/unpin, rename, and dele
 single-attempt mutations; search covers local titles and server-indexed message content. Hermes
 remains canonical for conversation history; Realtime speech is ephemeral, and only
 the work Wave hands to Hermes through `ask_hermes` lands as ordinary turns. Opening a deleted
-session returns the app to a new conversation. Tool calls are collapsed by default. A user can
-expand one to inspect bounded raw input and output as inert, copyable text; Wave does not parse it
-as Markdown or execute it. Truncation is explicit.
+session returns the app to a new conversation. Tool calls render as bounded one-line actions
+("Read <file>", "Ran <command>") derived from validated names and defensively parsed input —
+inert plain text that Wave never parses as Markdown or executes. Raw tool payloads are not
+displayed.
 
 The composer accepts up to four attachments with a non-empty message. Camera and Photos are
 converted to bounded inline JPEG data (4 MB per image). Files are restricted to supported

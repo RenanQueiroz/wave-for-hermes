@@ -162,7 +162,9 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   bodies, headers, stack traces, URLs, tokens, and provider identifiers.
 - The app does not log access tokens, authorization headers, request URLs, network addresses,
   opaque conversation identifiers, or conversation payloads.
-- Tool details are bounded and rendered as inert code, never Markdown.
+- Tool calls render only as bounded one-line actions derived from validated tool names and
+  defensively parsed bounded input — inert plain text, never Markdown. Raw tool input/output is
+  not displayed.
 - Hermes lifecycle frames are allowlisted into short Wave-owned ephemeral states. Raw status
   payloads, hidden reasoning, and unreviewed progress fields never enter the render model or
   persisted timeline; the stale-working label is a local time-based presentation hint only.

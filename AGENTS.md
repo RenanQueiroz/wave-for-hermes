@@ -272,21 +272,24 @@ documentation before implementing UI.
   bounded text-file contents with a non-empty message. Reject unsupported binary documents before
   dispatch and never expose a generic Hermes upload or filesystem endpoint.
 
-## Chat tool presentation
+## Chat presentation
 
-- Group consecutive assistant, tool, and nested handoff records into one assistant turn with one
-  Wave avatar aligned to the bottom of the turn.
-- Render each tool call as a PanelUI `Task`, collapsed by default. Expanding it may lazily render
-  normalized raw input/output with `CodeBlock`; keep the content inert and identify truncated or
-  preview values explicitly.
-- Preserve turn-aware radii: only the final item in an assistant turn keeps the avatar-facing
-  pointer corner.
+- Bubbles belong to user messages only. Agent output renders full width and bubble-free:
+  assistant text through PanelUI `Response` (model-authored link schemes outside the component's
+  allowlist stay inert text), consecutive tool and handoff records as one PanelUI `Task` run per
+  contiguous group, and waiting states as `Shimmer` text showing the reviewed activity label when
+  fresh and "Working…" otherwise.
+- Tool calls render only as bounded one-line actions derived by the Wave-owned mapping in
+  `src/features/chat/tool-actions.ts` from the validated tool name plus defensively parsed
+  bounded input. Derived lines are single-line inert plain text, never markdown; unknown tools
+  fall back to a generic action; handoffs are detected by Wave-constructed ids, never titles;
+  raw tool input/output is not displayed.
 - Conversation surfaces render through Legend List v3 (`@legendapp/list` via
   `src/components/legend-list.tsx`); do not reintroduce FlatList there or adopt PanelUI
   `MessageScroller` for unbounded histories — it is not virtualized. Keep turn rows memoized with
-  stable `renderItem`/`keyExtractor`, mark only the active turn as streaming, render streaming
-  text as plain text and parse rich content only once the turn completes, and never call
-  `scrollToEnd` or run layout animation per token.
+  stable `renderItem`/`keyExtractor`, and mark only the active turn as streaming: its arriving
+  tail streams through `Response` `isStreaming` while sealed segments and completed turns parse
+  once and stay memoized. Never call `scrollToEnd` or run layout animation per token.
 - Do not log access tokens, full authorization headers, request URLs, network addresses, opaque
   conversation identifiers, or sensitive conversation payloads. Production request logs keep only
   the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle

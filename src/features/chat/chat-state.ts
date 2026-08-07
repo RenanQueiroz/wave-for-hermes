@@ -307,31 +307,26 @@ export function timelineToWaveChatMessages(
 ): WaveChatMessage[] {
   const messages: WaveChatMessage[] = [];
   let assistantTurn: WaveChatMessage | undefined;
-  let assistantTurnId: string | undefined;
   const flushAssistantTurn = () => {
     if (!assistantTurn) return;
     messages.push(assistantTurn);
     assistantTurn = undefined;
-    assistantTurnId = undefined;
   };
-  const ensureAssistantTurn = (id: string, turnId: string) => {
-    if (assistantTurn && assistantTurnId !== turnId) {
-      flushAssistantTurn();
-    }
+  // Grouping is role-based, not turn-id-based: stored gateway rows carry one
+  // synthetic turn id each, so consecutive assistant, tool, and handoff
+  // records form one turn until a user or system row closes it.
+  const ensureAssistantTurn = (id: string) => {
     assistantTurn ??= {
       id,
       parts: [],
       role: 'assistant',
     };
-    assistantTurnId = turnId;
     return assistantTurn;
   };
 
   timeline.forEach((entry) => {
     if (entry.type === 'handoff') {
-      ensureAssistantTurn(entry.id, entry.turnId).parts.push(
-        handoffToTaskPart(entry),
-      );
+      ensureAssistantTurn(entry.id).parts.push(handoffToTaskPart(entry));
       return;
     }
     const { message } = entry;
@@ -368,7 +363,7 @@ export function timelineToWaveChatMessages(
     }
 
     if (!part) return;
-    ensureAssistantTurn(id, entry.turnId).parts.push(part);
+    ensureAssistantTurn(id).parts.push(part);
   });
   flushAssistantTurn();
   return messages;

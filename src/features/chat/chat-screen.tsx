@@ -9,10 +9,8 @@ import { Redirect, Stack, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
   Attachment,
-  Avatar,
   BottomSheet,
   Button,
-  CodeBlock,
   FileIcon,
   ImageIcon,
   InputGroup,
@@ -22,6 +20,7 @@ import {
   MicIcon,
   PlayIcon,
   PlusIcon,
+  Response,
   // RotateCcwIcon deliberately: the package's runtime entry exports only the
   // counter-clockwise variant even though the typings declare both.
   RotateCcwIcon,
@@ -44,7 +43,6 @@ import {
 import {
   Keyboard,
   Pressable,
-  ScrollView,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -65,6 +63,10 @@ import {
   type WaveChatMessage,
   type WaveChatPart,
 } from '@/features/chat/chat-state';
+import {
+  deriveToolAction,
+  toolActionLabel,
+} from '@/features/chat/tool-actions';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { isNearTimelineEnd } from '@/features/chat/timeline-scroll';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
@@ -111,16 +113,6 @@ const KEYBOARD_GAP = 12;
 // Strong enough to read as inert on the dark composer; the library's own
 // disabled dim is both subtler and suppressed by its press animation.
 const BLOCKED_COMPOSER_BUTTON_STYLE = { opacity: 0.4 } as const;
-
-// The avatar-facing pointer corner of the final assistant item. Expressed
-// through RN's directional prop instead of the `rounded-es-*` classes the
-// Message variant uses: RN Android resolves the CSS logical `es`/`se`
-// corners to the diagonally opposite corner (BorderRadiusStyle.resolve reads
-// the tokens inline-axis-first), so `rounded-es-md` squares the top-right on
-// Android while iOS correctly squares the bottom-left. borderBottomStartRadius
-// resolves correctly on both platforms and still flips for RTL. 6 mirrors the
-// theme's `md` radius.
-const ASSISTANT_POINTER_CORNER_STYLE = { borderBottomStartRadius: 6 } as const;
 
 const EMPTY_STATE_TITLES = [
   'Ask me anything',
@@ -708,6 +700,10 @@ function ConnectedChatScreen({
             alignItemsAtEnd
             initialScrollAtEnd
             maintainScrollAtEnd={nearEnd}
+            // Wide enough that one streaming markdown block (table, fence)
+            // cannot outgrow the at-end band in a single layout pass; the
+            // looser isNearTimelineEnd veto still protects far-back reading.
+            maintainScrollAtEndThreshold={0.3}
             maintainVisibleContentPosition
             onScroll={trackNearEnd}
             // Turns hold disclosure state (expanded Tasks), which recycled
@@ -725,7 +721,7 @@ function ConnectedChatScreen({
             keyExtractor={(message) => message.id}
             ListFooterComponent={
               chat.state.status === 'submitting' ? (
-                <Thinking label="Wave is thinking…" />
+                <Thinking label={activityLabel ?? 'Working…'} />
               ) : null
             }
             ListHeaderComponent={
@@ -1099,6 +1095,42 @@ function AttachmentSourceButton({
   );
 }
 
+/** Assistant parts grouped for rendering: prose blocks and tool runs. */
+type AssistantGroup =
+  | {
+      key: string;
+      kind: 'text';
+      last: boolean;
+      part: Extract<WaveChatPart, { type: 'text' }>;
+    }
+  | {
+      key: string;
+      kind: 'tools';
+      parts: Extract<WaveChatPart, { type: 'task' }>[];
+    };
+
+function groupAssistantParts(message: WaveChatMessage): AssistantGroup[] {
+  const groups: AssistantGroup[] = [];
+  message.parts.forEach((part, index) => {
+    if (part.type === 'task') {
+      const previous = groups[groups.length - 1];
+      if (previous?.kind === 'tools') {
+        previous.parts.push(part);
+      } else {
+        groups.push({ key: `run-${part.id}`, kind: 'tools', parts: [part] });
+      }
+      return;
+    }
+    groups.push({
+      key: `${message.id}-text-${index}`,
+      kind: 'text',
+      last: index === message.parts.length - 1,
+      part,
+    });
+  });
+  return groups;
+}
+
 const ChatTurn = memo(
   function ChatTurn({
     isStreaming,
@@ -1111,88 +1143,71 @@ const ChatTurn = memo(
     onPlay?: (messageId: string, text: string) => void;
     playbackStatus: 'idle' | 'loading' | 'playing' | 'error';
   }) {
-    const isUser = message.role === 'user';
+    if (message.role === 'user') {
+      return (
+        <Message align="end" testID={`chat-message-${message.id}`}>
+          <Message.Content>
+            {message.parts.map((part, index) =>
+              part.type === 'text' ? (
+                <Message.Bubble
+                  key={`${message.id}-text-${index}`}
+                  className={
+                    index === message.parts.length - 1
+                      ? undefined
+                      : 'rounded-ee-2xl'
+                  }>
+                  <Message.BubbleContent>{part.text}</Message.BubbleContent>
+                </Message.Bubble>
+              ) : null,
+            )}
+          </Message.Content>
+        </Message>
+      );
+    }
+
     const spokenText = message.parts
       .flatMap((part) => (part.type === 'text' ? [part.text] : []))
       .join('\n\n')
       .trim();
     return (
-      <Message
-        align={isUser ? 'end' : 'start'}
-        testID={`chat-message-${message.id}`}>
-        {!isUser ? (
-          <Message.Avatar>
-            <Avatar accessibilityLabel="Wave" fallback="W" size="sm" />
-          </Message.Avatar>
+      <View className="gap-3" testID={`chat-message-${message.id}`}>
+        {groupAssistantParts(message).map((group) =>
+          group.kind === 'text' ? (
+            <Response
+              key={group.key}
+              // Only the still-arriving tail streams; sealed interim
+              // segments and completed turns parse once and stay stable.
+              isStreaming={isStreaming && group.last && !group.part.sealed}
+              testID={`${group.key}-response`}>
+              {group.part.text}
+            </Response>
+          ) : (
+            <ChatToolRun key={group.key} parts={group.parts} />
+          ),
+        )}
+        {isStreaming && message.parts.length === 0 ? (
+          <Shimmer textClassName="text-base">Working…</Shimmer>
         ) : null}
-        <Message.Content>
-          {message.parts.map((part, index) => {
-            const isLastPart = index === message.parts.length - 1;
-            if (part.type === 'text') {
-              // User bubbles keep the variant's `rounded-ee-*` classes (that
-              // corner resolves correctly everywhere); assistant bubbles
-              // override the broken `es` class away and draw the pointer via
-              // ASSISTANT_POINTER_CORNER_STYLE on the final item only.
-              return (
-                <Message.Bubble
-                  key={`${message.id}-text-${index}`}
-                  className={
-                    isUser
-                      ? isLastPart
-                        ? undefined
-                        : 'rounded-ee-2xl'
-                      : 'rounded-2xl'
-                  }
-                  style={
-                    !isUser && isLastPart
-                      ? ASSISTANT_POINTER_CORNER_STYLE
-                      : undefined
-                  }>
-                  <Message.BubbleContent>{part.text}</Message.BubbleContent>
-                </Message.Bubble>
-              );
+        {/* Playback belongs to finished assistant text only: there is
+            nothing stable to read aloud mid-stream. */}
+        {!isStreaming && onPlay && spokenText ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            accessibilityLabel={
+              playbackStatus === 'playing'
+                ? 'Stop reading this message aloud'
+                : 'Read this message aloud'
             }
-            return (
-              <ChatToolStep
-                key={part.id}
-                isLast={isLastPart}
-                input={part.input}
-                output={part.output}
-                outputIsPreview={part.outputIsPreview}
-                status={part.status}
-                testID={`chat-task-${part.id}`}
-                title={part.title}
-              />
-            );
-          })}
-          {isStreaming && message.parts.length === 0 ? (
-            <Message.Bubble
-              className="rounded-2xl"
-              style={ASSISTANT_POINTER_CORNER_STYLE}>
-              <Shimmer textClassName="text-base">Wave is thinking…</Shimmer>
-            </Message.Bubble>
-          ) : null}
-          {/* Playback belongs to finished assistant text only: there is
-              nothing stable to read aloud mid-stream. */}
-          {!isUser && !isStreaming && onPlay && spokenText ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              accessibilityLabel={
-                playbackStatus === 'playing'
-                  ? 'Stop reading this message aloud'
-                  : 'Read this message aloud'
-              }
-              className="self-start"
-              loading={playbackStatus === 'loading'}
-              startContent={<PlayIcon size={14} />}
-              testID={`chat-play-${message.id}`}
-              onPress={() => onPlay(message.id, spokenText)}>
-              {playbackStatus === 'playing' ? 'Stop' : 'Play'}
-            </Button>
-          ) : null}
-        </Message.Content>
-      </Message>
+            className="self-start"
+            loading={playbackStatus === 'loading'}
+            startContent={<PlayIcon size={14} />}
+            testID={`chat-play-${message.id}`}
+            onPress={() => onPlay(message.id, spokenText)}>
+            {playbackStatus === 'playing' ? 'Stop' : 'Play'}
+          </Button>
+        ) : null}
+      </View>
     );
   },
   (previous, next) =>
@@ -1203,141 +1218,69 @@ const ChatTurn = memo(
     previous.onPlay === next.onPlay,
 );
 
-function ChatToolStep({
-  input,
-  isLast,
-  output,
-  outputIsPreview,
-  status,
-  testID,
-  title,
+/**
+ * One contiguous run of tool calls (and handoffs) inside an assistant turn:
+ * a Task whose title summarizes the run and whose body lists each call as a
+ * bounded one-line action. Raw tool input/output is never displayed.
+ */
+function ChatToolRun({
+  parts,
 }: {
-  input: Extract<WaveChatPart, { type: 'task' }>['input'];
-  isLast: boolean;
-  output: Extract<WaveChatPart, { type: 'task' }>['output'];
-  outputIsPreview: Extract<WaveChatPart, { type: 'task' }>['outputIsPreview'];
-  status: 'complete' | 'error' | 'pending' | 'running';
-  testID: string;
-  title: string;
+  parts: Extract<WaveChatPart, { type: 'task' }>[];
 }) {
-  const displayTitle = formatToolName(title);
-  const [open, setOpen] = useState(false);
-  const [hasOpened, setHasOpened] = useState(false);
-  const setDisclosureOpen = useCallback((next: boolean) => {
-    setOpen(next);
-    if (next) {
-      setHasOpened(true);
-    }
-  }, []);
+  const actions = parts.map((part) => ({
+    action: deriveToolAction(part),
+    part,
+  }));
+  const live = parts.some(
+    (part) => part.status === 'running' || part.status === 'pending',
+  );
+  const failed = parts.some((part) => part.status === 'error');
+  const status = live ? 'running' : failed ? 'error' : 'complete';
+  const runningAction = [...actions]
+    .reverse()
+    .find(({ part }) => part.status === 'running');
+  const title = live
+    ? runningAction
+      ? toolActionLabel(runningAction.action)
+      : 'Working…'
+    : parts.length === 1
+      ? toolActionLabel(actions[0].action)
+      : `${parts.length} actions`;
+  const runId = parts[0].id;
 
   return (
-    <Task
-      className={[
-        'rounded-xl bg-muted px-3 py-2',
-        open ? 'gap-2' : 'gap-0',
-        status === 'error' ? 'border border-destructive/30' : '',
-      ].join(' ')}
-      style={isLast ? ASSISTANT_POINTER_CORNER_STYLE : undefined}
-      defaultOpen={false}
-      open={open}
-      status={status}
-      testID={testID}
-      onOpenChange={setDisclosureOpen}>
+    <Task defaultOpen status={status} testID={`chat-tools-${runId}`}>
       <Task.Trigger
-        accessibilityHint="Shows the raw tool input and output"
-        accessibilityLabel={`${displayTitle}, ${toolStatusDescription(status).toLowerCase()}. ${open ? 'Collapse' : 'Expand'} tool details`}
-        testID={`${testID}-trigger`}
-        title={displayTitle}
+        accessibilityLabel={`${title}. ${toolStatusDescription(status)}`}
+        testID={`chat-tools-${runId}-trigger`}
+        title={title}
       />
-      {hasOpened ? (
-        <Task.Content className="ms-0 gap-2 border-s-0 ps-0">
-          <ToolDetailBlock
-            detail={input}
-            label="Input"
-            testID={`${testID}-input`}
-          />
-          <ToolDetailBlock
-            detail={output}
-            label={outputIsPreview ? 'Output preview' : 'Output'}
-            testID={`${testID}-output`}
-          />
+      {parts.length > 1 ? (
+        <Task.Content>
+          {actions.map(({ action, part }) => (
+            <Task.Item key={part.id} testID={`chat-task-${part.id}`}>
+              {action.file ? `${action.verb} ` : toolActionLabel(action)}
+              {action.file ? <Task.File>{action.file}</Task.File> : null}
+              {part.status === 'error' ? ' — failed' : null}
+            </Task.Item>
+          ))}
         </Task.Content>
       ) : null}
     </Task>
   );
 }
 
-function ToolDetailBlock({
-  detail,
-  label,
-  testID,
-}: {
-  detail: Extract<WaveChatPart, { type: 'task' }>['input'];
-  label: string;
-  testID: string;
-}) {
-  if (!detail) {
-    return (
-      <Task.Item testID={testID}>
-        {`No raw ${label.toLowerCase()} was provided.`}
-      </Task.Item>
-    );
-  }
-
-  return (
-    <ScrollView
-      nestedScrollEnabled
-      showsVerticalScrollIndicator
-      style={{ maxHeight: 320 }}>
-      <CodeBlock
-        className="w-full"
-        code={detail.text}
-        language="text"
-        testID={testID}>
-        <CodeBlock.Header>
-          <CodeBlock.Filename>
-            {detail.truncated ? `${label} (truncated)` : label}
-          </CodeBlock.Filename>
-          <CodeBlock.Actions>
-            <CodeBlock.CopyButton />
-          </CodeBlock.Actions>
-        </CodeBlock.Header>
-      </CodeBlock>
-    </ScrollView>
-  );
-}
-
 function Thinking({ label }: { label: string }) {
   return (
-    <Message className="pb-2" testID="chat-thinking">
-      <Message.Avatar>
-        <Avatar accessibilityLabel="Wave" fallback="W" size="sm" />
-      </Message.Avatar>
-      <Message.Content>
-        <Message.Bubble>
-          <Shimmer textClassName="text-base">{label}</Shimmer>
-        </Message.Bubble>
-      </Message.Content>
-    </Message>
+    <View className="py-2" testID="chat-thinking">
+      <Shimmer textClassName="text-base">{label}</Shimmer>
+    </View>
   );
 }
 
-function formatToolName(name: string) {
-  const words = name
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!words) return 'Hermes tool';
-  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
-}
-
-function toolStatusDescription(
-  status: 'complete' | 'error' | 'pending' | 'running',
-) {
+function toolStatusDescription(status: 'complete' | 'error' | 'running') {
   switch (status) {
-    case 'pending':
-      return 'Waiting to run';
     case 'running':
       return 'Running';
     case 'complete':
