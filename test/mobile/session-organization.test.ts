@@ -40,7 +40,7 @@ test('organizes pins and mutually exclusive local-calendar date groups', () => {
         pinned: true,
       }),
     ],
-    'all',
+    'chats',
     NOW,
   );
 
@@ -78,11 +78,16 @@ test('filters chats from automation, external, and unknown activity', () => {
     ),
     ['automation', 'external', 'future-source'],
   );
+  // The two filters partition the rows: together they cover every session
+  // exactly once, so no source can fall through the tabs.
   assert.equal(
-    organizeWaveSessions(sessions, 'all', NOW).flatMap(
+    organizeWaveSessions(sessions, 'chats', NOW).flatMap(
       (group) => group.sessions,
-    ).length,
-    4,
+    ).length +
+      organizeWaveSessions(sessions, 'activity', NOW).flatMap(
+        (group) => group.sessions,
+      ).length,
+    sessions.length,
   );
 });
 

@@ -181,10 +181,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   and **New conversation** create a Hermes session immediately; sticky top actions provide new
   and title/message search. Paginated account history fills the middle with a server-owned Pinned
   section followed by Today / Yesterday / Previous 7 days / Older groups. Chats is the quiet
-  default; Activity includes normalized automation, messaging/A2A, and unknown future sources;
-  All makes every user-facing top-level row with messages reachable. Hermes excludes internal
-  child sessions, and Wave requests `min_messages=1` like Hermes Desktop so messageless session
-  shells (abandoned API creates, test leftovers) stay out of every filter. A conversation reached
+  default; Other sources holds everything else — normalized automation, messaging/A2A, and
+  unknown future sources. The two filters partition every source exactly, so together they keep
+  every user-facing top-level row with messages reachable. Hermes excludes internal child
+  sessions, and Wave requests `min_messages=1` like Hermes Desktop so messageless session
+  shells (abandoned API creates, test leftovers) stay out of both filters. A conversation reached
   another way (search id match, restored active session) still opens and renders an explicit
   no-messages state distinct from the new-chat screen.
   Pin/unpin, rename, and delete use typed non-retrying lifecycle mutations; pinning updates every

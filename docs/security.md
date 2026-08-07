@@ -169,7 +169,8 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - Session source identifiers are open-ended untrusted metadata. The gateway boundary collapses
   reviewed identifiers into `chat`, `automation`, or `external` and uses `other` for everything
   else; raw source strings, peer URLs, credentials, Agent Cards, audit paths, and A2A configuration
-  never enter the render or persisted contract. Unknown sources stay reachable in Activity/All.
+  never enter the render or persisted contract. Unknown sources stay reachable in the Other
+  sources filter, which matches everything the Chats filter excludes.
 - Realtime transcripts are ephemeral: no raw audio, no partial or final transcripts, and no
   provider identifiers are persisted anywhere. Realtime waveform levels are reduced inside the
   transport from local-source and remote-inbound WebRTC stats; raw reports, identifiers, samples,

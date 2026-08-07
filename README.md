@@ -273,8 +273,9 @@ example on gateway restart), which signs out every client at once.
 
 After sign-in, Wave creates and opens a new Hermes conversation. The drawer pages through every
 top-level session returned by the Hermes account, groups server-backed pins and recent dates, and
-offers Chats, Activity, and All filters. Activity includes automations, external activity, and
-unknown future source identifiers instead of hiding them. Pin/unpin, rename, and delete are typed
+offers Chats and Other sources filters that partition every source between them. Other sources
+includes automations, external activity, and unknown future source identifiers instead of hiding
+them; list requests hide messageless session shells. Pin/unpin, rename, and delete are typed
 single-attempt mutations; search covers local titles and server-indexed message content. Hermes
 remains canonical for conversation history; Realtime speech is ephemeral, and only
 the work Wave hands to Hermes through `ask_hermes` lands as ordinary turns. Opening a deleted

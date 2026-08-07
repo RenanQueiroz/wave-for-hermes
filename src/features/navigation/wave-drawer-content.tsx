@@ -620,14 +620,9 @@ const SESSION_FILTERS: readonly {
 }[] = [
   { accessibilityLabel: 'Show chats', label: 'Chats', value: 'chats' },
   {
-    accessibilityLabel: 'Show automations and external activity',
-    label: 'Activity',
+    accessibilityLabel: 'Show conversations from automations and other sources',
+    label: 'Other sources',
     value: 'activity',
-  },
-  {
-    accessibilityLabel: 'Show all conversations',
-    label: 'All',
-    value: 'all',
   },
 ];
 
@@ -740,10 +735,9 @@ function sessionDescription(session: WaveSessionSummary) {
 
 function emptySessionFilterMessage(filter: WaveSessionFilter) {
   if (filter === 'activity') {
-    return 'No automations or external activity.';
+    return 'No conversations from other sources.';
   }
-  if (filter === 'chats') return 'No previous chats.';
-  return 'No previous conversations.';
+  return 'No previous chats.';
 }
 
 function drawerErrorMessage(error: unknown) {

@@ -68,7 +68,8 @@ absent or malformed.
   count) so messageless session shells never reach the drawer; a brand-new Wave chat is a local
   pending id until its first turn persists, so the filter does not hide it. The open-ended `source`
   value becomes only `chat`, `automation`, `external`, or `other`; missing v0.19 metadata defaults
-  to an unpinned idle chat, and unknown future values remain reachable in Activity/All. The legacy
+  to an unpinned idle chat, and unknown future values remain reachable in the Other sources
+  filter (everything the Chats filter excludes). The legacy
   list `is_active` heuristic means "recent and not ended", so Wave does not misreport it as a
   running turn; only an exact reviewed phase becomes list liveness.
 - **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed

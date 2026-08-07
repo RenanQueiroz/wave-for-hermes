@@ -1,6 +1,6 @@
 import type { WaveSessionSummary } from '@wave/contracts';
 
-export type WaveSessionFilter = 'activity' | 'all' | 'chats';
+export type WaveSessionFilter = 'activity' | 'chats';
 export type WaveSessionSectionId =
   'older' | 'pinned' | 'previous-seven-days' | 'today' | 'yesterday';
 
@@ -33,11 +33,13 @@ function compareRecent(
   );
 }
 
+// The two filters partition every source exactly: `chats` is the `chat`
+// category, the other tab is everything else (automation, external, and
+// future unknown sources), so no top-level conversation is unreachable.
 export function waveSessionMatchesFilter(
   session: WaveSessionSummary,
   filter: WaveSessionFilter,
 ): boolean {
-  if (filter === 'all') return true;
   if (filter === 'chats') return session.source === 'chat';
   return session.source !== 'chat';
 }
