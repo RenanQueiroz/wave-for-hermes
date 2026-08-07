@@ -224,13 +224,15 @@ function ConnectedVoiceScreen({
     );
   }, [controller, sessionId, voicePreference.data, voicePreference.isPending]);
 
+  // Like gateway voice mode, the call starts from an explicit tap — opening
+  // the route never opens the microphone by itself. Leaving still tears the
+  // call down.
   useFocusEffect(
     useCallback(() => {
-      start();
       return () => {
         void stopAndRefresh();
       };
-    }, [start, stopAndRefresh]),
+    }, [stopAndRefresh]),
   );
 
   useEffect(() => {
@@ -384,14 +386,27 @@ function ConnectedVoiceScreen({
               Retry ending call
             </Button>
           ) : canStart ? (
-            <Button
-              fullWidth
-              accessibilityLabel="Start voice"
-              testID="voice-primary-button"
-              onPress={start}>
-              <MicIcon size={18} />
-              Start voice
-            </Button>
+            <>
+              <Button
+                fullWidth
+                accessibilityLabel="Start voice"
+                testID="voice-primary-button"
+                onPress={start}>
+                <MicIcon size={18} />
+                Start voice
+              </Button>
+              {/* The route is a headerless modal, so without this the only
+                  exits are the system back gesture or starting a call. */}
+              <Button
+                fullWidth
+                variant="outline"
+                accessibilityLabel="Close live voice"
+                testID="voice-close-button"
+                onPress={() => void end()}>
+                <XIcon size={18} />
+                Close
+              </Button>
+            </>
           ) : (
             <View className="flex-row gap-3">
               <Button
