@@ -27,6 +27,13 @@ export type WaveChatPart =
 export interface WaveChatMessage {
   id: string;
   parts: WaveChatPart[];
+  /** Bounded inert reasoning trace; absent when the server emits none. */
+  reasoning?: WaveToolDetail;
+  /**
+   * True while reasoning deltas are arriving, false once sealed. Undefined
+   * for history rows that never streamed in this app session.
+   */
+  reasoningStreaming?: boolean;
   role: 'assistant' | 'system' | 'user';
 }
 
@@ -343,6 +350,8 @@ export function timelineToWaveChatMessages(
       return;
     }
 
+    const reasoning =
+      message.role === 'assistant' ? message.reasoning : undefined;
     let part: WaveChatPart | undefined;
     if (message.role === 'tool') {
       part = {
@@ -362,8 +371,14 @@ export function timelineToWaveChatMessages(
       part = { text: message.content, type: 'text' };
     }
 
-    if (!part) return;
-    ensureAssistantTurn(id).parts.push(part);
+    if (!part && !reasoning) return;
+    const turn = ensureAssistantTurn(id);
+    if (reasoning) {
+      turn.reasoning = turn.reasoning
+        ? appendReasoning(turn.reasoning, `\n\n${reasoning.text}`)
+        : reasoning;
+    }
+    if (part) turn.parts.push(part);
   });
   flushAssistantTurn();
   return messages;
@@ -415,6 +430,19 @@ function applyEvent(
         liveStatus: 'working',
         status: 'streaming',
       };
+    case 'reasoning.delta':
+      return {
+        ...state,
+        activity: undefined,
+        lastActivityAt: event.timestamp,
+        liveStatus: 'working',
+        messages: updateAssistant(state.messages, (message) => ({
+          ...message,
+          reasoning: appendReasoning(message.reasoning, event.delta),
+          reasoningStreaming: true,
+        })),
+        status: 'streaming',
+      };
     case 'assistant.interim':
       return {
         ...state,
@@ -438,6 +466,7 @@ function applyEvent(
           parts: event.replacesLastInterim
             ? replaceLastInterimText(message.parts, event.content)
             : replaceAssistantText(message.parts, event.content),
+          ...(message.reasoningStreaming ? { reasoningStreaming: false } : {}),
         })),
         status: 'streaming',
       };
@@ -495,6 +524,7 @@ function applyEvent(
         activity: undefined,
         lastActivityAt: event.timestamp,
         liveStatus: 'idle',
+        messages: sealStreamingReasoning(state.messages),
         status: 'streaming',
       };
     case 'turn.error':
@@ -524,6 +554,29 @@ function applyEvent(
         status: 'error',
       };
   }
+}
+
+function appendReasoning(
+  current: WaveToolDetail | undefined,
+  delta: string,
+): WaveToolDetail {
+  if (current?.truncated) return current;
+  const text = `${current?.text ?? ''}${delta}`;
+  const truncated = text.length > WAVE_TOOL_DETAIL_MAX_CHARS;
+  return {
+    text: truncated ? text.slice(0, WAVE_TOOL_DETAIL_MAX_CHARS) : text,
+    truncated,
+  };
+}
+
+/** An interrupted or completed turn must never leave a trace shimmering. */
+function sealStreamingReasoning(messages: WaveChatMessage[]) {
+  if (!messages.some((message) => message.reasoningStreaming)) return messages;
+  return messages.map((message) =>
+    message.reasoningStreaming
+      ? { ...message, reasoningStreaming: false }
+      : message,
+  );
 }
 
 function updateAssistant(

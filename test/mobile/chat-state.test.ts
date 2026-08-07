@@ -799,3 +799,96 @@ test('tracks a mid-turn prompt through request, resolution, and turn end', () =>
   });
   assert.equal(failed.activePrompt, undefined);
 });
+
+test('reasoning deltas accumulate, seal on completion, and stay bounded', () => {
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'a1',
+    input: 'question',
+    type: 'send',
+    userId: 'u1',
+  });
+  state = waveChatReducer(state, {
+    event: event({
+      delta: 'First thought. ',
+      messageId: 'a1',
+      type: 'reasoning.delta',
+    }),
+    type: 'event',
+  });
+  state = waveChatReducer(state, {
+    event: event({
+      delta: 'Second thought.',
+      messageId: 'a1',
+      type: 'reasoning.delta',
+    }),
+    type: 'event',
+  });
+  const assistant = state.messages.find((message) => message.id === 'a1');
+  assert.equal(assistant?.reasoning?.text, 'First thought. Second thought.');
+  assert.equal(assistant?.reasoningStreaming, true);
+
+  state = waveChatReducer(state, {
+    event: event({
+      content: 'Answer.',
+      interrupted: false,
+      messageId: 'a1',
+      partial: false,
+      type: 'assistant.completed',
+    }),
+    type: 'event',
+  });
+  const sealed = state.messages.find((message) => message.id === 'a1');
+  assert.equal(sealed?.reasoningStreaming, false);
+  assert.equal(sealed?.reasoning?.text, 'First thought. Second thought.');
+});
+
+test('a turn ending without completion still seals a streaming trace', () => {
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'a1',
+    input: 'question',
+    type: 'send',
+    userId: 'u1',
+  });
+  state = waveChatReducer(state, {
+    event: event({
+      delta: 'thinking…',
+      messageId: 'a1',
+      type: 'reasoning.delta',
+    }),
+    type: 'event',
+  });
+  state = waveChatReducer(state, {
+    event: event({ type: 'turn.completed' }),
+    type: 'event',
+  });
+  assert.equal(
+    state.messages.find((message) => message.id === 'a1')?.reasoningStreaming,
+    false,
+  );
+});
+
+test('timeline reasoning lands on the grouped assistant turn', () => {
+  const messages = timelineToWaveChatMessages(
+    hermesTimeline([
+      { content: 'Ask', id: 'u1', role: 'user' },
+      {
+        content: '',
+        id: 'r1',
+        reasoning: { text: 'phase one', truncated: false },
+        role: 'assistant',
+      },
+      {
+        content: 'Answer.',
+        id: 'a1',
+        reasoning: { text: 'phase two', truncated: false },
+        role: 'assistant',
+      },
+    ]),
+  );
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1]?.reasoning?.text, 'phase one\n\nphase two');
+  assert.deepEqual(
+    messages[1]?.parts.map((part) => part.type),
+    ['text'],
+  );
+});

@@ -72,12 +72,19 @@ absent or malformed.
   filter (everything the Chats filter excludes). The legacy
   list `is_active` heuristic means "recent and not ended", so Wave does not misreport it as a
   running turn; only an exact reviewed phase becomes list liveness.
+- **Reasoning**: live turns may carry `reasoning.delta` frames (emission gated by the server's
+  `show_reasoning` setting), and stored assistant rows may carry plain-text `reasoning`,
+  `reasoning_content`, or a string `reasoning_details` — normalized with Hermes Desktop's
+  precedence into one bounded, truncated, inert Wave trace per assistant message. Opaque provider
+  reasoning structures never cross. Codex providers additionally narrate progress on a commentary
+  channel (`show_commentary`, default on): completed commentary arrives as ordinary
+  `message.interim` segments, so the reasoning trace holds only private reasoning.
 - **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed
   final can replace that segment once without duplicating it. `tool.progress` updates the existing
-  named Task with one bounded preview. Only reviewed compaction, goal, process, and ready states
-  cross from `status.update` into ephemeral Wave-owned labels. Unknown fields, statuses, and
-  thinking/reasoning frames remain ignored. These projections update only the active chat tail and
-  are never persisted as assistant speech. Sanitized fixtures contain synthetic shapes only.
+  named tool row with one bounded preview. Only reviewed compaction, goal, process, and ready
+  states cross from `status.update` into ephemeral Wave-owned labels. Unknown fields and statuses
+  remain ignored. These projections update only the active chat tail and are never persisted as
+  assistant speech. Sanitized fixtures contain synthetic shapes only.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from

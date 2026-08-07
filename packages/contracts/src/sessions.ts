@@ -86,6 +86,12 @@ export const WaveConversationMessageSchema = z
     content: z.string().max(1_000_000),
     createdAt: WaveIsoDateTimeSchema.optional(),
     id: WaveIdentifierSchema.optional(),
+    /**
+     * The assistant row's bounded reasoning trace, normalized from the
+     * stored plain-text reasoning fields. Rendered as inert plain text
+     * only; opaque provider replay structures never cross this boundary.
+     */
+    reasoning: WaveToolDetailSchema.optional(),
     role: WaveConversationRoleSchema,
     toolInput: WaveToolDetailSchema.optional(),
     toolName: z.string().trim().min(1).max(100).optional(),

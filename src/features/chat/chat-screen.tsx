@@ -4,7 +4,11 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
-import type { WaveTimelineResponse, WaveTurnInput } from '@wave/contracts';
+import type {
+  WaveTimelineResponse,
+  WaveToolDetail,
+  WaveTurnInput,
+} from '@wave/contracts';
 import { Redirect, Stack, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
@@ -26,6 +30,7 @@ import {
   PencilIcon,
   PlayIcon,
   PlusIcon,
+  Reasoning,
   Response,
   // RotateCcwIcon deliberately: the package's runtime entry exports only the
   // counter-clockwise variant even though the typings declare both.
@@ -1149,6 +1154,13 @@ const ChatTurn = memo(
       .trim();
     return (
       <View className="gap-3" testID={`chat-message-${message.id}`}>
+        {message.reasoning ? (
+          <ChatReasoning
+            reasoning={message.reasoning}
+            streaming={message.reasoningStreaming}
+            testID={`chat-reasoning-${message.id}`}
+          />
+        ) : null}
         {groupAssistantParts(message).map((group) =>
           group.kind === 'text' ? (
             <Response
@@ -1192,9 +1204,54 @@ const ChatTurn = memo(
     previous.isStreaming === next.isStreaming &&
     previous.message.id === next.message.id &&
     previous.message.parts === next.message.parts &&
+    previous.message.reasoning === next.message.reasoning &&
+    previous.message.reasoningStreaming === next.message.reasoningStreaming &&
     previous.playbackStatus === next.playbackStatus &&
     previous.onPlay === next.onPlay,
 );
+
+/**
+ * The turn's reasoning trace: PanelUI's Reasoning disclosure over bounded
+ * inert plain text. A live trace streams (shimmering trigger, self-measured
+ * duration, auto-open/close); a stored trace arrives folded under a plain
+ * "Reasoning" label. Never markdown, never content-derived behavior.
+ */
+function ChatReasoning({
+  reasoning,
+  streaming,
+  testID,
+}: {
+  reasoning: WaveToolDetail;
+  streaming?: boolean;
+  testID: string;
+}) {
+  const streamedLive = streaming !== undefined;
+  return (
+    <Reasoning
+      isStreaming={streaming === true}
+      {...(streamedLive ? {} : { defaultOpen: false })}
+      testID={testID}>
+      <Reasoning.Trigger
+        accessibilityLabel="Reasoning trace"
+        testID={`${testID}-trigger`}
+        {...(streamedLive
+          ? {}
+          : {
+              label: () => (
+                <Typography className="text-sm text-muted-foreground">
+                  Reasoning
+                </Typography>
+              ),
+            })}
+      />
+      <Reasoning.Content testID={`${testID}-content`}>
+        {reasoning.truncated
+          ? `${reasoning.text}\n\n(truncated)`
+          : reasoning.text}
+      </Reasoning.Content>
+    </Reasoning>
+  );
+}
 
 /**
  * One contiguous run of tool calls (and handoffs) inside an assistant turn:

@@ -1541,3 +1541,75 @@ test('refuses to delete a conversation whose turn is still running', async () =>
   assert.equal(idle.activeTurn, null);
   assert.equal(idle.liveStatus, 'idle');
 });
+
+test('reasoning frames become bounded reasoning.delta events', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-r',
+    now: () => new Date('2026-08-07T00:00:00.000Z'),
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+  });
+  translator.start();
+
+  const events = translator.translate({
+    payload: { text: 'Considering the options. ' },
+    type: 'reasoning.delta',
+  });
+  const delta = events.find((event) => event.type === 'reasoning.delta');
+  assert.ok(delta);
+  assert.equal(delta.type, 'reasoning.delta');
+  assert.equal(
+    'delta' in delta ? delta.delta : undefined,
+    'Considering the options. ',
+  );
+  assert.equal(
+    'messageId' in delta ? delta.messageId : undefined,
+    'assistant-r',
+  );
+
+  // Empty payloads carry nothing.
+  assert.deepEqual(
+    translator.translate({ payload: {}, type: 'reasoning.delta' }),
+    [],
+  );
+});
+
+test('stored rows normalize plain-text reasoning with desktop precedence', () => {
+  const entries = normalizeTimelineEntries({
+    messages: [
+      { content: 'Done.', id: 1, reasoning: 'thought a', role: 'assistant' },
+      {
+        content: 'Alt.',
+        id: 2,
+        reasoning_content: 'thought b',
+        role: 'assistant',
+      },
+      // Opaque structures never cross.
+      {
+        content: 'Opaque.',
+        id: 3,
+        reasoning_details: [{ type: 'x' }],
+        role: 'assistant',
+      },
+      // Thinking-only rows survive.
+      { content: '', id: 4, reasoning: 'silent thought', role: 'assistant' },
+      // Non-assistant reasoning is ignored.
+      { content: 'hi', id: 5, reasoning: 'nope', role: 'user' },
+    ],
+  });
+  assert.deepEqual(
+    entries.map((entry) =>
+      entry.type === 'message' ? entry.message.reasoning?.text : undefined,
+    ),
+    ['thought a', 'thought b', undefined, 'silent thought', undefined],
+  );
+  const bounded = normalizeTimelineEntries({
+    messages: [
+      { content: '', id: 9, reasoning: 'x'.repeat(70_000), role: 'assistant' },
+    ],
+  });
+  const first = bounded[0];
+  assert.ok(first?.type === 'message');
+  assert.equal(first.message.reasoning?.truncated, true);
+  assert.equal(first.message.reasoning?.text.length, 64_000);
+});

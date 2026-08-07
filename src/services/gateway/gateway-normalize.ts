@@ -7,12 +7,13 @@
  *
  * Compatibility baseline: `docs/hermes-connectivity.md`.
  */
-import type {
-  WaveConversationMessage,
-  WaveSessionLiveStatus,
-  WaveSessionSource,
-  WaveSessionSummary,
-  WaveTimelineEntry,
+import {
+  WAVE_TOOL_DETAIL_MAX_CHARS,
+  type WaveConversationMessage,
+  type WaveSessionLiveStatus,
+  type WaveSessionSource,
+  type WaveSessionSummary,
+  type WaveTimelineEntry,
 } from '@wave/contracts';
 
 /** Session row from `GET /api/sessions` (many columns; we take a few). */
@@ -40,6 +41,9 @@ export interface GatewayMessageRow {
   tool_name?: unknown;
   tool_calls?: unknown;
   tool_call_id?: unknown;
+  reasoning?: unknown;
+  reasoning_content?: unknown;
+  reasoning_details?: unknown;
 }
 
 const MAX_TITLE_CHARS = 300;
@@ -225,6 +229,28 @@ export function toToolDetail(value: unknown) {
   };
 }
 
+/**
+ * The stored row's plain-text reasoning, with Hermes Desktop's precedence:
+ * `reasoning`, then `reasoning_content`, then a string `reasoning_details`.
+ * Opaque provider replay structures (`codex_*` items, detail arrays) never
+ * cross — only already-plain text, bounded with an explicit truncation flag.
+ */
+function toReasoningDetail(row: GatewayMessageRow) {
+  const value = [
+    row.reasoning,
+    row.reasoning_content,
+    row.reasoning_details,
+  ].find((candidate) => typeof candidate === 'string' && candidate.trim()) as
+    string | undefined;
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const truncated = trimmed.length > WAVE_TOOL_DETAIL_MAX_CHARS;
+  return {
+    text: truncated ? trimmed.slice(0, WAVE_TOOL_DETAIL_MAX_CHARS) : trimmed,
+    truncated,
+  };
+}
+
 // The gateway prepends an annotation pair to the stored user prompt for every
 // attached image (verified on the v0.19/v0.20 baseline, including the two-image layout —
 // one pair per image, each followed by a blank line, then the typed text):
@@ -273,11 +299,15 @@ export function normalizeMessageRow(
   const toolName = text(row.tool_name, MAX_TOOL_NAME_CHARS);
   const toolInput = toToolDetail(row.tool_calls);
   const createdAt = toIsoTimestamp(row.timestamp);
-  // A row with neither content nor a tool identity carries nothing to render.
-  if (!content && !toolName) return undefined;
+  const reasoning = role === 'assistant' ? toReasoningDetail(row) : undefined;
+  // A row with no content, tool identity, or reasoning carries nothing to
+  // render. Thinking-only assistant rows (reasoning without visible text)
+  // are real and must survive.
+  if (!content && !toolName && !reasoning) return undefined;
   return {
     content,
     ...(createdAt ? { createdAt } : {}),
+    ...(reasoning ? { reasoning } : {}),
     role,
     ...(toolInput ? { toolInput } : {}),
     ...(toolName ? { toolName } : {}),

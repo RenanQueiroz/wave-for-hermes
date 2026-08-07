@@ -51,6 +51,20 @@ export const WaveAssistantInterimEventSchema = z
   })
   .strict();
 
+/**
+ * A bounded slice of the turn's reasoning trace. Emission is gated
+ * server-side (`show_reasoning`); absence is normal. The client accumulates
+ * deltas into one bounded inert trace per assistant message.
+ */
+export const WaveReasoningDeltaEventSchema = z
+  .object({
+    ...WaveTurnEventBaseShape,
+    delta: z.string().min(1).max(32_000),
+    messageId: WaveIdentifierSchema,
+    type: z.literal('reasoning.delta'),
+  })
+  .strict();
+
 export const WaveToolStatusEventSchema = z
   .object({
     ...WaveTurnEventBaseShape,
@@ -152,6 +166,7 @@ export const WaveTurnEventSchema = z.discriminatedUnion('type', [
   WaveAssistantStartedEventSchema,
   WaveAssistantDeltaEventSchema,
   WaveAssistantInterimEventSchema,
+  WaveReasoningDeltaEventSchema,
   WaveToolStatusEventSchema,
   WavePromptRequestEventSchema,
   WavePromptResolvedEventSchema,

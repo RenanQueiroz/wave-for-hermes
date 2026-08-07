@@ -192,9 +192,15 @@ documentation before implementing UI.
 - Keep stream framing, ordering, timeout, cancellation, and size limits inside
   `src/services/gateway`; HTTP reads use Expo SDK 57's `expo/fetch`.
 - Preserve `message.interim` as sealed assistant segments and reconcile previewed completion
-  without duplicate text. `tool.progress` may update only the existing bounded Task preview, and
+  without duplicate text. `tool.progress` may update only the existing bounded tool preview, and
   `status.update` may cross the gateway boundary only through an explicitly reviewed Wave-owned
-  ephemeral state; never render or persist raw lifecycle or reasoning payloads.
+  ephemeral state; never render or persist raw lifecycle payloads. Reasoning crosses the boundary
+  only as one bounded, truncated, inert plain-text trace per assistant message — live
+  `reasoning.delta` frames (emission stays gated by the server's `show_reasoning`) and the stored
+  rows' plain-text reasoning fields with Hermes Desktop's precedence. Opaque provider reasoning
+  structures (`codex_*` items, detail arrays) never cross, reasoning never renders as Markdown or
+  drives behavior, and Realtime voice still stores and displays none. With Codex providers the
+  commentary channel arrives separately as ordinary interim segments (`show_commentary`).
 - Server-reported `starting`, `working`, `waiting`, and `idle` plus bounded freshness may inform
   presentation. A stale-working hint never completes a turn, resends work, or relaxes active-turn
   conflicts.
@@ -277,8 +283,9 @@ documentation before implementing UI.
 - Bubbles belong to user messages only. Agent output renders full width and bubble-free:
   assistant text through PanelUI `Response` (model-authored link schemes outside the component's
   allowlist stay inert text), each tool and handoff record as a PanelUI `Marker` action row with
-  no disclosure affordance, and waiting states as `Shimmer` text showing the reviewed activity
-  label when fresh and "Working…" otherwise. Wave presents as one assistant: user-facing copy
+  no disclosure affordance, the turn's bounded reasoning trace as one PanelUI `Reasoning`
+  disclosure (streaming live, folded for history, always inert plain text), and waiting states
+  as `Shimmer` text showing the reviewed activity label when fresh and "Working…" otherwise. Wave presents as one assistant: user-facing copy
   never frames Wave and Hermes as separate actors.
 - Tool calls render only as bounded one-line actions derived by the Wave-owned mapping in
   `src/features/chat/tool-actions.ts` from the validated tool name plus defensively parsed

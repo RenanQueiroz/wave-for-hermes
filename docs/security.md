@@ -165,6 +165,11 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - Tool calls render only as bounded one-line actions derived from validated tool names and
   defensively parsed bounded input — inert plain text, never Markdown. Raw tool input/output is
   not displayed.
+- Reasoning renders only as one bounded, explicitly truncated, inert plain-text trace per
+  assistant message, normalized from the gateway's plain-text reasoning fields and
+  `reasoning.delta` frames. Opaque provider reasoning structures never enter the render model,
+  reasoning is never parsed as Markdown or executed, and Realtime voice stores and displays no
+  reasoning.
 - Hermes lifecycle frames are allowlisted into short Wave-owned ephemeral states. Raw status
   payloads, hidden reasoning, and unreviewed progress fields never enter the render model or
   persisted timeline; the stale-working label is a local time-based presentation hint only.

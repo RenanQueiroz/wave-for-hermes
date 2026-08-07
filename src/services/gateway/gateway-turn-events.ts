@@ -95,6 +95,23 @@ export class GatewayTurnTranslator {
         } as WaveTurnEvent);
         return events;
       }
+      case 'reasoning.delta': {
+        // Emission is gated server-side by `show_reasoning`; with Codex
+        // providers the commentary channel arrives separately as interim
+        // messages, so this carries only the private reasoning trace.
+        const text =
+          stringField(frame.payload, 'text') ??
+          stringField(frame.payload, 'delta');
+        if (!text) return [];
+        return [
+          ...this.ensureAssistantStarted(),
+          {
+            ...this.base('reasoning.delta'),
+            delta: text.slice(0, MAX_DELTA_CHARS),
+            messageId: this.messageId,
+          } as WaveTurnEvent,
+        ];
+      }
       case 'message.interim': {
         const text = stringField(frame.payload, 'text')?.trim();
         if (!text) return [];
@@ -292,8 +309,8 @@ export class GatewayTurnTranslator {
         ];
       }
       default:
-        // session.info (including tools/skills), thinking/reasoning details,
-        // session.title, and any future frame have no transcript projection.
+        // session.info (including tools/skills), session.title, and any
+        // future frame have no transcript projection.
         return [];
     }
   }
