@@ -74,6 +74,17 @@ import {
   toolActionLabel,
 } from '@/features/chat/tool-actions';
 import { SessionModelPill } from '@/features/chat/model-picker';
+import {
+  SlashCommandResult,
+  SlashHighlightMirror,
+  SlashSuggestionList,
+  shouldMirrorHighlight,
+  useSlashComposer,
+} from '@/features/chat/slash-composer';
+import {
+  highlightedCommandLength,
+  resolveSlashSubmission,
+} from '@/features/chat/slash-commands';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useConnectedWave } from '@/state/use-connected-wave';
@@ -427,8 +438,64 @@ function ConnectedChatScreen({
     (message) => message.role === 'assistant',
   )?.id;
 
+  const [caret, setCaret] = useState(0);
+  const [modelPickerNonce, setModelPickerNonce] = useState(0);
+  const slash = useSlashComposer({
+    actions: {
+      onOpenModelPicker: () => setModelPickerNonce((nonce) => nonce + 1),
+      onOpenResume: () => router.navigate('/search'),
+      onPrefill: setInput,
+      onSendExpanded: (message, display) => void chat.send(message, display),
+      onStartNewChat: () => router.navigate('/new'),
+      onStopTurn: () => void chat.stop(),
+    },
+    baseUrl,
+    chatClient: client,
+    connectionId,
+    gatewayClient,
+    sessionId,
+  });
+  // The command lane: leading recognized slash text runs as a command in both
+  // idle and busy composers; it never becomes a prompt or a correction.
+  const slashResolution = useMemo(
+    () =>
+      attachmentState.attachments.length === 0
+        ? resolveSlashSubmission(input, slash.catalog)
+        : undefined,
+    [attachmentState.attachments.length, input, slash.catalog],
+  );
+  const runSlashFromComposer = useCallback(() => {
+    if (!slashResolution || composerBlocked || slash.running) return;
+    setInput('');
+    void slash.run(slashResolution);
+  }, [composerBlocked, slash, slashResolution]);
+  const slashSuggestions = useMemo(
+    () => (composerBlocked ? [] : slash.suggestionsFor(input.slice(0, caret))),
+    [caret, composerBlocked, input, slash],
+  );
+  const acceptSlashSuggestion = useCallback(
+    (entry: { command: string }) => {
+      const before = input.slice(0, caret);
+      const replaceFrom = before.lastIndexOf('/');
+      if (replaceFrom < 0) return;
+      const next = `${input.slice(0, replaceFrom)}${entry.command} ${input.slice(caret)}`;
+      setInput(next);
+      setCaret(replaceFrom + entry.command.length + 1);
+    },
+    [caret, input],
+  );
+  const slashHighlight = useMemo(
+    () =>
+      slashResolution ? highlightedCommandLength(input, slash.catalog) : 0,
+    [input, slash.catalog, slashResolution],
+  );
+
   const send = useCallback(() => {
     const value = input.trim();
+    if (slashResolution) {
+      runSlashFromComposer();
+      return;
+    }
     if (!value || busy || composerBlocked) return;
     const attachments = attachmentState.attachments;
     const turnInput: WaveTurnInput =
@@ -445,10 +512,24 @@ function ConnectedChatScreen({
     setInput('');
     attachmentState.clear();
     void chat.send(turnInput, optimisticText);
-  }, [attachmentState, busy, chat, composerBlocked, input]);
+  }, [
+    attachmentState,
+    busy,
+    chat,
+    composerBlocked,
+    input,
+    runSlashFromComposer,
+    slashResolution,
+  ]);
 
   const correct = useCallback(() => {
     const value = input;
+    if (slashResolution) {
+      // Desktop parity: a recognized command dispatches through its own RPC
+      // lane even while a turn runs, and never rides session.redirect.
+      runSlashFromComposer();
+      return;
+    }
     if (
       !value.trim() ||
       !busy ||
@@ -478,6 +559,8 @@ function ConnectedChatScreen({
     composerBlocked,
     correcting,
     input,
+    runSlashFromComposer,
+    slashResolution,
   ]);
 
   const submitComposer = busy ? correct : send;
@@ -860,12 +943,26 @@ function ConnectedChatScreen({
           </Typography.Paragraph>
         ) : null}
 
+        {slashSuggestions.length > 0 ? (
+          <SlashSuggestionList
+            suggestions={slashSuggestions}
+            onAccept={acceptSlashSuggestion}
+          />
+        ) : null}
+        {slash.result ? (
+          <SlashCommandResult
+            result={slash.result}
+            onDismiss={slash.dismissResult}
+          />
+        ) : null}
+
         {gatewayClient ? (
           <SessionModelPill
             baseUrl={baseUrl}
             connectionId={connectionId}
             disabled={composerBlocked}
             gatewayClient={gatewayClient}
+            openNonce={modelPickerNonce}
             sessionId={sessionId}
           />
         ) : null}
@@ -901,7 +998,14 @@ function ConnectedChatScreen({
             accessibilityLabel={
               busy ? 'Correct the current response' : 'Ask anything'
             }
-            className="max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4"
+            // Explicit font classes so the slash-highlight mirror can use the
+            // exact same metrics; the input's own text goes transparent only
+            // while the mirror is active.
+            className={`max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4 text-base leading-6 ${
+              shouldMirrorHighlight(input, slashHighlight)
+                ? 'text-transparent'
+                : ''
+            }`}
             placeholder={busy ? 'Add a correction' : 'Ask anything'}
             // Clears the overlaid buttons: one prefix button on the left,
             // mic plus trailing action on the right.
@@ -909,9 +1013,23 @@ function ConnectedChatScreen({
             submitBehavior="submit"
             testID="chat-composer-input"
             value={input}
-            onChangeText={setInput}
+            onChangeText={(value) => {
+              setInput(value);
+              slash.observeDraft(value);
+            }}
+            onSelectionChange={(event) =>
+              setCaret(event.nativeEvent.selection.end)
+            }
             onSubmitEditing={submitComposer}
           />
+          {shouldMirrorHighlight(input, slashHighlight) ? (
+            <SlashHighlightMirror
+              highlightLength={slashHighlight}
+              paddingLeft={60}
+              paddingRight={canDictate ? 104 : 56}
+              text={input}
+            />
+          ) : null}
           <InputGroup.Suffix className="flex-row items-center gap-1 px-2">
             {canDictate ? (
               <View
@@ -937,7 +1055,23 @@ function ConnectedChatScreen({
                 </Button>
               </View>
             ) : null}
-            {correcting ? (
+            {slashResolution && input.trim() ? (
+              // The command lane is visibly distinct from Send/Correct: this
+              // runs the recognized /command, in idle and busy composers alike.
+              <View
+                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
+                <Button
+                  size="icon"
+                  accessibilityLabel={`Run the ${input.trim().split(/\s/)[0]} command`}
+                  className="rounded-full"
+                  disabled={composerBlocked || slash.running}
+                  loading={slash.running}
+                  testID="chat-run-command-button"
+                  onPress={runSlashFromComposer}>
+                  <ChevronRightIcon size={18} />
+                </Button>
+              </View>
+            ) : correcting ? (
               <Button
                 size="icon"
                 accessibilityLabel="Sending correction"

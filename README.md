@@ -95,6 +95,13 @@ currently includes:
 - a per-conversation model picker: a compact composer pill opens the gateway's own model catalog
   (bounded, no provider administration), switches are always scoped to that one conversation, a
   busy turn defers the pick to the next turn, and expensive models ask for confirmation first;
+- composer slash commands with Desktop-style autocomplete: typing `/` suggests commands and
+  skills from the gateway's catalog (a mid-message `/` suggests skills only), the recognized
+  `/command` token highlights inside the input, and dispatch runs on the command RPC lane —
+  skills expand into ordinary turns showing their compact form, `/model`, `/title`,
+  `/compress`, `/status`, `/usage`, `/steer`, `/queue` and friends are supported, recognized
+  commands run even while a turn is busy, and administration commands are declined with honest
+  copy;
 - gateway voice mode (default): half-duplex speech on the gateway's speech-to-text and
   text-to-speech endpoints with adaptive silence detection tuned per platform, an explicit
   interrupt control, a stop word, composer dictation, and measured input/playback waveforms;

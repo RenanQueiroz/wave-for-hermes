@@ -290,6 +290,18 @@ documentation before implementing UI.
 - Turn attachments use strict Wave parts. Mobile may send up to four bounded inline images or
   bounded text-file contents with a non-empty message. Reject unsupported binary documents before
   dispatch and never expose a generic Hermes upload or filesystem endpoint.
+- Composer slash commands stay conversation-level. The Wave-owned registry in
+  `src/features/chat/slash-commands.ts` routes each recognized command (local action, dedicated
+  RPC, or gateway `slash.exec`/`command.dispatch`); administration-flavored commands are
+  explicitly unavailable with honest copy, and a name neither Wave nor the gateway catalog knows
+  stays ordinary text. Slash text never reaches `prompt.submit` or `session.redirect` — the
+  gateway does not parse slash commands server-side — and while a turn runs, recognized commands
+  dispatch on their own RPC lane (Desktop parity) with a visibly distinct Run action. Catalog
+  entries, completion labels, and command outputs are gateway-authored untrusted text: bounded,
+  inert, never markdown. Skill/bundle `send` expansions go to `prompt.submit` verbatim as
+  model-facing scaffolding while only the bounded `display` projection reaches the screen, and
+  an overlong expansion is refused rather than clipped. Command dispatch is sent once and never
+  retried automatically.
 
 ## Chat presentation
 

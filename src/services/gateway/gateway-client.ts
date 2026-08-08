@@ -30,6 +30,12 @@ import {
   toIsoTimestamp,
 } from './gateway-normalize.ts';
 import {
+  normalizeCommandCatalog,
+  normalizeCommandResult,
+  type WaveCommandCatalog,
+  type WaveCommandDirective,
+} from './gateway-commands.ts';
+import {
   buildModelSwitchValue,
   normalizeModelCatalog,
   normalizeModelSwitch,
@@ -1224,6 +1230,108 @@ export class GatewayClient {
           : {}),
       });
       return normalizeModelSwitch(result, selection);
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  // ---- slash commands ----------------------------------------------------
+
+  /** The gateway's command + skill catalog (registry, quick commands, skills). */
+  async getCommandCatalog(signal?: AbortSignal): Promise<WaveCommandCatalog> {
+    const connection = await this.openSocket(signal);
+    try {
+      const payload = await connection.rpc.call('commands.catalog', {});
+      return normalizeCommandCatalog(payload);
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  /**
+   * Run one slash command on this conversation's live session via
+   * `slash.exec` (which routes skills, bundles, and pending-input commands to
+   * `command.dispatch` server-side). Sent once; a `slash.exec` refusal falls
+   * back to one direct `command.dispatch`, exactly like Hermes Desktop, and a
+   * quick-command alias re-dispatches once. Never retried beyond that.
+   */
+  async executeSlashCommand(
+    sessionId: string,
+    commandText: string,
+    signal?: AbortSignal,
+  ): Promise<WaveCommandDirective> {
+    const resolved = this.resolveSessionId(sessionId);
+    const connection = await this.openSocket(signal);
+    try {
+      const liveSessionId = await this.resolveLiveSession(
+        connection.rpc,
+        resolved,
+      );
+      let payload: Record<string, unknown>;
+      const run = async (command: string) => {
+        try {
+          return await connection.rpc.call('slash.exec', {
+            command,
+            session_id: liveSessionId,
+          });
+        } catch {
+          const token = command.trim().replace(/^\//, '');
+          const spaceIndex = token.search(/\s/);
+          return await connection.rpc.call('command.dispatch', {
+            arg: spaceIndex === -1 ? '' : token.slice(spaceIndex + 1).trim(),
+            name: spaceIndex === -1 ? token : token.slice(0, spaceIndex),
+            session_id: liveSessionId,
+          });
+        }
+      };
+      payload = await run(commandText);
+      let normalized = normalizeCommandResult(payload);
+      if (normalized.aliasTarget) {
+        payload = await run(normalized.aliasTarget);
+        normalized = normalizeCommandResult(payload);
+      }
+      if (!normalized.directive) {
+        throw new WaveBackendError('Hermes could not run that command.', {
+          kind: 'invalid_response',
+        });
+      }
+      return normalized.directive;
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  /**
+   * Compress this conversation's context through the dedicated RPC (Desktop
+   * deliberately avoids `slash.exec` here — it times out on large sessions).
+   */
+  async compressSession(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<{ aborted: boolean }> {
+    const resolved = this.resolveSessionId(sessionId);
+    const connection = await this.openSocket(signal);
+    try {
+      const liveSessionId = await this.resolveLiveSession(
+        connection.rpc,
+        resolved,
+      );
+      const result = await connection.rpc.call('session.compress', {
+        session_id: liveSessionId,
+      });
+      const summary =
+        result.summary && typeof result.summary === 'object'
+          ? (result.summary as Record<string, unknown>)
+          : undefined;
+      return {
+        aborted: result.status === 'aborted' || summary?.aborted === true,
+      };
     } catch (error) {
       throw toWaveError(error);
     } finally {

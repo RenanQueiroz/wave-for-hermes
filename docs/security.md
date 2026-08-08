@@ -224,6 +224,12 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   synthesizes the complete reply only when no streamed audio ever became audible, and anything
   after first sound leaves the reply text-only.
 
+- Slash commands treat every gateway-authored string as untrusted data: catalog descriptions,
+  completion labels, and command outputs are bounded inert plain text (never markdown, never
+  executed), skill expansions are refused when overlong rather than clipped, and only the
+  bounded `display` projection of an expansion reaches the screen. The Wave registry keeps
+  administration commands out entirely, slash text can never reach `prompt.submit` or
+  `session.redirect` as raw command text, and dispatch is one-shot with no automatic retry.
 - Per-conversation model selection exposes no provider administration: the catalog is
   normalized with auth types, key env names, and API URLs dropped and unauthenticated provider
   rows excluded; `model.save_key`/`model.disconnect` are never called; and the one `config.set`

@@ -96,6 +96,17 @@ absent or malformed.
   `deferred: true` and applies the pick at its next turn start; `confirm_required` is re-sent
   only after explicit user confirmation. A conversation with no gateway session yet keeps the
   pick client-side and sends it as `model`/`provider` on its eventual `session.create`.
+- **Slash commands (v0.20)**: the composer catalog comes from RPC `commands.catalog`
+  (`pairs`/`canon`/`skills` normalized into a bounded Wave catalog; suggestions filter locally —
+  Wave deliberately skips per-keystroke `complete.slash`, which would mint a ticket per call on
+  Wave's one-socket-per-RPC transport). Execution resumes the session and runs one
+  `slash.exec {session_id, command}`; a refusal falls back to one
+  `command.dispatch {name, arg, session_id}` exactly like Desktop, and a quick-command `alias`
+  re-dispatches once. Results normalize into bounded directives: inert `output` text, a
+  `prefill` draft, or a `send` expansion submitted through the normal `prompt.submit` path with
+  its bounded `display` shown as the user row. `/compress` uses the dedicated
+  `session.compress` RPC (Desktop avoids `slash.exec` there — it times out on large sessions)
+  and `/title` uses the existing rename endpoint.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from

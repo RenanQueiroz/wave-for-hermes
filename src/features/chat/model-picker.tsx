@@ -64,12 +64,15 @@ export function SessionModelPill({
   connectionId,
   disabled,
   gatewayClient,
+  openNonce = 0,
   sessionId,
 }: {
   baseUrl: string;
   connectionId: string;
   disabled?: boolean;
   gatewayClient: GatewayClient;
+  /** Increment to open the picker from outside (the /model command). */
+  openNonce?: number;
   sessionId: string;
 }) {
   const queryClient = useQueryClient();
@@ -127,6 +130,14 @@ export function SessionModelPill({
     setOpen(true);
     void refetchContext();
   }, [refetchContext]);
+
+  useEffect(() => {
+    if (openNonce <= 0) return;
+    // Deferred a tick: opening synchronously inside the effect would set
+    // state during the commit that delivered the nonce.
+    const timer = setTimeout(openPicker, 0);
+    return () => clearTimeout(timer);
+  }, [openNonce, openPicker]);
 
   const select = useCallback(
     async (selection: WaveModelSelection, confirmExpensive = false) => {
