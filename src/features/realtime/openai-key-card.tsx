@@ -124,7 +124,10 @@ export function OpenAiKeyCard() {
                 </Typography.Paragraph>
               </View>
               <View testID="realtime-enabled-switch">
+                {/* Native mode: the platform draws the switch (SwiftUI /
+                    Compose via @expo/ui); theme classes do not apply. */}
                 <Switch
+                  native
                   disabled={setRealtimeEnabled.isPending}
                   value={realtimeEnabled}
                   onValueChange={(value) => setRealtimeEnabled.mutate(value)}
@@ -143,6 +146,7 @@ export function OpenAiKeyCard() {
               </View>
               <View testID="realtime-captions-switch">
                 <Switch
+                  native
                   disabled={!captions.hydrated}
                   value={captions.value}
                   onValueChange={(value) =>
