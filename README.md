@@ -58,10 +58,9 @@ currently includes:
   an audio-only development proof validated on iOS and Android;
 - a bounded foreground-only
   [`streaming PCM playback foundation`](./docs/pcm-playback-foundation.md) for Hermes v0.20
-  gateway speech, now backed by Software Mansion's native audio-buffer queue after the focused
-  Android `AudioTrack` prototype remained intermittently audible; its repeated Pixel 8 Pro
-  built-in-speaker proof now passes, while production gateway voice stays on buffered speech until
-  the remaining device-route and lifecycle gates pass;
+  gateway speech, backed by Software Mansion's native audio-buffer queue and validated on device;
+  gateway voice now streams clause-level speech through it while the turn is still generating,
+  with buffered synthesis as the explicit fallback;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
 - repo-level Expo MCP configuration for Codex and Claude Code;
 - a typed gateway client (`src/services/gateway`) that signs in with the gateway's password
@@ -96,6 +95,10 @@ currently includes:
 - gateway voice mode (default): half-duplex speech on the gateway's speech-to-text and
   text-to-speech endpoints with adaptive silence detection tuned per platform, an explicit
   interrupt control, a stop word, composer dictation, and measured input/playback waveforms;
+  replies begin speaking mid-turn over the gateway's clause-streamed speech socket — Markdown
+  and code are filtered to speakable text, a Skip stops audio without stopping the turn, and
+  buffered synthesis remains the automatic fallback when streaming is unavailable, replaying
+  nothing that may already have been heard;
 - opt-in Realtime live voice keyed by the user's own OpenAI key: SDP exchange directly against
   `POST /v1/realtime/calls`, the authenticated WebSocket sideband, an audio-only native
   `RealtimeTransport` and focused lifecycle controller with bounded reconnection, strictly
@@ -199,17 +202,16 @@ Hermes v0.20. Open **Settings → Development** while connected, or open `wave:/
 directly in a development build, then run **Streaming PCM playback proof**. It checks bounded
 20 ms chunk scheduling, exact drain, feed underruns, a sample-rate restart, cancellation, and
 cleanup. After a pass, **Run again** starts another proof without requiring Stop. The route is
-development-only; it does not connect to the gateway or replace production buffered speech.
+development-only; it never connects to the gateway and exists alongside the production streamed
+speech path, not as part of it.
 
 The original focused native player passed exact accounting but crackled intermittently on the
 Pixel 8 Pro, so Wave replaced it with `react-native-audio-api`'s native audio-buffer queue. Clean
-Prebuild and iOS/Android builds pass, as does the iOS simulator proof. With RNAA's stock Android
-output settings, a cold-started series of six consecutive Pixel 8 Pro built-in-speaker runs drained
-exactly with zero feed underruns and no pops or crackles. Physical iOS, the remaining hardware
-routes, OS interruptions, and release behavior still require validation before the streaming
-gateway client is implemented. See
-[`docs/pcm-playback-foundation.md`](./docs/pcm-playback-foundation.md) for the exact contract and
-remaining gates.
+Prebuild and iOS/Android builds pass, as do the iOS simulator proof and a cold-started series of
+six consecutive Pixel 8 Pro built-in-speaker runs with exact drain, zero feed underruns, and no
+pops or crackles; the owner accepted physical voice-mode behavior on 2026-08-07. This foundation
+now backs production streamed gateway speech. See
+[`docs/pcm-playback-foundation.md`](./docs/pcm-playback-foundation.md) for the exact contract.
 
 Native identifiers are configured in `app.json`:
 

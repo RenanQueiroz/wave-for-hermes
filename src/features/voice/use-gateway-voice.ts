@@ -31,7 +31,13 @@ import {
   utteranceSpeechThreshold,
   type GatewayVoicePhase,
 } from '@/features/voice/gateway-voice-machine';
+import { StreamedReplyFeeder } from '@/features/voice/speech-text';
+import { pcmStreamPlayer } from '@/native/pcm-player';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
+import type {
+  GatewaySpeechStream,
+  GatewaySpeechStreamResult,
+} from '@/services/gateway/gateway-speech-stream';
 import { pcmChannelsToAudioLevel } from '@/services/audio/audio-level';
 
 /** How often the recorder's metering is folded into the utterance tracker. */
@@ -73,6 +79,8 @@ export interface GatewayVoiceState {
    * the prompt resolves (an unanswered approval expires server-side in 60s).
    */
   prompt?: WaveChatPrompt;
+  /** True while the reply text is still arriving from the active turn. */
+  replyStreaming: boolean;
   /** What the last utterance transcribed to. */
   userTranscript: string;
 }
@@ -84,6 +92,7 @@ const IDLE_STATE: GatewayVoiceState = {
   assistantText: '',
   muted: false,
   phase: 'idle',
+  replyStreaming: false,
   userTranscript: '',
 };
 
@@ -125,6 +134,7 @@ export function useGatewayVoice({
     undefined,
   );
   const turnAbortRef = useRef<AbortController | undefined>(undefined);
+  const speechStreamRef = useRef<GatewaySpeechStream | undefined>(undefined);
   const submitNowRef = useRef(false);
   const skipSpeakingRef = useRef(false);
   const mutedRef = useRef(false);
@@ -160,6 +170,9 @@ export function useGatewayVoice({
     generationRef.current += 1;
     turnAbortRef.current?.abort();
     turnAbortRef.current = undefined;
+    // Stopping the stream also stops the native PCM player it feeds.
+    speechStreamRef.current?.stop();
+    speechStreamRef.current = undefined;
     releasePlayer();
     try {
       await recorder.stop();
@@ -283,9 +296,18 @@ export function useGatewayVoice({
     [recorder],
   );
 
-  /** Run the transcript as a normal turn and return what Wave said. */
+  /**
+   * Run the transcript as a normal turn and return what Wave said. When a
+   * streamed-speech feeder is attached, assistant narration is fed to it as
+   * it arrives — only narration: tool records, reasoning traces, and prompts
+   * have their own event types and never reach the feeder.
+   */
   const runTurn = useCallback(
-    async (transcript: string, generation: number): Promise<string> => {
+    async (
+      transcript: string,
+      generation: number,
+      feeder?: StreamedReplyFeeder,
+    ): Promise<string> => {
       const gateway = clientRef.current;
       if (!gateway) return '';
       const abort = new AbortController();
@@ -299,11 +321,15 @@ export function useGatewayVoice({
         )) {
           if (generationRef.current !== generation) break;
           if (event.type === 'assistant.delta') {
+            feeder?.appendDelta(event.delta);
             setState((current) => ({
               ...current,
               assistantText: current.assistantText + event.delta,
             }));
+          } else if (event.type === 'assistant.interim') {
+            feeder?.noteInterim(event.content);
           } else if (event.type === 'assistant.completed') {
+            feeder?.noteCompleted(event.content, event.interrupted);
             spoken = spoken ? `${spoken}\n\n${event.content}` : event.content;
           } else if (event.type === 'prompt.request') {
             setState((current) => ({
@@ -462,11 +488,73 @@ export function useGatewayVoice({
             ...current,
             assistantText: '',
             phase: 'thinking',
+            replyStreaming: true,
             userTranscript: transcript,
           }));
-          const reply = await runTurn(transcript, generation);
+          // Half-duplex: the recorder already stopped for transcription. Move
+          // the audio session to playback now so clause-streamed speech can
+          // become audible while the turn is still generating.
+          await setAudioModeAsync({
+            allowsRecording: false,
+            playsInSilentMode: true,
+          }).catch(() => undefined);
           if (generationRef.current !== generation) return;
-          if (reply) await speak(reply, generation);
+
+          const stream = clientRef.current?.openSpeechStream({
+            player: pcmStreamPlayer,
+          });
+          speechStreamRef.current = stream;
+          const feeder = stream
+            ? new StreamedReplyFeeder((text) => stream.appendText(text))
+            : undefined;
+          // Presentation only: follow the native buffer at the playback head.
+          // The buffered fallback keeps its own expo-audio sample meter.
+          const playerSubscription = stream
+            ? pcmStreamPlayer.subscribe((event) => {
+                if (generationRef.current !== generation) return;
+                if (event.state === 'playing' || event.state === 'draining') {
+                  setState((current) => ({
+                    ...current,
+                    assistantAudioLevel: event.level,
+                    phase: 'speaking',
+                  }));
+                } else if (event.state === 'idle') {
+                  setState((current) =>
+                    current.assistantAudioLevel === undefined
+                      ? current
+                      : { ...current, assistantAudioLevel: 0 },
+                  );
+                }
+              })
+            : undefined;
+
+          let reply = '';
+          let streamResult: GatewaySpeechStreamResult | undefined;
+          try {
+            reply = await runTurn(transcript, generation, feeder);
+            if (generationRef.current === generation && stream && feeder) {
+              feeder.finishReply();
+              stream.finishText();
+              streamResult = await stream.result();
+            }
+          } finally {
+            playerSubscription?.remove();
+            if (speechStreamRef.current === stream) {
+              speechStreamRef.current = undefined;
+            }
+            if (streamResult === undefined) stream?.stop();
+            if (generationRef.current === generation) {
+              setState((current) => ({ ...current, replyStreaming: false }));
+            }
+          }
+          if (generationRef.current !== generation) return;
+          // `unspoken` is the session's proof that no streamed audio became
+          // audible, so the complete reply is safe to synthesize buffered.
+          // Anything already audible must never be re-spoken: the reply stays
+          // on screen as text instead.
+          if (reply && (!stream || streamResult?.outcome === 'unspoken')) {
+            await speak(reply, generation);
+          }
         }
       } catch (error) {
         if (generationRef.current !== generation) return;
@@ -480,6 +568,7 @@ export function useGatewayVoice({
               : 'Voice mode stopped unexpectedly.',
           level: undefined,
           phase: 'idle',
+          replyStreaming: false,
         }));
       }
     },
@@ -517,6 +606,20 @@ export function useGatewayVoice({
   /** Cut playback short and start listening again. */
   const skipSpeaking = useCallback(() => {
     skipSpeakingRef.current = true;
+    const stream = speechStreamRef.current;
+    if (!stream) return;
+    // Skipping streamed speech stops audio only; the Hermes turn keeps
+    // running and stays visible as text. Never fall back to re-speaking.
+    stream.stop();
+    setState((current) =>
+      current.phase === 'speaking'
+        ? {
+            ...current,
+            assistantAudioLevel: 0,
+            ...(current.replyStreaming ? { phase: 'thinking' as const } : {}),
+          }
+        : current,
+    );
   }, []);
 
   return {

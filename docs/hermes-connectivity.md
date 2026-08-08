@@ -100,14 +100,20 @@ absent or malformed.
 - **Speech**: `POST /api/audio/transcribe` and `POST /api/audio/speak`, with STT/TTS providers
   and their keys held in server configuration. Wave probes capability once and caches it; the
   probe throws on request failure so the bounded retry policy owns recovery rather than caching
-  a false "no providers". v0.20 also accepts an authenticated
-  `/api/audio/speak-stream` WebSocket and returned the protocol's safe `fallback` control frame in
-  the live Homelab probe. Wave now has a bounded foreground native PCM module and a development
-  proof: clean iOS and Android builds pass, and iOS simulator scheduling, exact drain, format
-  restart, cancellation, and background teardown pass. The product WebSocket client remains
-  unimplemented until the physical-device audio gates in
-  [`pcm-playback-foundation.md`](./pcm-playback-foundation.md) pass. Speech calls run on a longer
-  timeout than REST reads because both are model work.
+  a false "no providers". Speech calls run on a longer timeout than REST reads because both are
+  model work.
+- **Streamed speech (v0.20)**: gateway voice mode opens one per-reply
+  `/api/audio/speak-stream?ticket=<single-use>` WebSocket (the same ticket flow as `/api/ws`).
+  Wave sends `{"text": …}` frames as assistant narration streams, `{"done": true}` when the
+  reply completes, and `{"stop": true}` or a disconnect as barge-in; the server answers
+  `{"type": "start", "sample_rate", "channels"}`, unaligned binary Int16 PCM frames (Wave
+  carries the odd tail bytes), and `{"type": "end"}` — or `{"type": "fallback"}` when no chunked
+  TTS provider is configured. The session in `src/services/gateway/gateway-speech-stream.ts`
+  owns the bounds, timeouts, and the admission ledger feeding the native PCM player, never
+  retries, and resolves a fallback authority: `unspoken` (no audio ever audible — the complete
+  reply is safe to synthesize buffered), or `incomplete` (audible audio; the reply stays
+  text-only). A `fallback` answer is cached briefly so unsupported gateways are not re-dialed
+  per reply; older gateways without the route fail the upgrade and take the same buffered path.
 
 ## Attachments
 

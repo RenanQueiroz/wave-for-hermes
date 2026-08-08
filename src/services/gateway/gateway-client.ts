@@ -29,6 +29,13 @@ import {
   normalizeTimelineEntries,
   toIsoTimestamp,
 } from './gateway-normalize.ts';
+import {
+  createGatewaySpeechStream,
+  createUnavailableSpeechStream,
+  type GatewaySpeechStream,
+  type SpeechPlaybackOwner,
+  type SpeechSocketLike,
+} from './gateway-speech-stream.ts';
 import { GatewayRpc, GatewayRpcError } from './gateway-rpc.ts';
 import {
   GatewayTurnTranslator,
@@ -78,6 +85,10 @@ const MAX_SPEAK_CHARS = 4_000;
 // hosted provider routinely takes tens of seconds where a REST read takes
 // milliseconds.
 const AUDIO_REQUEST_TIMEOUT_MS = 90_000;
+// A gateway that answered `fallback` has no chunked TTS provider configured.
+// Skip re-dialing the streaming socket for a while instead of spending a
+// ticket mint per reply; the window matches the audio-capabilities staleTime.
+const SPEECH_STREAM_FALLBACK_CACHE_MS = 5 * 60_000;
 const MAX_SEARCH_SNIPPET_CHARS = 300;
 const MAX_GATEWAY_VERSION_CHARS = 64;
 const ACTIVE_GATEWAY_SESSION_STATUSES = new Set([
@@ -235,6 +246,8 @@ export class GatewayClient {
     string,
     { liveSessionId: string; rpc: GatewayRpc }
   >();
+  /** Until this instant, speak-stream dials short-circuit to buffered TTS. */
+  private speechStreamFallbackUntil: number | undefined;
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -1022,6 +1035,43 @@ export class GatewayClient {
         ? { provider: record.provider }
         : {}),
     };
+  }
+
+  /**
+   * Open one per-reply clause-streamed speech session against v0.20's
+   * `/api/audio/speak-stream`. The session is returned immediately and
+   * connects in the background; a gateway without the route or without a
+   * chunked provider resolves `unspoken`, which tells the caller the whole
+   * reply is still safe to synthesize through buffered `speakText`. The
+   * session never retries and is the sole admission path into the injected
+   * playback owner (see `gateway-speech-stream.ts` for the bounds).
+   */
+  openSpeechStream(options: {
+    player: SpeechPlaybackOwner;
+  }): GatewaySpeechStream {
+    if (
+      this.speechStreamFallbackUntil !== undefined &&
+      Date.now() < this.speechStreamFallbackUntil
+    ) {
+      return createUnavailableSpeechStream('fallback');
+    }
+    const stream = createGatewaySpeechStream({
+      connect: async () => {
+        const ticket = await this.mintTicket();
+        const wsBase = this.baseUrl.replace(/^http/, 'ws');
+        return this.socketFactory(
+          `${wsBase}/api/audio/speak-stream?ticket=${encodeURIComponent(ticket)}`,
+        ) as unknown as SpeechSocketLike;
+      },
+      player: options.player,
+    });
+    void stream.result().then((result) => {
+      if (result.outcome === 'unspoken' && result.reason === 'fallback') {
+        this.speechStreamFallbackUntil =
+          Date.now() + SPEECH_STREAM_FALLBACK_CACHE_MS;
+      }
+    });
+    return stream;
   }
 
   /**

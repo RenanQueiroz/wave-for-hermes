@@ -209,8 +209,19 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   code both reject unsupported formats, empty or oversized chunks, incomplete Int16 frames, and
   more than 12 seconds of queued audio; background, interruption, destruction, and explicit Stop
   release the native player. It receives no token, URL, provider, transcript, or conversation
-  identifier, and it neither stores nor logs audio bytes. Production gateway streaming remains
-  disabled until its separate physical-device and transport gates pass.
+  identifier, and it neither stores nor logs audio bytes.
+- Clause-streamed gateway speech runs over one per-reply authenticated
+  `/api/audio/speak-stream` WebSocket using the same single-use ticket as the chat socket. The
+  session in `src/services/gateway/gateway-speech-stream.ts` enforces bounded inbound frames
+  (512 KiB binary, 4 KiB control), explicit connect/finish/drain timeouts, a 16,000-character
+  outbound text cap, and a transport-owned admission ledger: at most six seconds of
+  admitted-but-unplayed audio (under the player's hard 12-second capacity), at most 60 seconds of
+  pending audio, and at most 15 minutes per session, with any crossing failing the stream
+  deterministically. Only assistant narration is fed — a Wave-owned filter strips Markdown
+  control syntax and code blocks, and tool details, reasoning, and prompts never reach the
+  socket. An ambiguously failed socket is never retried or replayed: buffered `/api/audio/speak`
+  synthesizes the complete reply only when no streamed audio ever became audible, and anything
+  after first sound leaves the reply text-only.
 
 ### Transport and deployment
 

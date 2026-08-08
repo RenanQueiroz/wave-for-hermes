@@ -339,9 +339,17 @@ documentation before implementing UI.
   audio focus until the bounded five-second context close; format restarts must reuse one focus
   request instead of abandoning/re-requesting it mid-proof. Gateway protocol and fallback behavior
   never enter the player.
-- The PCM card under `src/dev` is a development-only feasibility proof. Do not connect
-  `/api/audio/speak-stream` to production voice until the physical iOS and Android quality,
-  routing, interruption, background, and release gates in `docs/pcm-playback-foundation.md` pass.
+- The PCM card under `src/dev` is a development-only feasibility proof and never connects to the
+  gateway. Production clause-streamed gateway speech lives in
+  `src/services/gateway/gateway-speech-stream.ts`: one per-reply ticketed
+  `/api/audio/speak-stream` session that owns the protocol frames, bounded inbound sizes,
+  timeouts, and the transport admission ledger (six-second high-water under the player's
+  12-second capacity; pending and per-session audio bounds fail deterministically). It never
+  retries or replays an ambiguous socket: buffered `/api/audio/speak` synthesizes the complete
+  reply only when no streamed audio ever became audible, and after first sound the reply stays
+  text-only. Feed it only assistant narration through the Wave-owned speech-text filter
+  (`src/features/voice/speech-text.ts`) — never tool details, reasoning, prompts, raw Markdown
+  control syntax, or already-fed text — and keep Skip stopping audio without stopping the turn.
 - Do not add `@config-plugins/react-native-webrtc` until its published Expo compatibility includes
   SDK 57 and its native mutations are reviewed. The current module autolinks and needs no generated
   native edits or repository-owned config plugin.

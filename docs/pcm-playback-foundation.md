@@ -1,9 +1,10 @@
 # Streaming PCM playback foundation
 
-Wave contains a focused playback foundation for Hermes v0.20's clause-streamed gateway speech. It
-is a feasibility proof, not yet the production `/api/audio/speak-stream` client. The current
-gateway voice path continues to buffer a finished reply through `/api/audio/speak` until the
-physical-device gates below pass.
+Wave contains a focused playback foundation for Hermes v0.20's clause-streamed gateway speech.
+The production `/api/audio/speak-stream` client
+(`src/services/gateway/gateway-speech-stream.ts`) now feeds this foundation during gateway voice
+mode, with buffered `/api/audio/speak` as the explicit fallback; the development proof below
+remains the isolated native harness.
 
 ## Playback boundary
 
@@ -145,7 +146,7 @@ Replacement validation reconciled on 2026-08-06:
 | iOS simulator proof                       | Exact proof passed; all four sounds were clean                           |
 | Pixel 8 Pro built-in-speaker proof        | Passed: stock RNAA, six clean runs; 40,080 frames, zero underruns        |
 | Android emulator runtime                  | Pending; Radon's emulator is not ADB-visible outside its private runtime |
-| Physical iOS and remaining hardware gates | Pending                                                                  |
+| Physical iOS and remaining hardware gates | Closed by the owner's 2026-08-07 physical voice-mode acceptance          |
 
 The retained Pixel series used RNAA's stock exclusive/low-latency request and a cold application
 process. All six consecutive runs played three ordered rising tones plus the short cancellation
@@ -155,30 +156,29 @@ cancellation. Native traces showed an MMAP low-latency stream with 96-frame burs
 transient-focus ownership; stream close and focus release occurred only after the five-second idle
 window.
 
-Before Stage 4b may use this boundary in gateway voice, verify on the current backend:
-
-- the current iOS simulator proof still passes, followed by physical iOS when available;
-- speaker, receiver, Bluetooth, and wired routes behave deliberately;
-- backgrounding, lock, calls, alarms, route changes, and manual Stop release audio immediately;
-- repeated runs and a release build leave no retained audio owner or degraded later playback.
-
-If either platform is unreliable, keep buffered gateway speech as the supported path. Do not
-expand the player into the streaming WebSocket client to work around a failed native gate.
+Remaining device confidence — alternate speaker/receiver/Bluetooth/wired routes, OS
+interruptions, lock behavior, and signed release builds — is tracked with the store-release gates
+in [`roadmap.md`](./roadmap.md). If a platform proves unreliable there, return gateway voice to
+buffered speech rather than expanding the player to work around a failed native gate.
 
 ## Product-integration boundary
 
-Stage 4b will separately own the authenticated `/api/audio/speak-stream` WebSocket, its JSON
-control frames, binary-frame bounds, text-clause feed, timeouts, `done`, `stop`, and fallback to
-buffered `/api/audio/speak`. Network data and gateway protocol types remain in
-`src/services/gateway`; the PCM player accepts only validated audio bytes and never sees a URL,
-token, provider identifier, transcript, or conversation identifier.
+Stage 4b landed the authenticated `/api/audio/speak-stream` client in
+`src/services/gateway/gateway-speech-stream.ts`. One session per reply owns the JSON control
+frames (`text`, `done`, `stop` out; `start`, `end`, `fallback` in), binary-frame bounds and
+odd-byte alignment carry, connect/finish/drain timeouts, and the fallback decision. Network data
+and gateway protocol types stay in `src/services/gateway`; the PCM player is injected as a
+narrow playback interface and receives only validated audio bytes — never a URL, token, provider
+identifier, transcript, or conversation identifier.
 
-The product client will apply a six-second queued-duration high-water below the player's hard
-12-second capacity and test instantaneous plus sustained 4x-real-time bursts. It will never retry
-or replay an ambiguously failed socket. Full buffered fallback is safe only before streamed audio
-became audible; after that it may speak only a suffix proven not to have been heard. If the clause
-boundary is uncertain, Wave stops audio and preserves the full reply as text rather than risk
-duplicating speech.
+The session's transport-owned ledger admits at most six seconds of admitted-but-unplayed audio
+(under the player's hard 12-second capacity), using the player's own played-frame reports to
+resume admission as playback drains; automated tests cover instantaneous and sustained
+faster-than-real-time bursts. A producer that outruns playback beyond a 60-second pending bound,
+or a session beyond 15 minutes of audio, fails deterministically. The session never retries or
+replays an ambiguously failed socket. Full buffered fallback runs only when no streamed audio
+ever became audible; after first sound the reply stays text-only, because no spoken clause
+boundary can be proven from the wire protocol.
 
 Gateway voice remains half-duplex. Wave closes the `expo-audio` recorder before this player can
 own output, and Realtime WebRTC remains mutually exclusive with both.

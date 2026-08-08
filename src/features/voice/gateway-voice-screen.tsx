@@ -133,6 +133,7 @@ export function GatewayVoiceScreen({
         meter: voice.meterDebug.current,
         muted: voice.state.muted,
         phase: voice.state.phase,
+        replyStreaming: voice.state.replyStreaming,
         userAudioLevel:
           voice.state.level === undefined
             ? undefined
@@ -222,7 +223,7 @@ export function GatewayVoiceScreen({
                 <Typography.Paragraph type="small" weight="semibold">
                   Hermes
                 </Typography.Paragraph>
-                <Response isStreaming={phase === 'thinking'}>
+                <Response isStreaming={voice.state.replyStreaming}>
                   {voice.state.assistantText.trim()}
                 </Response>
               </View>

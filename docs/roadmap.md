@@ -13,36 +13,30 @@ security, and WebRTC documents; this roadmap tracks only work that remains.
 clause-streamed speech and conversation capabilities Wave can adopt without becoming a Hermes
 administration console.
 
-### Stream gateway speech safely
+### Validate streamed gateway speech on device
 
-Hermes v0.20 can accept assistant deltas over `/api/audio/speak-stream` and return clause-level raw
-PCM while the turn is still generating. Wave has a bounded development proof behind one app-owned
-adapter. The original focused native player passed exact accounting but remained intermittently
-audible on the Pixel 8 Pro, so its `AudioTrack`/`AVAudioEngine` implementation was retired in favor
-of `react-native-audio-api`'s maintained native audio-buffer queue. Clean Prebuild, iOS and Android
-builds and the iOS simulator proof pass. With RNAA's stock Android output settings, a cold-started
-series of six consecutive Pixel 8 Pro built-in-speaker runs also passes without pops or crackles.
-Physical iOS, remaining hardware routes, interruptions, and release behavior still need validation.
-The PCM boundary now reports the native buffer currently at the playback head, matching the
-measured recorder/playback waveform already used by buffered gateway voice; Realtime independently
-reduces local and remote WebRTC audio stats for the same actual-sound behavior.
-On 2026-08-06, a physical Pixel 8 Pro live check confirmed nonzero input and playback levels in
-both voice modes, the expected speech phases, return to zero at rest, and no new runtime warnings or
-errors. Alternate routes, release builds, and physical iOS remain separate gates.
-The tracked evidence and exact gate are in
-[`pcm-playback-foundation.md`](./pcm-playback-foundation.md).
+Clause-streamed gateway speech is implemented: gateway voice mode feeds assistant narration to
+`/api/audio/speak-stream` while the turn runs and plays clause-level PCM through the validated
+native foundation, with buffered `/api/audio/speak` as the explicit fallback for older gateways,
+unsupported providers, socket failure, or a server `fallback` control frame (see
+[`hermes-connectivity.md`](./hermes-connectivity.md) and
+[`pcm-playback-foundation.md`](./pcm-playback-foundation.md)). Automated coverage proves the
+protocol, the six-second admission high-water under the player's hard bound, burst and runaway
+bounds, the never-retry rule, and the never-replay fallback authority.
 
-After that gate passes, add the authenticated streaming client, feed only normalized assistant
-narration while the turn runs, and keep buffered `/api/audio/speak` as the explicit fallback for
-older gateways, unsupported providers, socket failure, or a server `fallback` control frame. Apply
-a six-second queued-audio high-water under the player's hard bound, prove burst behavior, never
-retry an ambiguous speech socket, and never replay a clause that may already have been heard.
+Still remaining for this flow:
 
-The first product integration remains half-duplex: Wave closes the recorder before playback and
-keeps an explicit interrupt control. Full-duplex gateway voice requires a separate native proof
-covering simultaneous capture/playback, echo cancellation, pre-roll capture, phase-aware VAD,
-speaker and Bluetooth routing, interruption, and cleanup. If that proof is not reliable, Realtime
-remains Wave's full-duplex mode.
+- exercise live streamed speech on physical iOS and Android against the Homelab gateway: first
+  clause latency, ordering, Skip, voice Stop, mid-turn tool pauses, and the buffered fallback on
+  a gateway without a chunked provider;
+- add subtle thinking-latency feedback only if user testing shows the remaining gap needs it —
+  optional, local, stopped instantly by speech or recording.
+
+The integration stays half-duplex: Wave closes the recorder before playback and keeps an explicit
+interrupt control. Full-duplex gateway voice requires a separate native proof covering
+simultaneous capture/playback, echo cancellation, pre-roll capture, phase-aware VAD, speaker and
+Bluetooth routing, interruption, and cleanup. If that proof is not reliable, Realtime remains
+Wave's full-duplex mode.
 
 ## Later: deliberate native and notification options
 
