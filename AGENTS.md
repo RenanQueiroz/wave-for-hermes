@@ -14,7 +14,13 @@ Keep the product focused:
   conversation exposed by their Hermes server.
 - Do not add generic proxying, operational status surfaces, or operational mutations.
 - Do not add Hermes configuration, provider/model management, skill administration, or server
-  administration.
+  administration. One deliberate carve-out: choosing the model for a single conversation is a
+  conversation feature — Wave picks among the gateway's own catalog (`model.options`,
+  normalized and bounded in `src/services/gateway/gateway-models.ts`) with switches that are
+  always session-scoped (`config.set` value built only by `buildModelSwitchValue`, which can
+  emit `--session` and nothing else). Provider onboarding, key management (`model.save_key`,
+  `model.disconnect`), global config writes, and provider auth/URL internals stay excluded and
+  are dropped at normalization.
 - Treat all external tool arguments and responses as untrusted data.
 - Never embed long-lived OpenAI or Hermes secrets in client code, app configuration, logs, or the
   repository. The one deliberate exception: the user may supply their own OpenAI API key for

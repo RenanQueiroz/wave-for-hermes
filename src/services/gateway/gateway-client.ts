@@ -30,6 +30,14 @@ import {
   toIsoTimestamp,
 } from './gateway-normalize.ts';
 import {
+  buildModelSwitchValue,
+  normalizeModelCatalog,
+  normalizeModelSwitch,
+  type WaveModelCatalog,
+  type WaveModelSelection,
+  type WaveSessionModelSwitch,
+} from './gateway-models.ts';
+import {
   createGatewaySpeechStream,
   createUnavailableSpeechStream,
   type GatewaySpeechStream,
@@ -248,6 +256,12 @@ export class GatewayClient {
   >();
   /** Until this instant, speak-stream dials short-circuit to buffered TTS. */
   private speechStreamFallbackUntil: number | undefined;
+  /**
+   * Model picks for conversations that have no gateway session yet; each
+   * rides its conversation's eventual `session.create` as `model`/`provider`
+   * and becomes the new session's own scoped override.
+   */
+  private readonly pendingModelPicks = new Map<string, WaveModelSelection>();
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -1128,6 +1142,95 @@ export class GatewayClient {
     }
   }
 
+  // ---- models ------------------------------------------------------------
+
+  /**
+   * The model catalog with this conversation's current selection. The
+   * session is resumed first so the answer reflects its own scoped override
+   * rather than the profile default; a conversation with no gateway session
+   * yet reads the profile-level catalog plus any pending local pick.
+   */
+  async getSessionModelContext(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<WaveModelCatalog> {
+    const resolved = this.resolveSessionId(sessionId);
+    const connection = await this.openSocket(signal);
+    try {
+      let liveSessionId: string | undefined;
+      if (!isPendingSessionId(resolved)) {
+        try {
+          liveSessionId = await this.resolveLiveSession(
+            connection.rpc,
+            resolved,
+          );
+        } catch {
+          // A session that cannot resume still gets the profile catalog.
+        }
+      }
+      const payload = await connection.rpc.call('model.options', {
+        explicit_only: true,
+        ...(liveSessionId ? { session_id: liveSessionId } : {}),
+      });
+      const catalog = normalizeModelCatalog(payload);
+      const pending = this.pendingModelPicks.get(sessionId);
+      return pending
+        ? {
+            ...catalog,
+            currentModel: pending.model,
+            currentProvider: pending.provider,
+          }
+        : catalog;
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  /**
+   * Switch this conversation's model. Always session-scoped (`--session` is
+   * the only flag the value builder can emit; `--global`/`--once` are
+   * structurally impossible), sent exactly once, never retried. A busy
+   * session answers `deferred` and the gateway applies the pick when its
+   * next turn starts; `confirm-required` asks the caller to re-send with
+   * `confirmExpensiveModel` after the user agrees. A conversation with no
+   * gateway session yet stores the pick locally for its `session.create`.
+   */
+  async setSessionModel(
+    sessionId: string,
+    selection: WaveModelSelection,
+    options: { confirmExpensiveModel?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<WaveSessionModelSwitch> {
+    const value = buildModelSwitchValue(selection);
+    const resolved = this.resolveSessionId(sessionId);
+    if (isPendingSessionId(resolved)) {
+      this.pendingModelPicks.set(sessionId, selection);
+      return { model: selection.model, outcome: 'applied' };
+    }
+    const connection = await this.openSocket(signal);
+    try {
+      const liveSessionId = await this.resolveLiveSession(
+        connection.rpc,
+        resolved,
+      );
+      const result = await connection.rpc.call('config.set', {
+        key: 'model',
+        session_id: liveSessionId,
+        value,
+        ...(options.confirmExpensiveModel
+          ? { confirm_expensive_model: true }
+          : {}),
+      });
+      return normalizeModelSwitch(result, selection);
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
   // ---- internals ---------------------------------------------------------
 
   /** Follow a pending placeholder to the real session, when one exists. */
@@ -1140,7 +1243,11 @@ export class GatewayClient {
     sessionId: string,
   ): Promise<string> {
     if (isPendingSessionId(sessionId)) {
-      const created = await rpc.call('session.create', {});
+      const pick = this.pendingModelPicks.get(sessionId);
+      const created = await rpc.call(
+        'session.create',
+        pick ? { model: pick.model, provider: pick.provider } : {},
+      );
       const live = created.session_id;
       const stored = created.stored_session_id;
       if (typeof live !== 'string' || !live) {
@@ -1152,6 +1259,7 @@ export class GatewayClient {
       // Later reads address the STORED id (the durable db key); the live id is
       // only valid on the transport, where interrupt needs it.
       const storedId = typeof stored === 'string' && stored ? stored : live;
+      this.pendingModelPicks.delete(sessionId);
       this.resolvedSessions.set(sessionId, storedId);
       this.liveSessions.set(storedId, live);
       return live;

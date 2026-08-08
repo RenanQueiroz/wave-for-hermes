@@ -86,6 +86,16 @@ absent or malformed.
   states cross from `status.update` into ephemeral Wave-owned labels. Unknown fields and statuses
   remain ignored. These projections update only the active chat tail and are never persisted as
   assistant speech. Sanitized fixtures contain synthetic shapes only.
+- **Per-chat model (v0.20)**: the picker reads RPC `model.options
+{explicit_only: true, session_id?}` after a `session.resume`, so the answer reflects the
+  session's own scoped override; Wave normalizes it into a bounded catalog (auth internals, key
+  env names, and API URLs are dropped; unauthenticated provider rows are excluded). A switch is
+  one non-retrying `config.set {session_id: <live sid>, key: 'model', value:
+'<model> --provider <slug> --session', confirm_expensive_model?}`; the value is built only
+  from catalog-validated ids so `--global`/`--once` are impossible. A busy session answers
+  `deferred: true` and applies the pick at its next turn start; `confirm_required` is re-sent
+  only after explicit user confirmation. A conversation with no gateway session yet keeps the
+  pick client-side and sends it as `model`/`provider` on its eventual `session.create`.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from

@@ -224,6 +224,13 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   synthesizes the complete reply only when no streamed audio ever became audible, and anything
   after first sound leaves the reply text-only.
 
+- Per-conversation model selection exposes no provider administration: the catalog is
+  normalized with auth types, key env names, and API URLs dropped and unauthenticated provider
+  rows excluded; `model.save_key`/`model.disconnect` are never called; and the one `config.set`
+  value is built exclusively by a validator that can only emit
+  `<model> --provider <slug> --session`, making global or one-turn flags structurally
+  impossible. Model and provider ids come only from the normalized catalog, never free-typed.
+
 ### Transport and deployment
 
 - Production mobile connections require HTTPS, with two deliberate carve-outs. Plain HTTP is

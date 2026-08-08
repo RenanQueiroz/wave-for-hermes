@@ -73,6 +73,7 @@ import {
   deriveToolAction,
   toolActionLabel,
 } from '@/features/chat/tool-actions';
+import { SessionModelPill } from '@/features/chat/model-picker';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useConnectedWave } from '@/state/use-connected-wave';
@@ -857,6 +858,16 @@ function ConnectedChatScreen({
             testID="chat-activity-status">
             {activityLabel}
           </Typography.Paragraph>
+        ) : null}
+
+        {gatewayClient ? (
+          <SessionModelPill
+            baseUrl={baseUrl}
+            connectionId={connectionId}
+            disabled={composerBlocked}
+            gatewayClient={gatewayClient}
+            sessionId={sessionId}
+          />
         ) : null}
 
         <InputGroup
