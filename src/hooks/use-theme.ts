@@ -41,3 +41,13 @@ export function useTheme() {
 function resolveColor(value: string | number | undefined, fallback: string) {
   return typeof value === 'string' ? value : fallback;
 }
+
+/**
+ * The theme's destructive color as a plain string for native (`@expo/ui`)
+ * props, which cannot read Uniwind classes. The literal fallback mirrors
+ * PanelUI theme.css and applies only if token resolution fails.
+ */
+export function useDestructiveColor(): string {
+  const value = useCSSVariable('--color-destructive');
+  return typeof value === 'string' ? value : '#ef4444';
+}

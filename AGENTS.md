@@ -139,14 +139,28 @@ documentation before implementing UI.
   animation, so a disabled control never visually dims through classes or its own style — put
   the dim on a wrapper `View`. Icon typings can also declare more than the runtime entry exports
   (`RotateCwIcon`); a green typecheck does not prove an icon exists at runtime.
-- Keyboard avoidance is chosen by surface shape (validated on device): a stacked form
-  scrolls through `@/components/keyboard-aware-scroll-view` (PanelUI's per-Input
-  `avoidKeyboard` lift translates only the focused field, sliding it over the fields
-  above it); a lone field — optionally grouped with its submit button — lifts through
+- Settings-style screens (Settings, Connect) are native forms: `@expo/ui`
+  `FieldGroup`/`FieldGroup.Section` inside a `Host`, with `TextInput` + `useNativeState` for
+  fields (read `state.value` at submit; blur before programmatic writes — expo/expo #47434),
+  `Picker appearance="menu"` for single choices, and section footers for descriptions. A
+  `FieldGroup` owns its own scrolling and keyboard insets — never nest it in an RN ScrollView
+  or add keyboard-avoidance wrappers around it, and route theme colors into native props via
+  `useCSSVariable` (`useDestructiveColor`). Chat composer, search, and transcript surfaces
+  stay PanelUI/RN. Two Android constraints validated on the emulator: `FieldGroup` recognizes
+  only literal `<FieldGroup.Section>` elements (a custom component wrapping a section becomes
+  one cramped row — keep section JSX in the screen, logic in hooks), and section rows already
+  get a Material `ListItem` surface (a universal `ListItem` child draws a second box, and bare
+  text outside a row defaults to black). Rows and footers therefore go through the
+  platform-split `@/components/form-row` (`FormRow`, `FormPickerRow`, `FormFooterText`);
+  Android renders the Material exposed dropdown full-width with the section title as label.
+- Keyboard avoidance for the remaining PanelUI/RN surfaces (validated on device): a lone
+  field — optionally grouped with its submit button — lifts through
   `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus; pinned composers dock
   with `KeyboardAvoider mode="dock"`. Android keyboards also ignore `autoCorrect={false}`
-  on plain-text input classes — use `keyboardType="url"`/`"visible-password"` for values
-  that must not be corrected.
+  on plain-text RN input classes — use `keyboardType="url"`/`"visible-password"` for values
+  that must not be corrected. In `@expo/ui` `TextInput`, `visible-password` maps to the plain
+  Compose text keyboard (verified in source), so the native connect form relies on
+  `autoCorrect={false}` alone on Android.
 - React Native's Android renderer resolves the CSS logical corner classes `rounded-es-*` and
   `rounded-se-*` to the diagonally opposite corner (validated on RN 0.86:
   `BorderRadiusStyle.resolve` reads the tokens inline-axis-first; iOS is correct, and
