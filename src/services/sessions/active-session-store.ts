@@ -60,6 +60,13 @@ export class ActiveSessionStore {
   }
 }
 
+/**
+ * One instance for the app: the store is a stateless SecureStore wrapper, so
+ * the previous per-component constructions were three copies of identical
+ * wiring.
+ */
+export const activeSessionStore = new ActiveSessionStore();
+
 function parseRecord(value: unknown): ActiveSessionRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new ActiveSessionStoreError();

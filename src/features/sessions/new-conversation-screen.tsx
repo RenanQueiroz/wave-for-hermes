@@ -7,11 +7,11 @@ import {
 } from 'expo-router';
 import { DrawerActions } from 'expo-router/react-navigation';
 import { Alert, Button, Spinner, Typography } from 'panelui-native';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
-import { ActiveSessionStore } from '@/services/sessions/active-session-store';
+import { activeSessionStore } from '@/services/sessions/active-session-store';
 
 import { waveSessionQueryKey } from './session-query-keys';
 
@@ -93,7 +93,6 @@ function ConnectedNewConversationScreen({
   const queryClient = useQueryClient();
   const router = useRouter();
   const startedRef = useRef(false);
-  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const createSession = useMutation({
     mutationFn: () => client.createSession(),
     onSuccess: async (result) => {

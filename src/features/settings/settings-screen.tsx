@@ -3,7 +3,7 @@ import { Button, Card, Item, Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
 import { ReactNativeLegal } from 'react-native-legal';
 
-import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useConnectedWave } from '@/state/use-connected-wave';
 import { OpenAiKeyCard } from '@/features/realtime/openai-key-card';
 import { RealtimeModelCard } from '@/features/realtime/realtime-model-card';
 import { RealtimeVoiceCard } from '@/features/realtime/realtime-voice-card';
@@ -12,19 +12,16 @@ import { openAiKeyState } from '@/state/openai-key-state';
 import { useHydratedStore } from '@/state/use-device-state';
 
 export function SettingsScreen() {
-  const connection = useWaveConnection();
+  const connected = useConnectedWave();
   const router = useRouter();
   // The voice picker only matters once Realtime is possible on this device.
   const keyState = useHydratedStore(openAiKeyState);
 
-  if (
-    connection.state.phase !== 'connected' &&
-    connection.state.phase !== 'offline'
-  ) {
+  if (!connected) {
     return <Redirect href="/" />;
   }
 
-  const { baseUrl, label } = connection.state.identity;
+  const { baseUrl, label } = connected;
 
   return (
     <View className="flex-1 bg-background">

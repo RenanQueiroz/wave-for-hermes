@@ -75,7 +75,7 @@ import {
 } from '@/features/chat/tool-actions';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
-import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useConnectedWave } from '@/state/use-connected-wave';
 import { useDictation } from '@/features/voice/use-dictation';
 import { useMessagePlayback } from '@/features/voice/use-message-playback';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
@@ -94,7 +94,7 @@ import {
   waveTimelineQueryKey,
 } from '@/features/sessions/session-query-keys';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
-import { ActiveSessionStore } from '@/services/sessions/active-session-store';
+import { activeSessionStore } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
 import {
@@ -135,22 +135,18 @@ function emptyStateTitleForSession(sessionId: string) {
 }
 
 export function ChatScreen({ sessionId }: ChatScreenProps) {
-  const { client, gatewayClient, state: connection } = useWaveConnection();
+  const connected = useConnectedWave();
 
-  if (
-    (connection.phase !== 'connected' && connection.phase !== 'offline') ||
-    !client ||
-    !sessionId
-  ) {
+  if (!connected || !sessionId) {
     return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   return (
     <ConnectedChatScreen
-      baseUrl={connection.identity.baseUrl}
-      client={client}
-      connectionId={connection.identity.id}
-      gatewayClient={gatewayClient}
-      offline={connection.phase === 'offline'}
+      baseUrl={connected.baseUrl}
+      client={connected.client}
+      connectionId={connected.connectionId}
+      gatewayClient={connected.gatewayClient}
+      offline={connected.phase === 'offline'}
       sessionId={sessionId}
     />
   );
@@ -193,7 +189,6 @@ function ConnectedChatScreen({
   const playback = useMessagePlayback({ client: gatewayClient });
   const canDictate = Boolean(gatewayClient) && speech.data?.stt === true;
   const canSpeak = Boolean(gatewayClient) && speech.data?.tts === true;
-  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const timelineKey = useMemo(
     () => waveTimelineQueryKey(connectionId, baseUrl, sessionId),
     [baseUrl, connectionId, sessionId],
@@ -331,7 +326,7 @@ function ConnectedChatScreen({
     void activeSessionStore
       .save(connectionId, sessionId)
       .catch(() => undefined);
-  }, [activeSessionStore, connectionId, sessionId]);
+  }, [connectionId, sessionId]);
 
   const sessionNotFound =
     timeline.error instanceof WaveBackendError &&
@@ -362,7 +357,6 @@ function ConnectedChatScreen({
         cancelled = true;
       };
     }, [
-      activeSessionStore,
       baseUrl,
       connectionId,
       queryClient,

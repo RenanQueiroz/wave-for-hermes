@@ -21,7 +21,6 @@ import {
 import { AppState, ScrollView, View } from 'react-native';
 
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
-import { useWaveConnection } from '@/features/connection/connection-provider';
 import { createGatewayAskHermesExecutor } from '@/features/realtime/gateway-ask-hermes-executor';
 import { createGatewayCorrectHermesExecutor } from '@/features/realtime/gateway-correct-hermes-executor';
 import {
@@ -30,6 +29,7 @@ import {
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
+import { useConnectedWave } from '@/state/use-connected-wave';
 import {
   realtimeCaptionPreference,
   realtimeModelPreference,
@@ -55,7 +55,7 @@ export function KeyedRealtimeVoiceScreen({
   client: GatewayClient;
   sessionId: string;
 }) {
-  const { state: connection } = useWaveConnection();
+  const connected = useConnectedWave();
   const [configuration, setConfiguration] = useState<
     | {
         apiKey: string;
@@ -86,7 +86,7 @@ export function KeyedRealtimeVoiceScreen({
     };
   }, []);
 
-  if (connection.phase !== 'connected' || !sessionId) {
+  if (connected?.phase !== 'connected' || !sessionId) {
     return <Redirect href={sessionId ? '/' : '/new'} />;
   }
   // Key vanished (removed in Settings mid-navigation): gateway voice owns
@@ -97,9 +97,9 @@ export function KeyedRealtimeVoiceScreen({
   return (
     <KeyedRealtimeVoiceScreenReady
       apiKey={configuration.apiKey}
-      baseUrl={connection.identity.baseUrl}
+      baseUrl={connected.baseUrl}
       client={client}
-      connectionId={connection.identity.id}
+      connectionId={connected.connectionId}
       model={configuration.model}
       sessionId={sessionId}
       transcribeInput={configuration.captions}

@@ -27,11 +27,12 @@ import { SecureGatewayConnectionStore } from '@/services/gateway/secure-gateway-
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { waveQueryPersister } from '@/services/query/wave-query-cache';
 import {
-  ActiveSessionStore,
+  activeSessionStore,
   ActiveSessionStoreError,
 } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
+import { connectionSnapshot } from '@/state/connection-state';
 
 export interface GatewaySignInInput {
   baseUrl: string;
@@ -103,7 +104,6 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
     () => new SecureGatewayConnectionStore({ allowInsecureHttp }),
     [allowInsecureHttp],
   );
-  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const [state, setState] = useState<WaveConnectionState>({
     phase: 'loading',
   });
@@ -335,13 +335,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
         });
       }
     },
-    [
-      activeSessionStore,
-      allowInsecureHttp,
-      gatewayStore,
-      queryClient,
-      verifyGateway,
-    ],
+    [allowInsecureHttp, gatewayStore, queryClient, verifyGateway],
   );
 
   const clearLocalConnection = useCallback(
@@ -357,7 +351,7 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       setState({ phase: 'disconnected' });
       return true;
     },
-    [activeSessionStore, gatewayStore, queryClient],
+    [gatewayStore, queryClient],
   );
 
   // A gateway session cannot be revoked server-side: its tokens are stateless
@@ -422,6 +416,28 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
       }),
     });
   }, [compatibilityVersion, state]);
+
+  // The read-side snapshot mirrors the context's "usable" narrowing so
+  // consuming screens stop re-deriving it; this provider stays the only
+  // writer.
+  useEffect(() => {
+    if (
+      (state.phase === 'connected' || state.phase === 'offline') &&
+      gatewayClient
+    ) {
+      connectionSnapshot.publish({
+        baseUrl: state.identity.baseUrl,
+        client: gatewayClient,
+        connectionId: state.identity.id,
+        gatewayClient,
+        label: state.identity.label,
+        phase: state.phase,
+      });
+    } else {
+      connectionSnapshot.publish(null);
+    }
+  }, [gatewayClient, state]);
+  useEffect(() => () => connectionSnapshot.publish(null), []);
 
   const value = useMemo<WaveConnectionContextValue>(() => {
     const usable = state.phase === 'connected' || state.phase === 'offline';

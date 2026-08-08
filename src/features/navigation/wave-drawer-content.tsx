@@ -33,6 +33,7 @@ import { useRecyclingState } from '@legendapp/list/react-native';
 import { LegendList } from '@/components/legend-list';
 import { OfflineNotice } from '@/components/offline-notice';
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useConnectedWave } from '@/state/use-connected-wave';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import {
   waveSessionDataQueryKey,
@@ -48,7 +49,7 @@ import {
   type WaveSessionFilter,
   type WaveSessionSectionId,
 } from '@/features/sessions/session-organization';
-import { ActiveSessionStore } from '@/services/sessions/active-session-store';
+import { activeSessionStore } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
 import type {
   WaveChatClient,
@@ -65,12 +66,9 @@ type DrawerSessionListItem =
   | { id: string; kind: 'session'; session: WaveSessionSummary };
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
-  const connection = useWaveConnection();
-  if (
-    (connection.state.phase !== 'connected' &&
-      connection.state.phase !== 'offline') ||
-    !connection.client
-  ) {
+  const { disconnect } = useWaveConnection();
+  const connected = useConnectedWave();
+  if (!connected) {
     return (
       <View
         className="flex-1 items-center justify-center bg-background"
@@ -82,11 +80,11 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
   return (
     <ConnectedWaveDrawerContent
       {...props}
-      baseUrl={connection.state.identity.baseUrl}
-      client={connection.client}
-      connectionId={connection.state.identity.id}
-      deviceName={connection.state.identity.label}
-      disconnect={connection.disconnect}
+      baseUrl={connected.baseUrl}
+      client={connected.client}
+      connectionId={connected.connectionId}
+      deviceName={connected.label}
+      disconnect={disconnect}
     />
   );
 }
@@ -109,7 +107,6 @@ function ConnectedWaveDrawerContent({
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const sessionsQuery = useWaveSessions({
     baseUrl,
     client,
@@ -250,7 +247,7 @@ function ConnectedWaveDrawerContent({
         setLocalError('Wave could not open that conversation.');
       }
     },
-    [activeSessionStore, connectionId, navigation, router],
+    [connectionId, navigation, router],
   );
   const startRename = useCallback((session: WaveSessionSummary) => {
     setRenameSession(session);

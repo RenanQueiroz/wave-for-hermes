@@ -13,7 +13,7 @@ import { View } from 'react-native';
 
 import { LegendList } from '@/components/legend-list';
 import { OfflineNotice } from '@/components/offline-notice';
-import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useConnectedWave } from '@/state/use-connected-wave';
 import { mergeSessionSearchResults } from '@/features/sessions/merge-session-search';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import {
@@ -21,23 +21,20 @@ import {
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
-import { ActiveSessionStore } from '@/services/sessions/active-session-store';
+import type { WaveChatClient } from '@/services/wave/wave-chat-client';
+import { activeSessionStore } from '@/services/sessions/active-session-store';
 
 export function SessionSearchScreen() {
-  const connection = useWaveConnection();
-  if (
-    (connection.state.phase !== 'connected' &&
-      connection.state.phase !== 'offline') ||
-    !connection.client
-  ) {
+  const connected = useConnectedWave();
+  if (!connected) {
     return <Redirect href="/" />;
   }
   return (
     <ConnectedSessionSearchScreen
-      baseUrl={connection.state.identity.baseUrl}
-      client={connection.client}
-      connectionId={connection.state.identity.id}
-      gatewayClient={connection.gatewayClient}
+      baseUrl={connected.baseUrl}
+      client={connected.client}
+      connectionId={connected.connectionId}
+      gatewayClient={connected.gatewayClient}
     />
   );
 }
@@ -49,13 +46,12 @@ function ConnectedSessionSearchScreen({
   gatewayClient,
 }: {
   baseUrl: string;
-  client: NonNullable<ReturnType<typeof useWaveConnection>['client']>;
+  client: WaveChatClient;
   connectionId: string;
   gatewayClient?: GatewayClient;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const activeSessionStore = useMemo(() => new ActiveSessionStore(), []);
   const sessionsQuery = useWaveSessions({
     baseUrl,
     client,

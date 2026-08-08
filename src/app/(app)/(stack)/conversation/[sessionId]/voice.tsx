@@ -1,9 +1,9 @@
 import { Redirect, useLocalSearchParams } from 'expo-router';
 
-import { useWaveConnection } from '@/features/connection/connection-provider';
 import { KeyedRealtimeVoiceScreen } from '@/features/realtime/voice-screen';
 import { GatewayVoiceScreen } from '@/features/voice/gateway-voice-screen';
 import { openAiKeyState } from '@/state/openai-key-state';
+import { useConnectedWave } from '@/state/use-connected-wave';
 import { useHydratedStore } from '@/state/use-device-state';
 
 export default function VoiceRoute() {
@@ -11,7 +11,7 @@ export default function VoiceRoute() {
     sessionId?: string | string[];
   }>();
   const value = Array.isArray(sessionId) ? sessionId[0] : sessionId;
-  const { gatewayClient, state } = useWaveConnection();
+  const connected = useConnectedWave();
   // Presence and preference only — never the key itself.
   const keyState = useHydratedStore(openAiKeyState);
 
@@ -19,7 +19,7 @@ export default function VoiceRoute() {
   // backend, so an unreachable one goes back rather than opening a microphone
   // with nowhere to send it.
   if (!value) return <Redirect href="/new" />;
-  if (!gatewayClient || state.phase !== 'connected') {
+  if (!connected || connected.phase !== 'connected') {
     return <Redirect href="/" />;
   }
   if (!keyState.hydrated) return null;
@@ -27,14 +27,17 @@ export default function VoiceRoute() {
   // off; the keyless server-side voice is the default.
   if (keyState.hasKey && keyState.realtimeEnabled) {
     return (
-      <KeyedRealtimeVoiceScreen client={gatewayClient} sessionId={value} />
+      <KeyedRealtimeVoiceScreen
+        client={connected.gatewayClient}
+        sessionId={value}
+      />
     );
   }
   return (
     <GatewayVoiceScreen
-      baseUrl={state.identity.baseUrl}
-      client={gatewayClient}
-      connectionId={state.identity.id}
+      baseUrl={connected.baseUrl}
+      client={connected.gatewayClient}
+      connectionId={connected.connectionId}
       sessionId={value}
     />
   );
