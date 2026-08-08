@@ -95,6 +95,12 @@ currently includes:
 - a per-conversation model picker: a compact composer pill opens the gateway's own model catalog
   (bounded, no provider administration), switches are always scoped to that one conversation, a
   busy turn defers the pick to the next turn, and expensive models ask for confirmation first;
+- an end-of-turn action row under every completed reply — a compact "time ago" timestamp
+  (tap for the exact time), then icon-only Branch-in-new-chat, Copy (raw markdown),
+  Read-aloud, and Refresh. Branch copies the conversation into a new chat through the
+  gateway; Refresh replays the previous user message with the gateway's truncate-and-replay
+  submit (blocked while a turn runs, ordinals computed only from server rows so Wave's local
+  correction rows can never skew them);
 - composer slash commands with Desktop-style autocomplete: typing `/` suggests commands and
   skills from the gateway's catalog (a mid-message `/` suggests skills only), the recognized
   `/command` token highlights inside the input, and dispatch runs on the command RPC lane —

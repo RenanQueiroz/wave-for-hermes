@@ -17,6 +17,7 @@
     "expo-asset": "~57.0.9",
     "expo-audio": "~57.0.3",
     "expo-build-properties": "~57.0.9",
+    "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.9",
     "expo-dev-client": "~57.0.10",
     "expo-device": "~57.0.1",

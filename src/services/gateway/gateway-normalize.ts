@@ -36,6 +36,7 @@ export interface GatewaySessionRow {
 export interface GatewayMessageRow {
   id?: unknown;
   role?: unknown;
+  display_kind?: unknown;
   content?: unknown;
   timestamp?: unknown;
   tool_name?: unknown;
@@ -307,6 +308,11 @@ export function normalizeMessageRow(
   return {
     content,
     ...(createdAt ? { createdAt } : {}),
+    // display_kind rows are presentational; the gateway excludes them from
+    // its regenerate ordinal space, so Wave records that exemption.
+    ...(typeof row.display_kind === 'string' && row.display_kind
+      ? { ordinalExempt: true }
+      : {}),
     ...(reasoning ? { reasoning } : {}),
     role,
     ...(toolInput ? { toolInput } : {}),

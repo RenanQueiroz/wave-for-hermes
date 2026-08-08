@@ -224,6 +224,9 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   synthesizes the complete reply only when no streamed audio ever became audible, and anything
   after first sound leaves the reply text-only.
 
+- The turn action row's Copy writes only the tapped reply's own text parts to the system
+  clipboard, strictly user-initiated; tool records, reasoning traces, and identifiers are never
+  copied. Branch and Refresh are one-shot mutations guarded by the busy state.
 - Slash commands treat every gateway-authored string as untrusted data: catalog descriptions,
   completion labels, and command outputs are bounded inert plain text (never markdown, never
   executed), skill expansions are refused when overlong rather than clipped, and only the

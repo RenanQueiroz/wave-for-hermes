@@ -28,7 +28,6 @@ import {
   PaperclipIcon,
   MicIcon,
   PencilIcon,
-  PlayIcon,
   PlusIcon,
   Reasoning,
   Response,
@@ -85,6 +84,12 @@ import {
   highlightedCommandLength,
   resolveSlashSubmission,
 } from '@/features/chat/slash-commands';
+import {
+  branchCount,
+  collectPrunedEntryIds,
+  regenerateTarget,
+} from '@/features/chat/turn-action-targets';
+import { TurnActionRow } from '@/features/chat/turn-action-row';
 import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useConnectedWave } from '@/state/use-connected-wave';
@@ -664,6 +669,90 @@ function ConnectedChatScreen({
     void action();
   }, []);
 
+  const [turnActionError, setTurnActionError] = useState<string>();
+
+  // Branch: copy this conversation (up to the tapped turn) into a new chat
+  // and open it. One non-retrying call; the drawer list refetch reconciles.
+  const branchTurn = useCallback(
+    (messageId: string) => {
+      if (!gatewayClient || busy || composerBlocked) return;
+      setTurnActionError(undefined);
+      const count = branchCount(timelineEntries, messageId);
+      void (async () => {
+        try {
+          const branched = await gatewayClient.branchSession(
+            sessionId,
+            count !== undefined ? { count } : {},
+          );
+          await queryClient.invalidateQueries({
+            queryKey: waveSessionQueryKey(connectionId, baseUrl),
+          });
+          await activeSessionStore
+            .save(connectionId, branched.sessionId)
+            .catch(() => undefined);
+          router.push({
+            pathname: '/conversation/[sessionId]',
+            params: { sessionId: branched.sessionId },
+          });
+        } catch (error) {
+          setTurnActionError(
+            error instanceof Error && error.message
+              ? error.message
+              : 'Hermes could not branch this chat.',
+          );
+        }
+      })();
+    },
+    [
+      baseUrl,
+      busy,
+      composerBlocked,
+      connectionId,
+      gatewayClient,
+      queryClient,
+      router,
+      sessionId,
+      timelineEntries,
+    ],
+  );
+
+  // Refresh: replay the nearest previous user message with the gateway's
+  // truncate-and-replay submit. The pruned cache rows come back from the
+  // authoritative refetch if the gateway refuses the ordinal.
+  const regenerateTurn = useCallback(
+    (messageId: string) => {
+      if (busy || composerBlocked) return;
+      setTurnActionError(undefined);
+      const target = regenerateTarget(timelineEntries, messageId);
+      if (!target) {
+        setTurnActionError(
+          'This conversation changed — try again in a moment.',
+        );
+        return;
+      }
+      const pruned = collectPrunedEntryIds(timelineEntries, target.entryId);
+      queryClient.setQueryData<InfiniteData<WaveTimelineResponse>>(
+        timelineKey,
+        (data) =>
+          data
+            ? {
+                ...data,
+                pages: data.pages.map((page) => ({
+                  ...page,
+                  entries: page.entries.filter(
+                    (entry) => !pruned.has(entry.id),
+                  ),
+                })),
+              }
+            : data,
+      );
+      void chat.send(target.text, target.text, {
+        truncateBeforeUserOrdinal: target.ordinal,
+      });
+    },
+    [busy, chat, composerBlocked, queryClient, timelineEntries, timelineKey],
+  );
+
   // Icon `color` is a native prop, so the theme token is resolved here.
   const foreground = useCSSVariable('--color-foreground');
   const attachmentIconColor =
@@ -672,6 +761,7 @@ function ConnectedChatScreen({
   const renderItem = useCallback(
     ({ item }: { item: WaveChatMessage }) => (
       <ChatTurn
+        busy={busy}
         isStreaming={
           busy && item.role === 'assistant' && item.id === activeAssistantId
         }
@@ -679,16 +769,21 @@ function ConnectedChatScreen({
         playbackStatus={
           playback.state.messageId === item.id ? playback.state.status : 'idle'
         }
+        onBranch={gatewayClient ? branchTurn : undefined}
         onPlay={canSpeak ? playback.play : undefined}
+        onRegenerate={regenerateTurn}
       />
     ),
     [
       activeAssistantId,
+      branchTurn,
       busy,
       canSpeak,
+      gatewayClient,
       playback.play,
       playback.state.messageId,
       playback.state.status,
+      regenerateTurn,
     ],
   );
 
@@ -698,15 +793,21 @@ function ConnectedChatScreen({
   const rowExtraData = useMemo(
     () => ({
       activeAssistantId,
+      branchTurn,
       busy,
       canSpeak,
+      hasGateway: Boolean(gatewayClient),
       playbackMessageId: playback.state.messageId,
       playbackStatus: playback.state.status,
+      regenerateTurn,
     }),
     [
       activeAssistantId,
+      branchTurn,
       busy,
       canSpeak,
+      gatewayClient,
+      regenerateTurn,
       playback.state.messageId,
       playback.state.status,
     ],
@@ -919,6 +1020,17 @@ function ConnectedChatScreen({
               className="px-2 text-center text-xs"
               testID="chat-dictation-error">
               {dictation.state.error} Tap to dismiss.
+            </Typography.Paragraph>
+          </Pressable>
+        ) : null}
+
+        {turnActionError ? (
+          <Pressable onPress={() => setTurnActionError(undefined)}>
+            <Typography.Paragraph
+              muted
+              className="px-2 text-center text-xs"
+              testID="chat-turn-action-error">
+              {turnActionError} Tap to dismiss.
             </Typography.Paragraph>
           </Pressable>
         ) : null}
@@ -1254,14 +1366,20 @@ function groupAssistantParts(message: WaveChatMessage): AssistantGroup[] {
 
 const ChatTurn = memo(
   function ChatTurn({
+    busy,
     isStreaming,
     message,
+    onBranch,
     onPlay,
+    onRegenerate,
     playbackStatus,
   }: {
+    busy: boolean;
     isStreaming: boolean;
     message: WaveChatMessage;
+    onBranch?: (messageId: string) => void;
     onPlay?: (messageId: string, text: string) => void;
+    onRegenerate?: (messageId: string) => void;
     playbackStatus: 'idle' | 'loading' | 'playing' | 'error';
   }) {
     if (message.role === 'user') {
@@ -1319,36 +1437,42 @@ const ChatTurn = memo(
         {isStreaming && message.parts.length === 0 ? (
           <Shimmer textClassName="text-base">Working…</Shimmer>
         ) : null}
-        {/* Playback belongs to finished assistant text only: there is
-            nothing stable to read aloud mid-stream. */}
-        {!isStreaming && onPlay && spokenText ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            accessibilityLabel={
-              playbackStatus === 'playing'
-                ? 'Stop reading this message aloud'
-                : 'Read this message aloud'
+        {/* The action row belongs to finished assistant turns only: there is
+            nothing stable to copy, branch, or read aloud mid-stream. */}
+        {!isStreaming && spokenText ? (
+          <TurnActionRow
+            busy={busy}
+            createdAt={message.createdAt}
+            getCopyText={() =>
+              message.parts
+                .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+                .join('\n\n')
+                .trim()
             }
-            className="self-start"
-            loading={playbackStatus === 'loading'}
-            startContent={<PlayIcon size={14} />}
-            testID={`chat-play-${message.id}`}
-            onPress={() => onPlay(message.id, spokenText)}>
-            {playbackStatus === 'playing' ? 'Stop' : 'Play'}
-          </Button>
+            messageId={message.id}
+            playbackStatus={
+              playbackStatus === 'error' ? 'idle' : playbackStatus
+            }
+            onBranch={onBranch}
+            onPlay={onPlay ? (id) => onPlay(id, spokenText) : undefined}
+            onRegenerate={onRegenerate}
+          />
         ) : null}
       </View>
     );
   },
   (previous, next) =>
+    previous.busy === next.busy &&
     previous.isStreaming === next.isStreaming &&
+    previous.message.createdAt === next.message.createdAt &&
     previous.message.id === next.message.id &&
     previous.message.parts === next.message.parts &&
     previous.message.reasoning === next.message.reasoning &&
     previous.message.reasoningStreaming === next.message.reasoningStreaming &&
     previous.playbackStatus === next.playbackStatus &&
-    previous.onPlay === next.onPlay,
+    previous.onBranch === next.onBranch &&
+    previous.onPlay === next.onPlay &&
+    previous.onRegenerate === next.onRegenerate,
 );
 
 /**

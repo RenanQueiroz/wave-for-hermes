@@ -318,6 +318,13 @@ documentation before implementing UI.
   bounded input. Derived lines are single-line inert plain text, never markdown; unknown tools
   fall back to a generic action; handoffs are detected by Wave-constructed ids, never titles;
   raw tool input/output is not displayed.
+- Every completed assistant turn carries the Wave-owned action row (`turn-action-row.tsx`):
+  time-ago timestamp plus icon-only Branch / Copy / Read-aloud / Refresh. It renders only on
+  sealed turns, receives the copy text through a lazy accessor (never as a prop), and Branch and
+  Refresh are one-shot gateway mutations disabled while a turn runs. Refresh ordinals and branch
+  counts come only from server timeline rows — `ordinalExempt` rows and Wave-injected correction
+  rows never shift them — and the optimistic timeline prune is always reconciled by the
+  authoritative refetch.
 - Conversation surfaces render through the Wave-owned `ConversationScroller`
   (`src/components/conversation-scroller.tsx`), which composes Legend List v3 and owns the
   transcript scroll contract: pin-to-newest only inside the at-end band, no dragging the reader

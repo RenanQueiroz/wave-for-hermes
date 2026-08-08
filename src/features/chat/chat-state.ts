@@ -25,6 +25,8 @@ export type WaveChatPart =
     };
 
 export interface WaveChatMessage {
+  /** When the message was created; feeds the turn action row's "time ago". */
+  createdAt?: string;
   id: string;
   parts: WaveChatPart[];
   /** Bounded inert reasoning trace; absent when the server emits none. */
@@ -373,6 +375,9 @@ export function timelineToWaveChatMessages(
 
     if (!part && !reasoning) return;
     const turn = ensureAssistantTurn(id);
+    // The turn's age is its newest row: later rows overwrite so the action
+    // row shows when the final reply landed.
+    if (message.createdAt) turn.createdAt = message.createdAt;
     if (reasoning) {
       turn.reasoning = turn.reasoning
         ? appendReasoning(turn.reasoning, `\n\n${reasoning.text}`)
@@ -463,6 +468,7 @@ function applyEvent(
         liveStatus: 'working',
         messages: updateAssistant(state.messages, (message) => ({
           ...message,
+          createdAt: event.timestamp,
           parts: event.replacesLastInterim
             ? replaceLastInterimText(message.parts, event.content)
             : replaceAssistantText(message.parts, event.content),

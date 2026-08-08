@@ -87,6 +87,12 @@ export const WaveConversationMessageSchema = z
     createdAt: WaveIsoDateTimeSchema.optional(),
     id: WaveIdentifierSchema.optional(),
     /**
+     * True when the gateway row carried a `display_kind`: presentational
+     * user-ish rows that the server excludes from its regenerate ordinal
+     * space. Wave must exclude them from ordinal math too.
+     */
+    ordinalExempt: z.boolean().optional(),
+    /**
      * The assistant row's bounded reasoning trace, normalized from the
      * stored plain-text reasoning fields. Rendered as inert plain text
      * only; opaque provider replay structures never cross this boundary.

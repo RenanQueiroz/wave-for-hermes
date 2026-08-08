@@ -104,6 +104,10 @@ export interface WaveChatClient {
     sessionId: string,
     input: WaveTurnInput,
     signal?: AbortSignal,
+    options?: {
+      /** Regenerate: truncate before this visible user ordinal, then replay. */
+      truncateBeforeUserOrdinal?: number;
+    },
   ): AsyncGenerator<WaveTurnEvent>;
   updateSession(
     sessionId: string,

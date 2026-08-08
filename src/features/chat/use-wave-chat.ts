@@ -209,7 +209,11 @@ export function useWaveChat({
   );
 
   const send = useCallback(
-    async (input: WaveTurnInput, optimisticText?: string) => {
+    async (
+      input: WaveTurnInput,
+      optimisticText?: string,
+      options: { truncateBeforeUserOrdinal?: number } = {},
+    ) => {
       const displayText =
         optimisticText?.trim() ??
         (typeof input === 'string' ? input.trim() : '');
@@ -236,7 +240,7 @@ export function useWaveChat({
       });
       await consumeTurn(
         controller,
-        client.streamTurn(sessionId, input, controller.signal),
+        client.streamTurn(sessionId, input, controller.signal, options),
         { lastSequence: -1, resuming: false },
       );
     },

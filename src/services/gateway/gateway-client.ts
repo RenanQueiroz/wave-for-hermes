@@ -728,6 +728,15 @@ export class GatewayClient {
     sessionId: string,
     input: WaveTurnInput,
     signal?: AbortSignal,
+    options: {
+      /**
+       * Regenerate: truncate stored history before this visible user ordinal
+       * and replay the text as the turn (the gateway validates the ordinal
+       * and refuses stale ones with a clear error). Ordinal 0 explicitly
+       * confirms the empty truncation, matching Desktop.
+       */
+      truncateBeforeUserOrdinal?: number;
+    } = {},
   ): AsyncGenerator<WaveTurnEvent> {
     const text = turnInputToText(input);
     const attachments = turnInputAttachments(input);
@@ -767,7 +776,18 @@ export class GatewayClient {
       yield translator.start();
       let submitFailure: WaveBackendError | undefined;
       void rpc
-        .call('prompt.submit', { session_id: liveSessionId, text })
+        .call('prompt.submit', {
+          session_id: liveSessionId,
+          text,
+          ...(options.truncateBeforeUserOrdinal !== undefined
+            ? {
+                truncate_before_user_ordinal: options.truncateBeforeUserOrdinal,
+                ...(options.truncateBeforeUserOrdinal === 0
+                  ? { confirm_empty_truncate: true }
+                  : {}),
+              }
+            : {}),
+        })
         .catch((error: unknown) => {
           submitFailure = toWaveError(error);
           events.fail();
@@ -1230,6 +1250,49 @@ export class GatewayClient {
           : {}),
       });
       return normalizeModelSwitch(result, selection);
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  /**
+   * Branch this conversation into a new chat: the gateway copies the live
+   * session's history (all of it when `count` is omitted — the exact
+   * newest-turn case) into a new stored session and returns its identity.
+   * One non-retrying call; the sessions list refetch reconciles.
+   */
+  async branchSession(
+    sessionId: string,
+    options: { count?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<{ sessionId: string; title?: string }> {
+    const resolved = this.resolveSessionId(sessionId);
+    const connection = await this.openSocket(signal);
+    try {
+      const liveSessionId = await this.resolveLiveSession(
+        connection.rpc,
+        resolved,
+      );
+      const result = await connection.rpc.call('session.branch', {
+        session_id: liveSessionId,
+        ...(options.count !== undefined && options.count > 0
+          ? { count: options.count }
+          : {}),
+      });
+      const stored = result.stored_session_id;
+      if (typeof stored !== 'string' || !stored) {
+        throw new WaveBackendError('Hermes could not branch this chat.', {
+          kind: 'invalid_response',
+        });
+      }
+      return {
+        sessionId: stored,
+        ...(typeof result.title === 'string' && result.title
+          ? { title: result.title.slice(0, 200) }
+          : {}),
+      };
     } catch (error) {
       throw toWaveError(error);
     } finally {

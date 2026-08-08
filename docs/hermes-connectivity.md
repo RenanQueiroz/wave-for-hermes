@@ -107,6 +107,15 @@ absent or malformed.
   its bounded `display` shown as the user row. `/compress` uses the dedicated
   `session.compress` RPC (Desktop avoids `slash.exec` there — it times out on large sessions)
   and `/title` uses the existing rename endpoint.
+- **Branch and regenerate (v0.20)**: `session.branch {session_id: <live sid>, count?}` copies
+  the live session's history (all of it when `count` is omitted — Wave's exact newest-turn
+  case) into a new stored session and returns `stored_session_id` + `title`. Regenerate is
+  `prompt.submit` with `truncate_before_user_ordinal` (plus `confirm_empty_truncate` at ordinal
+  0): the gateway validates the ordinal against user rows without `display_kind` (Wave
+  normalizes that flag as `ordinalExempt` and excludes such rows plus its own journal rows from
+  ordinal math), persists the truncation before running, and re-expands stored skill
+  invocations for replay. Both are one-shot, never retried, and refused client-side while a
+  turn runs.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from
