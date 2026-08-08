@@ -20,7 +20,7 @@ import {
   CircleIcon,
   FileIcon,
   ImageIcon,
-  InputGroup,
+  Input,
   KeyboardAvoider,
   LinkIcon,
   Marker,
@@ -670,6 +670,7 @@ function ConnectedChatScreen({
   }, []);
 
   const [turnActionError, setTurnActionError] = useState<string>();
+  const [modelNotice, setModelNotice] = useState<string>();
 
   // Branch: copy this conversation (up to the tapped turn) into a new chat
   // and open it. One non-retrying call; the drawer list refetch reconciles.
@@ -1024,6 +1025,15 @@ function ConnectedChatScreen({
           </Pressable>
         ) : null}
 
+        {modelNotice ? (
+          <Typography.Paragraph
+            muted
+            className="px-2 text-center text-xs"
+            testID="chat-model-notice">
+            {modelNotice}
+          </Typography.Paragraph>
+        ) : null}
+
         {turnActionError ? (
           <Pressable onPress={() => setTurnActionError(undefined)}>
             <Typography.Paragraph
@@ -1068,21 +1078,50 @@ function ConnectedChatScreen({
           />
         ) : null}
 
-        {gatewayClient ? (
-          <SessionModelPill
-            baseUrl={baseUrl}
-            connectionId={connectionId}
-            disabled={composerBlocked}
-            gatewayClient={gatewayClient}
-            openNonce={modelPickerNonce}
-            sessionId={sessionId}
-          />
-        ) : null}
-
-        <InputGroup
-          className="min-h-14 overflow-hidden rounded-[28px] bg-muted"
-          isDisabled={cancelling || correcting}>
-          <InputGroup.Prefix className="px-2">
+        {/* Two-row composer: the expandable text row on top, every control
+            on the row below — attachments and the model pill on the left,
+            dictation and the trailing action on the right. */}
+        <View
+          className="overflow-hidden rounded-[28px] bg-muted pb-1.5"
+          testID="chat-composer-box">
+          <View className="relative">
+            <Input
+              multiline
+              accessibilityLabel={
+                busy ? 'Correct the current response' : 'Ask anything'
+              }
+              // Explicit font classes so the slash-highlight mirror can use
+              // the exact same metrics; the input's own text goes transparent
+              // only while the mirror is active.
+              className={`max-h-32 min-h-12 border-0 bg-transparent px-4 pb-1 pt-3.5 text-base leading-6 ${
+                shouldMirrorHighlight(input, slashHighlight)
+                  ? 'text-transparent'
+                  : ''
+              }`}
+              editable={!(cancelling || correcting)}
+              placeholder={busy ? 'Add a correction' : 'Ask anything'}
+              submitBehavior="submit"
+              testID="chat-composer-input"
+              value={input}
+              onChangeText={(value) => {
+                setInput(value);
+                slash.observeDraft(value);
+              }}
+              onSelectionChange={(event) =>
+                setCaret(event.nativeEvent.selection.end)
+              }
+              onSubmitEditing={submitComposer}
+            />
+            {shouldMirrorHighlight(input, slashHighlight) ? (
+              <SlashHighlightMirror
+                highlightLength={slashHighlight}
+                paddingLeft={16}
+                paddingRight={16}
+                text={input}
+              />
+            ) : null}
+          </View>
+          <View className="flex-row items-center gap-1 px-2">
             {/* The dim lives on a wrapper View: the button's press-feedback
                 animation drives opacity from the UI thread, overriding both
                 class- and style-based opacity on the button itself. */}
@@ -1104,45 +1143,18 @@ function ConnectedChatScreen({
                 <PlusIcon size={20} />
               </Button>
             </View>
-          </InputGroup.Prefix>
-          <InputGroup.Input
-            multiline
-            accessibilityLabel={
-              busy ? 'Correct the current response' : 'Ask anything'
-            }
-            // Explicit font classes so the slash-highlight mirror can use the
-            // exact same metrics; the input's own text goes transparent only
-            // while the mirror is active.
-            className={`max-h-32 min-h-14 rounded-[28px] border-0 bg-muted py-4 text-base leading-6 ${
-              shouldMirrorHighlight(input, slashHighlight)
-                ? 'text-transparent'
-                : ''
-            }`}
-            placeholder={busy ? 'Add a correction' : 'Ask anything'}
-            // Clears the overlaid buttons: one prefix button on the left,
-            // mic plus trailing action on the right.
-            style={{ paddingLeft: 60, paddingRight: canDictate ? 104 : 56 }}
-            submitBehavior="submit"
-            testID="chat-composer-input"
-            value={input}
-            onChangeText={(value) => {
-              setInput(value);
-              slash.observeDraft(value);
-            }}
-            onSelectionChange={(event) =>
-              setCaret(event.nativeEvent.selection.end)
-            }
-            onSubmitEditing={submitComposer}
-          />
-          {shouldMirrorHighlight(input, slashHighlight) ? (
-            <SlashHighlightMirror
-              highlightLength={slashHighlight}
-              paddingLeft={60}
-              paddingRight={canDictate ? 104 : 56}
-              text={input}
-            />
-          ) : null}
-          <InputGroup.Suffix className="flex-row items-center gap-1 px-2">
+            {gatewayClient ? (
+              <SessionModelPill
+                baseUrl={baseUrl}
+                connectionId={connectionId}
+                disabled={composerBlocked}
+                gatewayClient={gatewayClient}
+                openNonce={modelPickerNonce}
+                sessionId={sessionId}
+                onNotice={setModelNotice}
+              />
+            ) : null}
+            <View className="flex-1" />
             {canDictate ? (
               <View
                 style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
@@ -1254,8 +1266,8 @@ function ConnectedChatScreen({
                 </Button>
               </View>
             )}
-          </InputGroup.Suffix>
-        </InputGroup>
+          </View>
+        </View>
       </KeyboardAvoider>
 
       <BottomSheet

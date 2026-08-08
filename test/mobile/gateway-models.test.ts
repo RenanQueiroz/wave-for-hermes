@@ -183,22 +183,76 @@ function createRpcFake(handlers: {
 
 test('the catalog read resumes the session and asks with its live sid', async () => {
   const { calls, client } = createRpcFake({
+    onCall: (method, params) => {
+      if (method === 'session.resume') return { session_id: 'live-9' };
+      if (method === 'model.options') return CATALOG_PAYLOAD;
+      if (method === 'config.get' && params.key === 'reasoning') {
+        return { display: 'show', value: 'medium' };
+      }
+      if (method === 'config.get' && params.key === 'fast') {
+        return { value: 'normal' };
+      }
+      return {};
+    },
+  });
+  const catalog = await client.getSessionModelContext('20260807_stored');
+  assert.equal(catalog.currentModel, 'kimi-k2');
+  // Thinking/fast state rides the same socket as session-scoped reads.
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ['session.resume', 'model.options', 'config.get', 'config.get'],
+  );
+  assert.deepEqual(calls[1].params, {
+    explicit_only: true,
+    session_id: 'live-9',
+  });
+  assert.deepEqual(calls[2].params, { key: 'reasoning', session_id: 'live-9' });
+  assert.deepEqual(calls[3].params, { key: 'fast', session_id: 'live-9' });
+  assert.equal(catalog.reasoningEffort, 'medium');
+  assert.equal(catalog.fastMode, false);
+});
+
+test('thinking and fast toggles are one session-scoped config.set each', async () => {
+  const { calls, client } = createRpcFake({
+    onCall: (method, params) => {
+      if (method === 'session.resume') return { session_id: 'live-9' };
+      if (method === 'config.set' && params.key === 'reasoning') {
+        return { key: 'reasoning', value: String(params.value) };
+      }
+      if (method === 'config.set' && params.key === 'fast') {
+        return { key: 'fast', value: String(params.value) };
+      }
+      return {};
+    },
+  });
+  const reasoning = await client.setSessionReasoning('20260807_stored', 'none');
+  assert.deepEqual(reasoning, { effort: 'none' });
+  const fast = await client.setSessionFastMode('20260807_stored', true);
+  assert.deepEqual(fast, { fastMode: true });
+  const sets = calls.filter((call) => call.method === 'config.set');
+  assert.deepEqual(sets[0].params, {
+    key: 'reasoning',
+    session_id: 'live-9',
+    value: 'none',
+  });
+  assert.deepEqual(sets[1].params, {
+    key: 'fast',
+    session_id: 'live-9',
+    value: 'fast',
+  });
+});
+
+test('a catalog refresh passes refresh: true to model.options', async () => {
+  const { calls, client } = createRpcFake({
     onCall: (method) => {
       if (method === 'session.resume') return { session_id: 'live-9' };
       if (method === 'model.options') return CATALOG_PAYLOAD;
       return {};
     },
   });
-  const catalog = await client.getSessionModelContext('20260807_stored');
-  assert.equal(catalog.currentModel, 'kimi-k2');
-  assert.deepEqual(
-    calls.map((call) => call.method),
-    ['session.resume', 'model.options'],
-  );
-  assert.deepEqual(calls[1].params, {
-    explicit_only: true,
-    session_id: 'live-9',
-  });
+  await client.getSessionModelContext('20260807_stored', { refresh: true });
+  const options = calls.find((call) => call.method === 'model.options');
+  assert.equal(options?.params.refresh, true);
 });
 
 test('a switch sends one session-scoped config.set on the live sid', async () => {
@@ -281,7 +335,7 @@ test('a pending conversation stores the pick locally and sends it on create', as
   assert.equal(catalog.currentModel, 'hermes-4-405b');
   assert.deepEqual(
     calls.map((call) => call.method),
-    ['model.options'],
+    ['model.options', 'config.get', 'config.get'],
   );
   assert.equal(calls[0].params.session_id, undefined);
 

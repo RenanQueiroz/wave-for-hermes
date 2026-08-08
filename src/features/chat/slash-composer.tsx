@@ -362,7 +362,7 @@ export function SlashHighlightMirror({
       className="absolute inset-0"
       style={{ paddingLeft, paddingRight }}
       testID="chat-slash-highlight">
-      <Text className="py-4 text-base leading-6 text-foreground">
+      <Text className="pb-1 pt-3.5 text-base leading-6 text-foreground">
         <Text className="font-semibold text-primary">
           {text.slice(0, highlightLength)}
         </Text>

@@ -1,15 +1,15 @@
 /**
- * Per-conversation model selection: a compact composer pill opening a
- * bottom-sheet picker over the gateway's model catalog.
+ * Per-conversation model controls: a compact composer pill opening a
+ * bottom-sheet picker over the gateway's model catalog, with Desktop's
+ * session-scoped knobs — thinking effort (off/low/medium/high), fast
+ * (priority) tier, and a refresh of the provider model lists.
  *
  * The catalog is fetched only when the picker opens — reading the
- * session-scoped current model resumes the gateway session, which is a real
- * gateway action and too heavy for every screen mount. A switch is one
- * non-retrying `config.set`; a busy session answers `deferred` and the
- * gateway applies the pick when its next turn starts. Expensive models come
- * back `confirm-required` and are re-sent only after the user agrees.
- * Provider administration stays out entirely — the sheet lists only what the
- * gateway says is usable (see AGENTS.md).
+ * session-scoped state resumes the gateway session, which is a real gateway
+ * action and too heavy for every screen mount. Every change is one
+ * non-retrying session-scoped `config.set`; a busy session defers a model
+ * pick to its next turn start, and expensive models confirm first. Provider
+ * administration stays out entirely (see AGENTS.md).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -19,21 +19,32 @@ import {
   ChevronDownIcon,
   Dialog,
   Item,
+  RotateCcwIcon,
   SparklesIcon,
   Spinner,
+  Switch,
   Typography,
 } from 'panelui-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import type { GatewayClient } from '@/services/gateway/gateway-client';
-import type {
-  WaveModelCatalog,
-  WaveModelSelection,
+import {
+  WAVE_REASONING_EFFORTS,
+  type WaveModelCatalog,
+  type WaveModelSelection,
+  type WaveReasoningEffort,
 } from '@/services/gateway/gateway-models';
 
 const NOTICE_TIMEOUT_MS = 8_000;
-const MAX_PILL_LABEL_CHARS = 26;
+const MAX_PILL_LABEL_CHARS = 22;
+
+const EFFORT_LABELS: Record<WaveReasoningEffort, string> = {
+  high: 'High',
+  low: 'Low',
+  medium: 'Med',
+  none: 'Off',
+};
 
 /** The trailing path segment reads best in a pill ("openrouter/x/y" → "y"). */
 function pillLabel(modelId: string | undefined): string {
@@ -59,11 +70,23 @@ function modelDescription(option: {
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
+/** The current model's capability row, when the catalog knows it. */
+function currentCapabilities(catalog: WaveModelCatalog | undefined) {
+  if (!catalog?.currentModel) return undefined;
+  for (const provider of catalog.providers) {
+    for (const option of provider.models) {
+      if (option.id === catalog.currentModel) return option;
+    }
+  }
+  return undefined;
+}
+
 export function SessionModelPill({
   baseUrl,
   connectionId,
   disabled,
   gatewayClient,
+  onNotice,
   openNonce = 0,
   sessionId,
 }: {
@@ -71,6 +94,8 @@ export function SessionModelPill({
   connectionId: string;
   disabled?: boolean;
   gatewayClient: GatewayClient;
+  /** Transient status copy ("applies next turn") for the caller to place. */
+  onNotice?: (text: string | undefined) => void;
   /** Increment to open the picker from outside (the /model command). */
   openNonce?: number;
   sessionId: string;
@@ -78,7 +103,7 @@ export function SessionModelPill({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [busyModel, setBusyModel] = useState<string>();
-  const [notice, setNotice] = useState<string>();
+  const [busyControl, setBusyControl] = useState<'fast' | 'reasoning'>();
   const [error, setError] = useState<string>();
   const [confirm, setConfirm] = useState<{
     message: string;
@@ -100,12 +125,13 @@ export function SessionModelPill({
     enabled: false,
     gcTime: 10 * 60_000,
     queryFn: ({ signal }) =>
-      gatewayClient.getSessionModelContext(sessionId, signal),
+      gatewayClient.getSessionModelContext(sessionId, {}, signal),
     queryKey: contextKey,
     retry: false,
     staleTime: 60_000,
   });
   const refetchContext = context.refetch;
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(
     () => () => {
@@ -114,16 +140,20 @@ export function SessionModelPill({
     [],
   );
 
-  const showNotice = useCallback((text: string | undefined) => {
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    setNotice(text);
-    if (text) {
-      noticeTimer.current = setTimeout(
-        () => setNotice(undefined),
-        NOTICE_TIMEOUT_MS,
-      );
-    }
-  }, []);
+  const showNotice = useCallback(
+    (text: string | undefined) => {
+      if (!onNotice) return;
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+      onNotice(text);
+      if (text) {
+        noticeTimer.current = setTimeout(
+          () => onNotice(undefined),
+          NOTICE_TIMEOUT_MS,
+        );
+      }
+    },
+    [onNotice],
+  );
 
   const openPicker = useCallback(() => {
     setError(undefined);
@@ -138,6 +168,37 @@ export function SessionModelPill({
     const timer = setTimeout(openPicker, 0);
     return () => clearTimeout(timer);
   }, [openNonce, openPicker]);
+
+  const patchContext = useCallback(
+    (patch: Partial<WaveModelCatalog>) => {
+      queryClient.setQueryData<WaveModelCatalog>(contextKey, (current) =>
+        current ? { ...current, ...patch } : current,
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextKey derives from these
+    [baseUrl, connectionId, queryClient, sessionId],
+  );
+
+  const refreshModels = useCallback(() => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setError(undefined);
+    gatewayClient
+      .getSessionModelContext(sessionId, { refresh: true })
+      .then((catalog) => {
+        queryClient.setQueryData(contextKey, catalog);
+      })
+      .catch(() => setError('Wave could not refresh the model list.'))
+      .finally(() => setRefreshing(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextKey derives from listed inputs
+  }, [
+    gatewayClient,
+    queryClient,
+    refreshing,
+    sessionId,
+    baseUrl,
+    connectionId,
+  ]);
 
   const select = useCallback(
     async (selection: WaveModelSelection, confirmExpensive = false) => {
@@ -195,39 +256,79 @@ export function SessionModelPill({
     ],
   );
 
+  const setReasoning = useCallback(
+    (effort: WaveReasoningEffort) => {
+      if (busyControl) return;
+      setBusyControl('reasoning');
+      setError(undefined);
+      gatewayClient
+        .setSessionReasoning(sessionId, effort)
+        .then((result) => patchContext({ reasoningEffort: result.effort }))
+        .catch((cause) =>
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Wave could not change thinking.',
+          ),
+        )
+        .finally(() => setBusyControl(undefined));
+    },
+    [busyControl, gatewayClient, patchContext, sessionId],
+  );
+
+  const setFastMode = useCallback(
+    (enabled: boolean) => {
+      if (busyControl) return;
+      setBusyControl('fast');
+      setError(undefined);
+      gatewayClient
+        .setSessionFastMode(sessionId, enabled)
+        .then((result) => patchContext({ fastMode: result.fastMode }))
+        .catch((cause) =>
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Wave could not change fast mode.',
+          ),
+        )
+        .finally(() => setBusyControl(undefined));
+    },
+    [busyControl, gatewayClient, patchContext, sessionId],
+  );
+
   const catalog = context.data;
+  const capabilities = currentCapabilities(catalog);
+  // Capability gating like Desktop: hide a knob the current model is known
+  // not to support; an unknown capability keeps the knob and lets the
+  // gateway's own validation answer.
+  const sessionScoped = catalog?.sessionScoped === true;
+  const showReasoning =
+    sessionScoped &&
+    catalog?.reasoningEffort !== undefined &&
+    capabilities?.reasoning !== false;
+  const showFast =
+    sessionScoped &&
+    catalog?.fastMode !== undefined &&
+    capabilities?.fast !== false;
   const label = pillLabel(catalog?.currentModel);
 
   return (
     <>
-      <View className="flex-row items-center gap-2 px-1">
-        <Button
-          size="sm"
-          variant="ghost"
-          accessibilityLabel="Change the model for this conversation"
-          className="self-start"
-          disabled={disabled}
-          startContent={<SparklesIcon size={14} />}
-          endContent={<ChevronDownIcon size={12} />}
-          testID="chat-model-pill"
-          onPress={openPicker}>
-          {label}
-        </Button>
-        {notice ? (
-          <Typography.Paragraph
-            muted
-            className="flex-1 text-xs"
-            testID="chat-model-notice">
-            {notice}
-          </Typography.Paragraph>
-        ) : null}
-      </View>
+      <Button
+        size="sm"
+        variant="ghost"
+        accessibilityLabel="Change the model for this conversation"
+        className="self-start"
+        disabled={disabled}
+        startContent={<SparklesIcon size={14} />}
+        endContent={<ChevronDownIcon size={12} />}
+        testID="chat-model-pill"
+        onPress={openPicker}>
+        {label}
+      </Button>
 
-      <BottomSheet
-        open={open}
-        snapPoints={['half', 'full']}
-        onOpenChange={setOpen}>
-        <BottomSheet.Content blur>
+      <BottomSheet open={open} onOpenChange={setOpen}>
+        <BottomSheet.Content blur size="half">
           <BottomSheet.Header title="Model for this chat" />
           <BottomSheet.Body testID="chat-model-picker">
             {context.isFetching && !catalog ? (
@@ -238,62 +339,132 @@ export function SessionModelPill({
               <Typography.Paragraph muted className="px-3 py-8 text-center">
                 Wave could not load the model list. Close and try again.
               </Typography.Paragraph>
-            ) : catalog && catalog.providers.length === 0 ? (
-              <Typography.Paragraph muted className="px-3 py-8 text-center">
-                This server lists no switchable models.
-              </Typography.Paragraph>
-            ) : (
-              catalog?.providers.map((provider) => (
-                <View key={provider.slug} className="pb-2">
-                  <Typography.Paragraph
-                    muted
-                    className="px-3 pb-1 pt-3 text-xs uppercase">
-                    {provider.name}
-                  </Typography.Paragraph>
-                  {provider.models.map((option) => {
-                    const selected =
-                      provider.current && option.id === catalog.currentModel;
-                    const description = modelDescription(option);
-                    return (
-                      <View
-                        key={option.id}
-                        className={
-                          option.unavailable ? 'opacity-40' : undefined
-                        }>
-                        <Item
-                          accessibilityLabel={`Use model ${option.id}`}
-                          testID={`chat-model-${provider.slug}-${option.id}`}
-                          onPress={
-                            option.unavailable || Boolean(busyModel)
-                              ? undefined
-                              : () =>
-                                  void select({
-                                    model: option.id,
-                                    provider: provider.slug,
-                                  })
-                          }>
-                          <Item.Content>
-                            <Item.Title numberOfLines={1}>
-                              {option.id}
-                            </Item.Title>
-                            {description ? (
-                              <Item.Description numberOfLines={1}>
-                                {description}
-                              </Item.Description>
-                            ) : null}
-                          </Item.Content>
-                          {busyModel === option.id ? (
-                            <Spinner size="sm" />
-                          ) : selected ? (
-                            <CheckIcon size={16} />
-                          ) : null}
-                        </Item>
+            ) : catalog ? (
+              <>
+                {showReasoning || showFast ? (
+                  <View className="gap-3 px-3 pb-2 pt-1">
+                    {showReasoning ? (
+                      <View className="flex-row items-center justify-between gap-3">
+                        <Typography.Paragraph weight="medium">
+                          Thinking
+                        </Typography.Paragraph>
+                        <View
+                          className="flex-row gap-1"
+                          testID="chat-model-reasoning">
+                          {WAVE_REASONING_EFFORTS.map((effort) => (
+                            <Button
+                              key={effort}
+                              size="sm"
+                              variant={
+                                catalog.reasoningEffort === effort ||
+                                (effort === 'none' &&
+                                  catalog.reasoningEffort === 'none')
+                                  ? 'secondary'
+                                  : 'ghost'
+                              }
+                              accessibilityLabel={`Set thinking to ${EFFORT_LABELS[effort]}`}
+                              disabled={busyControl !== undefined}
+                              testID={`chat-model-reasoning-${effort}`}
+                              onPress={() => setReasoning(effort)}>
+                              {EFFORT_LABELS[effort]}
+                            </Button>
+                          ))}
+                        </View>
                       </View>
-                    );
-                  })}
+                    ) : null}
+                    {showFast ? (
+                      <View className="flex-row items-center justify-between gap-3">
+                        <Typography.Paragraph weight="medium">
+                          Fast mode
+                        </Typography.Paragraph>
+                        <View testID="chat-model-fast">
+                          <Switch
+                            disabled={busyControl !== undefined}
+                            value={catalog.fastMode === true}
+                            onValueChange={setFastMode}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <View className="flex-row items-center justify-between px-3 pb-1">
+                  <Typography.Paragraph muted className="text-xs uppercase">
+                    Models
+                  </Typography.Paragraph>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    accessibilityLabel="Refresh the model list"
+                    disabled={refreshing}
+                    loading={refreshing}
+                    startContent={<RotateCcwIcon size={13} />}
+                    testID="chat-model-refresh"
+                    onPress={refreshModels}>
+                    Refresh
+                  </Button>
                 </View>
-              ))
-            )}
+
+                {catalog.providers.length === 0 ? (
+                  <Typography.Paragraph muted className="px-3 py-8 text-center">
+                    This server lists no switchable models.
+                  </Typography.Paragraph>
+                ) : (
+                  catalog.providers.map((provider) => (
+                    <View key={provider.slug} className="pb-2">
+                      <Typography.Paragraph
+                        muted
+                        className="px-3 pb-1 pt-3 text-xs uppercase">
+                        {provider.name}
+                      </Typography.Paragraph>
+                      {provider.models.map((option) => {
+                        const selected =
+                          provider.current &&
+                          option.id === catalog.currentModel;
+                        const description = modelDescription(option);
+                        return (
+                          <View
+                            key={option.id}
+                            className={
+                              option.unavailable ? 'opacity-40' : undefined
+                            }>
+                            <Item
+                              accessibilityLabel={`Use model ${option.id}`}
+                              testID={`chat-model-${provider.slug}-${option.id}`}
+                              onPress={
+                                option.unavailable || Boolean(busyModel)
+                                  ? undefined
+                                  : () =>
+                                      void select({
+                                        model: option.id,
+                                        provider: provider.slug,
+                                      })
+                              }>
+                              <Item.Content>
+                                <Item.Title numberOfLines={1}>
+                                  {option.id}
+                                </Item.Title>
+                                {description ? (
+                                  <Item.Description numberOfLines={1}>
+                                    {description}
+                                  </Item.Description>
+                                ) : null}
+                              </Item.Content>
+                              {busyModel === option.id ? (
+                                <Spinner size="sm" />
+                              ) : selected ? (
+                                <CheckIcon size={16} />
+                              ) : null}
+                            </Item>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ))
+                )}
+              </>
+            ) : null}
             {error ? (
               <Typography.Paragraph
                 className="px-3 py-2 text-xs text-destructive"

@@ -37,10 +37,14 @@ import {
 } from './gateway-commands.ts';
 import {
   buildModelSwitchValue,
+  normalizeFastValue,
   normalizeModelCatalog,
   normalizeModelSwitch,
+  normalizeReasoningValue,
+  WAVE_REASONING_EFFORTS,
   type WaveModelCatalog,
   type WaveModelSelection,
+  type WaveReasoningEffort,
   type WaveSessionModelSwitch,
 } from './gateway-models.ts';
 import {
@@ -1178,6 +1182,7 @@ export class GatewayClient {
    */
   async getSessionModelContext(
     sessionId: string,
+    options: { refresh?: boolean } = {},
     signal?: AbortSignal,
   ): Promise<WaveModelCatalog> {
     const resolved = this.resolveSessionId(sessionId);
@@ -1194,11 +1199,28 @@ export class GatewayClient {
           // A session that cannot resume still gets the profile catalog.
         }
       }
+      const sessionParams = liveSessionId ? { session_id: liveSessionId } : {};
       const payload = await connection.rpc.call('model.options', {
         explicit_only: true,
-        ...(liveSessionId ? { session_id: liveSessionId } : {}),
+        ...(options.refresh ? { refresh: true } : {}),
+        ...sessionParams,
       });
-      const catalog = normalizeModelCatalog(payload);
+      // The thinking/fast toggles read on the same socket; either being
+      // absent (older gateway, transient error) just hides its control.
+      const reasoningEffort = await connection.rpc
+        .call('config.get', { key: 'reasoning', ...sessionParams })
+        .then(normalizeReasoningValue)
+        .catch(() => undefined);
+      const fastMode = await connection.rpc
+        .call('config.get', { key: 'fast', ...sessionParams })
+        .then(normalizeFastValue)
+        .catch(() => undefined);
+      const catalog = {
+        ...normalizeModelCatalog(payload),
+        ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+        ...(fastMode !== undefined ? { fastMode } : {}),
+        sessionScoped: liveSessionId !== undefined,
+      };
       const pending = this.pendingModelPicks.get(sessionId);
       return pending
         ? {
@@ -1207,6 +1229,84 @@ export class GatewayClient {
             currentProvider: pending.provider,
           }
         : catalog;
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  /**
+   * Session-scoped reasoning effort ('none' turns thinking off). One
+   * non-retrying `config.set`; the gateway applies it to the live agent and
+   * emits `session.info` for other clients.
+   */
+  async setSessionReasoning(
+    sessionId: string,
+    effort: WaveReasoningEffort,
+    signal?: AbortSignal,
+  ): Promise<{ effort: string }> {
+    if (!WAVE_REASONING_EFFORTS.includes(effort)) {
+      throw new WaveBackendError('Choose a supported thinking level.', {
+        kind: 'bad_request',
+      });
+    }
+    const resolved = this.resolveSessionId(sessionId);
+    if (isPendingSessionId(resolved)) {
+      // Creating a gateway session as a side effect of a toggle would be
+      // surprising; the knobs only appear for real sessions.
+      throw new WaveBackendError('Send a message first.', {
+        kind: 'bad_request',
+      });
+    }
+    const connection = await this.openSocket(signal);
+    try {
+      const liveSessionId = await this.resolveLiveSession(
+        connection.rpc,
+        resolved,
+      );
+      const result = await connection.rpc.call('config.set', {
+        key: 'reasoning',
+        session_id: liveSessionId,
+        value: effort,
+      });
+      return { effort: normalizeReasoningValue(result) ?? effort };
+    } catch (error) {
+      throw toWaveError(error);
+    } finally {
+      connection.close();
+    }
+  }
+
+  /**
+   * Session-scoped fast (priority) tier. The gateway validates the current
+   * model actually supports it and answers with the settled value.
+   */
+  async setSessionFastMode(
+    sessionId: string,
+    enabled: boolean,
+    signal?: AbortSignal,
+  ): Promise<{ fastMode: boolean }> {
+    const resolved = this.resolveSessionId(sessionId);
+    if (isPendingSessionId(resolved)) {
+      // Creating a gateway session as a side effect of a toggle would be
+      // surprising; the knobs only appear for real sessions.
+      throw new WaveBackendError('Send a message first.', {
+        kind: 'bad_request',
+      });
+    }
+    const connection = await this.openSocket(signal);
+    try {
+      const liveSessionId = await this.resolveLiveSession(
+        connection.rpc,
+        resolved,
+      );
+      const result = await connection.rpc.call('config.set', {
+        key: 'fast',
+        session_id: liveSessionId,
+        value: enabled ? 'fast' : 'normal',
+      });
+      return { fastMode: normalizeFastValue(result) ?? enabled };
     } catch (error) {
       throw toWaveError(error);
     } finally {

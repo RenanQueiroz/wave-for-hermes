@@ -42,7 +42,47 @@ export interface WaveModelProvider {
 export interface WaveModelCatalog {
   currentModel?: string;
   currentProvider?: string;
+  /** Session-scoped fast (priority) tier state, when the gateway reports it. */
+  fastMode?: boolean;
   providers: WaveModelProvider[];
+  /** Session-scoped reasoning effort ('none' = thinking off). */
+  reasoningEffort?: string;
+  /**
+   * True when the answer reflects a real gateway session (resumed live).
+   * A conversation with no session yet reads profile-level state, where the
+   * session-scoped knobs must not be offered.
+   */
+  sessionScoped?: boolean;
+}
+
+/** The efforts Wave offers; the gateway accepts more, Wave sets only these. */
+export const WAVE_REASONING_EFFORTS = [
+  'none',
+  'low',
+  'medium',
+  'high',
+] as const;
+export type WaveReasoningEffort = (typeof WAVE_REASONING_EFFORTS)[number];
+
+/** Bounded projection of `config.get {key:'reasoning'}`. */
+export function normalizeReasoningValue(payload: unknown): string | undefined {
+  const record =
+    payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>)
+      : {};
+  const value = boundedString(record.value, 24)?.toLowerCase();
+  return value && /^[a-z-]+$/.test(value) ? value : undefined;
+}
+
+/** Bounded projection of `config.get`/`config.set` `{key:'fast'}`. */
+export function normalizeFastValue(payload: unknown): boolean | undefined {
+  const record =
+    payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>)
+      : {};
+  if (record.value === 'fast') return true;
+  if (record.value === 'normal') return false;
+  return undefined;
 }
 
 export type WaveSessionModelSwitch =
