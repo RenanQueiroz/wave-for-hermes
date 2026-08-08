@@ -197,9 +197,10 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   recheck never degrades — it returns the device to the connect screen.
 - Gateway speech holds no provider key on the device: voice mode, dictation, and message
   playback upload a recording to, or request synthesis from, the user's own gateway, which owns
-  the STT and TTS credentials. Each recording lives in the app cache only until its upload
-  returns and is deleted immediately afterwards, including on the failure and abandoned-cycle
-  paths. The microphone runs only while the user is in voice mode or holding dictation, never in
+  the STT and TTS credentials. Each recording lives in the app's document directory only until
+  its upload returns and is deleted immediately afterwards, including on the failure and
+  abandoned-cycle paths (the document directory rather than the cache, because a low-storage
+  system cache purge deletes an in-flight cache recording — observed live on a full Pixel). The microphone runs only while the user is in voice mode or holding dictation, never in
   the background, and Wave closes the recording session before playing anything back. What the
   user says in gateway voice mode becomes an ordinary conversation turn — it is persisted by
   Hermes exactly like typed text, which is the deliberate difference from ephemeral Realtime

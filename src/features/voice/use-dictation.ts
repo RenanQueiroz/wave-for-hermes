@@ -29,7 +29,12 @@ export interface DictationState {
 }
 
 export function useDictation({ client }: { client?: GatewayClient }) {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  // Document directory, not cache: a low-storage cache purge can delete an
+  // in-flight recording (see the gateway-voice recording options).
+  const recorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    directory: 'document',
+  });
   const [state, setState] = useState<DictationState>({ status: 'idle' });
   const activeRef = useRef(false);
 

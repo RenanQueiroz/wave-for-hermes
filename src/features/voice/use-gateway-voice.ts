@@ -53,10 +53,16 @@ const MAX_PLAYBACK_WAIT_MS = 6 * 60_000;
 /**
  * Speech, not music: mono at 16 kHz is what transcription providers want, and
  * it keeps a minute of audio small enough to upload as a data URL.
+ *
+ * Recordings go to the document directory, not the cache: on a full device
+ * Android's cache purge deletes an in-flight cache recording out from under
+ * the recorder (verified on a Pixel at 100% storage), and Wave deletes each
+ * recording itself right after transcription on every path anyway.
  */
 const VOICE_RECORDING_OPTIONS: RecordingOptions = {
   ...RecordingPresets.HIGH_QUALITY,
   bitRate: 32_000,
+  directory: 'document',
   isMeteringEnabled: true,
   numberOfChannels: 1,
   sampleRate: 16_000,
@@ -280,7 +286,16 @@ export function useGatewayVoice({
         phase: 'transcribing',
       }));
       try {
-        const base64 = await new File(uri).base64();
+        let base64: string;
+        try {
+          base64 = await new File(uri).base64();
+        } catch {
+          // The OS can reclaim storage-pressure files out from under the
+          // recorder; the native message would leak a filesystem path.
+          throw new Error(
+            'Wave lost that recording — the device may be low on storage.',
+          );
+        }
         const mimeType = mimeTypeForRecording(uri);
         const gateway = clientRef.current;
         if (!gateway) return undefined;
@@ -562,8 +577,11 @@ export function useGatewayVoice({
         setState((current) => ({
           ...current,
           assistantAudioLevel: undefined,
+          // Native errors can embed device filesystem paths, which never
+          // belong in the render model (see AGENTS.md); keep only clean copy.
           error:
-            error instanceof Error
+            error instanceof Error &&
+            !/\/(data|var|private|storage)\//.test(error.message)
               ? error.message
               : 'Voice mode stopped unexpectedly.',
           level: undefined,
