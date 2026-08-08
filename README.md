@@ -113,9 +113,8 @@ currently includes:
   plus separate per-device Realtime model and voice pickers. The model picker accepts only
   `gpt-realtime-2.1-mini` (the latency/cost-oriented default) or `gpt-realtime-2.1` (the
   larger-model option), and a change applies to the next call;
-- a persisted appearance setting pairing PanelUI's Panel, Moon, and Grass theme families with a
-  separate system/light/dark choice, applied live across the app including native headers and the
-  status bar;
+- a persisted system/light/dark appearance choice on PanelUI's default theme, applied live
+  across the app including native headers and the status bar;
 - a Settings legal card that opens native iOS and Android acknowledgements generated from the
   production dependency graph during Prebuild;
 - automated dependency, import, configuration, and production-bundle boundary checks, including a

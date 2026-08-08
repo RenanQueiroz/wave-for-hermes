@@ -1,27 +1,27 @@
 import * as SecureStore from 'expo-secure-store';
-import { PANEL_THEMES } from 'panelui-native';
 import { useEffect } from 'react';
-import { Appearance, useColorScheme } from 'react-native';
 import { Uniwind } from 'uniwind';
 
 const THEME_PREFERENCE_KEY = 'wave.theme-preference.v1';
 
-export type WaveThemeFamilyId = 'panel' | 'moon' | 'grass';
+/**
+ * Wave ships one theme family (PanelUI's default); the user chooses only
+ * whether it runs light, dark, or follows the OS. The Moon and Grass families
+ * were deliberately removed — records from that era still parse, keeping the
+ * appearance they stored.
+ */
 export type WaveThemeAppearance = 'system' | 'light' | 'dark';
 
 export interface WaveThemePreference {
   appearance: WaveThemeAppearance;
-  family: WaveThemeFamilyId;
-  version: 1;
+  version: 1 | 2;
 }
 
 export const DEFAULT_THEME_PREFERENCE: WaveThemePreference = {
   appearance: 'system',
-  family: 'panel',
-  version: 1,
+  version: 2,
 };
 
-const FAMILY_IDS: readonly WaveThemeFamilyId[] = ['panel', 'moon', 'grass'];
 const APPEARANCES: readonly WaveThemeAppearance[] = ['system', 'light', 'dark'];
 
 /** A malformed or missing record degrades to the default look, never an error. */
@@ -30,17 +30,17 @@ export async function loadThemePreference(): Promise<WaveThemePreference> {
     const stored = await SecureStore.getItemAsync(THEME_PREFERENCE_KEY);
     if (!stored) return DEFAULT_THEME_PREFERENCE;
     const record = JSON.parse(stored) as Record<string, unknown>;
+    // Version 1 records carried a theme family as well; only the appearance
+    // survives the migration.
     if (
-      record.version !== 1 ||
-      !FAMILY_IDS.includes(record.family as WaveThemeFamilyId) ||
+      (record.version !== 1 && record.version !== 2) ||
       !APPEARANCES.includes(record.appearance as WaveThemeAppearance)
     ) {
       return DEFAULT_THEME_PREFERENCE;
     }
     return {
       appearance: record.appearance as WaveThemeAppearance,
-      family: record.family as WaveThemeFamilyId,
-      version: 1,
+      version: 2,
     };
   } catch {
     return DEFAULT_THEME_PREFERENCE;
@@ -51,7 +51,7 @@ export async function saveThemePreference(preference: WaveThemePreference) {
   try {
     await SecureStore.setItemAsync(
       THEME_PREFERENCE_KEY,
-      JSON.stringify(preference),
+      JSON.stringify({ appearance: preference.appearance, version: 2 }),
       { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY },
     );
   } catch {
@@ -60,44 +60,19 @@ export async function saveThemePreference(preference: WaveThemePreference) {
   }
 }
 
-function preferredFamily(preference: WaveThemePreference) {
-  return (
-    PANEL_THEMES.find((candidate) => candidate.id === preference.family) ??
-    PANEL_THEMES[0]!
+/**
+ * `system` uses Uniwind's adaptive mode, which tracks OS scheme changes on
+ * its own; an explicit choice pins the matching registered theme (Uniwind
+ * also pins RN's app-level appearance so native views follow along).
+ */
+export function applyThemePreference(preference: WaveThemePreference) {
+  Uniwind.setTheme(
+    preference.appearance === 'system' ? 'system' : preference.appearance,
   );
 }
 
-/**
- * Uniwind pins RN's app-level appearance override when an explicit
- * `light`/`dark` theme is set, so `useColorScheme` stops reporting the
- * device. "System" therefore goes through Uniwind's own adaptive mode for
- * the default family, and for named families the override is cleared before
- * the real device scheme is read.
- */
-export function applyThemePreference(preference: WaveThemePreference) {
-  const family = preferredFamily(preference);
-
-  if (preference.appearance !== 'system') {
-    Uniwind.setTheme(family[preference.appearance]);
-    return;
-  }
-  if (preference.family === 'panel') {
-    Uniwind.setTheme('system');
-    return;
-  }
-  Appearance.setColorScheme('unspecified');
-  const scheme = Appearance.getColorScheme();
-  Uniwind.setTheme(family[scheme === 'dark' ? 'dark' : 'light']);
-}
-
-/**
- * Applies the stored preference at launch and re-applies it when the device
- * scheme changes, which is what makes "system" follow the OS for the named
- * families. Mount once at the app root.
- */
+/** Applies the stored preference at launch. Mount once at the app root. */
 export function useApplyThemePreference() {
-  const systemScheme = useColorScheme();
-
   useEffect(() => {
     let cancelled = false;
     void loadThemePreference().then((preference) => {
@@ -106,5 +81,5 @@ export function useApplyThemePreference() {
     return () => {
       cancelled = true;
     };
-  }, [systemScheme]);
+  }, []);
 }
