@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import {
@@ -29,13 +29,13 @@ import {
   type RealtimeBackend,
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
-import { realtimeCaptionPreferenceStore } from '@/features/realtime/realtime-caption-preference';
-import {
-  realtimeVoicePreferenceQueryKey,
-  realtimeVoicePreferenceStore,
-} from '@/features/realtime/realtime-voice-preference';
-import { realtimeModelPreferenceStore } from '@/features/realtime/realtime-model-preference';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
+import {
+  realtimeCaptionPreference,
+  realtimeModelPreference,
+  realtimeVoicePreference,
+} from '@/state/device-preferences';
+import { useDevicePreference } from '@/state/use-device-state';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
 import { OpenAiRealtimeBackend } from '@/services/realtime/openai-realtime-backend';
 import { openAiKeyStore } from '@/services/realtime/openai-key-store';
@@ -70,8 +70,8 @@ export function KeyedRealtimeVoiceScreen({
     let cancelled = false;
     void Promise.all([
       openAiKeyStore.load(),
-      realtimeModelPreferenceStore.load(),
-      realtimeCaptionPreferenceStore.load(),
+      realtimeModelPreference.read(),
+      realtimeCaptionPreference.read(),
     ])
       .then(([apiKey, model, captions]) => {
         if (!cancelled) {
@@ -179,12 +179,7 @@ function ConnectedVoiceScreen({
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const voicePreference = useQuery({
-    queryFn: () => realtimeVoicePreferenceStore.load(),
-    queryKey: realtimeVoicePreferenceQueryKey,
-    retry: false,
-    staleTime: Infinity,
-  });
+  const voicePreference = useDevicePreference(realtimeVoicePreference);
   const stopAndRefreshRef = useRef<Promise<void> | undefined>(undefined);
   const controller = useMemo(
     () =>
@@ -216,13 +211,13 @@ function ConnectedVoiceScreen({
     return task;
   }, [baseUrl, connectionId, controller, loadTimeline, queryClient, sessionId]);
   const start = useCallback(() => {
-    if (voicePreference.isPending) return;
+    if (!voicePreference.hydrated) return;
     stopAndRefreshRef.current = undefined;
     void controller.start(
       sessionId,
-      voicePreference.data === 'default' ? undefined : voicePreference.data,
+      voicePreference.value === 'default' ? undefined : voicePreference.value,
     );
-  }, [controller, sessionId, voicePreference.data, voicePreference.isPending]);
+  }, [controller, sessionId, voicePreference.hydrated, voicePreference.value]);
 
   // Like gateway voice mode, the call starts from an explicit tap — opening
   // the route never opens the microphone by itself. Leaving still tears the

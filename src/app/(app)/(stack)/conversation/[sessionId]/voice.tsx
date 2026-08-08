@@ -1,13 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
-import {
-  loadOpenAiKeyState,
-  OPENAI_KEY_STATE_QUERY_KEY,
-} from '@/features/realtime/openai-key-card';
 import { KeyedRealtimeVoiceScreen } from '@/features/realtime/voice-screen';
 import { GatewayVoiceScreen } from '@/features/voice/gateway-voice-screen';
+import { openAiKeyState } from '@/state/openai-key-state';
+import { useHydratedStore } from '@/state/use-device-state';
 
 export default function VoiceRoute() {
   const { sessionId } = useLocalSearchParams<{
@@ -16,12 +13,7 @@ export default function VoiceRoute() {
   const value = Array.isArray(sessionId) ? sessionId[0] : sessionId;
   const { gatewayClient, state } = useWaveConnection();
   // Presence and preference only — never the key itself.
-  const keyState = useQuery({
-    enabled: Boolean(gatewayClient),
-    queryFn: loadOpenAiKeyState,
-    queryKey: OPENAI_KEY_STATE_QUERY_KEY,
-    staleTime: Infinity,
-  });
+  const keyState = useHydratedStore(openAiKeyState);
 
   // Voice does not degrade the way chat does: both modes need a reachable
   // backend, so an unreachable one goes back rather than opening a microphone
@@ -30,10 +22,10 @@ export default function VoiceRoute() {
   if (!gatewayClient || state.phase !== 'connected') {
     return <Redirect href="/" />;
   }
-  if (keyState.isPending) return null;
+  if (!keyState.hydrated) return null;
   // Realtime is selected iff a key is saved and the user has not turned it
   // off; the keyless server-side voice is the default.
-  if (keyState.data?.hasKey && keyState.data.realtimeEnabled) {
+  if (keyState.hasKey && keyState.realtimeEnabled) {
     return (
       <KeyedRealtimeVoiceScreen client={gatewayClient} sessionId={value} />
     );

@@ -4,19 +4,17 @@
  * deliberately absent: minting a sample clip would cost a Realtime call per
  * listen on the user's key. The saved preference is a per-device store.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   WAVE_REALTIME_VOICE_IDS,
   type WaveRealtimeVoiceId,
 } from '@wave/contracts';
 import { Alert, Card, RadioGroup, Spinner } from 'panelui-native';
+import { useState } from 'react';
 import { View } from 'react-native';
 
-import {
-  realtimeVoicePreferenceQueryKey,
-  realtimeVoicePreferenceStore,
-} from '@/features/realtime/realtime-voice-preference';
 import { REALTIME_DEFAULT_VOICE_PREFERENCE } from '@/services/realtime/realtime-voice-preference-record';
+import { realtimeVoicePreference } from '@/state/device-preferences';
+import { useDevicePreference } from '@/state/use-device-state';
 
 const VOICE_DESCRIPTIONS: Record<WaveRealtimeVoiceId, string> = {
   alloy: 'Balanced and clear.',
@@ -32,28 +30,18 @@ const VOICE_DESCRIPTIONS: Record<WaveRealtimeVoiceId, string> = {
 };
 
 export function RealtimeVoiceCard() {
-  const queryClient = useQueryClient();
-  const preference = useQuery({
-    queryFn: () => realtimeVoicePreferenceStore.load(),
-    queryKey: realtimeVoicePreferenceQueryKey,
-    retry: false,
-    staleTime: Infinity,
-  });
-  const savePreference = useMutation({
-    mutationFn: async (value: string) => {
-      const selected =
-        value === REALTIME_DEFAULT_VOICE_PREFERENCE
-          ? value
-          : WAVE_REALTIME_VOICE_IDS.find((id) => id === value);
-      if (!selected) throw new Error('Choose an available Wave voice.');
-      await realtimeVoicePreferenceStore.save(selected);
-      return selected;
-    },
-    onSuccess: (value) => {
-      queryClient.setQueryData(realtimeVoicePreferenceQueryKey, value);
-    },
-  });
-  const selectedVoice = preference.data ?? REALTIME_DEFAULT_VOICE_PREFERENCE;
+  const preference = useDevicePreference(realtimeVoicePreference);
+  const [saveError, setSaveError] = useState(false);
+  const select = (value: string) => {
+    const selected =
+      value === REALTIME_DEFAULT_VOICE_PREFERENCE
+        ? value
+        : WAVE_REALTIME_VOICE_IDS.find((id) => id === value);
+    if (!selected) return;
+    setSaveError(false);
+    void realtimeVoicePreference.set(selected).catch(() => setSaveError(true));
+  };
+  const selectedVoice = preference.value;
 
   return (
     <Card testID="realtime-voice-card">
@@ -65,14 +53,13 @@ export function RealtimeVoiceCard() {
         </Card.Description>
       </Card.Header>
       <Card.Content>
-        {preference.isPending ? (
+        {!preference.hydrated ? (
           <View className="items-center py-6">
             <Spinner />
           </View>
         ) : (
           <RadioGroup
-            disabled={savePreference.isPending}
-            onValueChange={(value) => savePreference.mutate(value)}
+            onValueChange={(value) => select(value)}
             testID="realtime-voice-picker"
             value={selectedVoice}
             variant="card">
@@ -91,7 +78,7 @@ export function RealtimeVoiceCard() {
             ))}
           </RadioGroup>
         )}
-        {savePreference.error ? (
+        {saveError ? (
           <Alert
             className="mt-3"
             variant="destructive"

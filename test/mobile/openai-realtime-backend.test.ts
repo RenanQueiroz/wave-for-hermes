@@ -6,7 +6,7 @@ import {
   createOpenAiRealtimeSessionConfig,
   OpenAiRealtimeBackend,
 } from '../../src/services/realtime/openai-realtime-backend.ts';
-import { RealtimeModelPreferenceStore } from '../../src/services/realtime/realtime-model-preference-store.ts';
+import { createDevicePreferenceStores } from '../../src/state/device-preferences.ts';
 import {
   buildWaveRealtimeInstructions,
   createAskHermesToolDefinition,
@@ -126,13 +126,13 @@ test('backend snapshots the selected model even after preference changes', async
     model: 'gpt-realtime-2.1-mini',
     version: 1,
   });
-  const store = new RealtimeModelPreferenceStore({
+  const stores = createDevicePreferenceStores({
     getItemAsync: async () => stored,
     setItemAsync: async (_key, value) => {
       stored = value;
     },
   });
-  const selectedAtConstruction = await store.load();
+  const selectedAtConstruction = await stores.realtimeModel.read();
   let setupSession = '';
   const backend = new OpenAiRealtimeBackend({
     apiKey: 'unit-test-api-key',
@@ -148,7 +148,7 @@ test('backend snapshots the selected model even after preference changes', async
       throw new Error('setup rejection must not open a sideband');
     },
   });
-  await store.save('gpt-realtime-2.1');
+  await stores.realtimeModel.set('gpt-realtime-2.1');
 
   await assert.rejects(
     backend.startRealtimeCall('session-1', 'v=0\r\nwave-offer'),
@@ -167,7 +167,7 @@ test('backend snapshots the selected model even after preference changes', async
     },
   );
   assert.equal(JSON.parse(setupSession).model, 'gpt-realtime-2.1-mini');
-  assert.equal(await store.load(), 'gpt-realtime-2.1');
+  assert.equal(await stores.realtimeModel.read(), 'gpt-realtime-2.1');
 });
 
 test('model-specific setup rejection is attempted once without fallback', async () => {

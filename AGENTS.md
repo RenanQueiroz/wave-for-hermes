@@ -74,10 +74,16 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 ## Dependency policy
 
 - Do not add: the Vercel `ai` SDK or `@ai-sdk/*`, Axios or another HTTP client, a second
-  SSE/EventSource implementation, Redux/Zustand/MobX/XState, AsyncStorage, LiveKit, or Expo Router
-  `+api.ts` server routes. State lives in TanStack Query plus focused controllers/reducers, and
-  streaming stays on the platform WebSocket with the gateway's JSON-RPC framing, normalized
-  behind `src/services/gateway`.
+  SSE/EventSource implementation, Redux/MobX/XState, AsyncStorage, LiveKit, or Expo Router
+  `+api.ts` server routes. Server state lives in TanStack Query, active streams live in focused
+  controllers/reducers, and streaming stays on the platform WebSocket with the gateway's
+  JSON-RPC framing, normalized behind `src/services/gateway`.
+- Zustand is allowed for device-local UI and preference state only (the stores under
+  `src/state/`): vanilla cores so node tests run rendererless, persistence on
+  `expo-secure-store` with strict versioned records that degrade to defaults, React bound only
+  at the edge. Never put server data, message content, or secrets in a store — secret values
+  stay in secure storage with only presence/status projected. Do not migrate the chat reducer,
+  the Realtime controller, or the voice loops onto it.
 - Add analytics or crash reporting only after consent and retention are deliberately designed.
 - Open-source acknowledgements use the explicit `react-native-legal/app.plugin.js` config plugin
   reference so Expo Tools resolves the same conventional entrypoint as Expo Prebuild. Keep its

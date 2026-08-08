@@ -1,36 +1,13 @@
 import { Card, RadioGroup } from 'panelui-native';
-import { useEffect, useState } from 'react';
 
 import {
-  applyThemePreference,
-  DEFAULT_THEME_PREFERENCE,
-  loadThemePreference,
-  saveThemePreference,
+  themeAppearancePreference,
   type WaveThemeAppearance,
-  type WaveThemePreference,
-} from '@/features/settings/theme-preference';
+} from '@/state/device-preferences';
+import { useDevicePreference } from '@/state/use-device-state';
 
 export function AppearanceCard() {
-  const [preference, setPreference] = useState<WaveThemePreference>();
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadThemePreference().then((stored) => {
-      if (!cancelled) setPreference(stored);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const update = (appearance: WaveThemeAppearance) => {
-    setPreference(() => {
-      const next = { ...DEFAULT_THEME_PREFERENCE, appearance };
-      applyThemePreference(next);
-      void saveThemePreference(next);
-      return next;
-    });
-  };
+  const appearance = useDevicePreference(themeAppearancePreference);
 
   return (
     <Card testID="appearance-card">
@@ -41,12 +18,16 @@ export function AppearanceCard() {
         </Card.Description>
       </Card.Header>
       <Card.Content className="gap-4">
-        {preference ? (
+        {appearance.hydrated ? (
           <RadioGroup
             testID="theme-appearance-picker"
-            value={preference.appearance}
+            value={appearance.value}
             variant="card"
-            onValueChange={(value) => update(value as WaveThemeAppearance)}>
+            onValueChange={(value) =>
+              void themeAppearancePreference
+                .set(value as WaveThemeAppearance)
+                .catch(() => undefined)
+            }>
             <RadioGroup.Item
               description="Follow this phone's light or dark setting."
               label="System"

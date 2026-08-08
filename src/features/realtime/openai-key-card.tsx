@@ -7,46 +7,30 @@
  * never leaves the device except toward api.openai.com. Only its *presence*
  * reaches the query cache.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { fetch as expoFetch } from 'expo/fetch';
 import { Alert, Button, Card, Input, Switch, Typography } from 'panelui-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import {
-  realtimeCaptionPreferenceQueryKey,
-  realtimeCaptionPreferenceStore,
-} from '@/features/realtime/realtime-caption-preference';
-import {
   openAiKeyStore,
   OPENAI_KEY_PATTERN,
 } from '@/services/realtime/openai-key-store';
 import { checkOpenAiKey } from '@/services/realtime/openai-key-validation';
-
-export const OPENAI_KEY_STATE_QUERY_KEY = ['wave', 'openai-key-state'] as const;
-
-/** Presence and preference only — the key itself never enters the cache. */
-export async function loadOpenAiKeyState() {
-  const [key, realtimeEnabled] = await Promise.all([
-    openAiKeyStore.load(),
-    openAiKeyStore.loadRealtimeEnabled(),
-  ]);
-  return { hasKey: Boolean(key), realtimeEnabled };
-}
+import { realtimeCaptionPreference } from '@/state/device-preferences';
+import { openAiKeyState } from '@/state/openai-key-state';
+import {
+  useDevicePreference,
+  useHydratedStore,
+} from '@/state/use-device-state';
 
 export function OpenAiKeyCard() {
-  const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string>();
 
-  const state = useQuery({
-    queryFn: loadOpenAiKeyState,
-    queryKey: OPENAI_KEY_STATE_QUERY_KEY,
-    staleTime: Infinity,
-  });
-
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: OPENAI_KEY_STATE_QUERY_KEY });
+  // Presence and preference only — the key itself never leaves secure storage.
+  const state = useHydratedStore(openAiKeyState);
 
   const saveKey = useMutation({
     mutationFn: async (value: string) => {
@@ -80,7 +64,7 @@ export function OpenAiKeyCard() {
     onSuccess: () => {
       setDraft('');
       setError(undefined);
-      void invalidate();
+      void openAiKeyState.refresh();
     },
   });
 
@@ -89,31 +73,19 @@ export function OpenAiKeyCard() {
     onError: () => setError('Wave could not remove the key from this device.'),
     onSuccess: () => {
       setError(undefined);
-      void invalidate();
+      void openAiKeyState.refresh();
     },
   });
 
   const setRealtimeEnabled = useMutation({
     mutationFn: (enabled: boolean) =>
       openAiKeyStore.saveRealtimeEnabled(enabled),
-    onSettled: () => void invalidate(),
+    onSettled: () => void openAiKeyState.refresh(),
   });
-  const captions = useQuery({
-    queryFn: () => realtimeCaptionPreferenceStore.load(),
-    queryKey: realtimeCaptionPreferenceQueryKey,
-    staleTime: Infinity,
-  });
-  const setCaptions = useMutation({
-    mutationFn: (enabled: boolean) =>
-      realtimeCaptionPreferenceStore.save(enabled),
-    onSettled: () =>
-      void queryClient.invalidateQueries({
-        queryKey: realtimeCaptionPreferenceQueryKey,
-      }),
-  });
+  const captions = useDevicePreference(realtimeCaptionPreference);
 
-  const hasKey = state.data?.hasKey === true;
-  const realtimeEnabled = state.data?.realtimeEnabled !== false;
+  const hasKey = state.hasKey;
+  const realtimeEnabled = state.realtimeEnabled;
   const busy = saveKey.isPending || removeKey.isPending;
 
   return (
@@ -171,9 +143,13 @@ export function OpenAiKeyCard() {
               </View>
               <View testID="realtime-captions-switch">
                 <Switch
-                  disabled={setCaptions.isPending || captions.isPending}
-                  value={captions.data === true}
-                  onValueChange={(value) => setCaptions.mutate(value)}
+                  disabled={!captions.hydrated}
+                  value={captions.value}
+                  onValueChange={(value) =>
+                    void realtimeCaptionPreference
+                      .set(value)
+                      .catch(() => undefined)
+                  }
                 />
               </View>
             </View>

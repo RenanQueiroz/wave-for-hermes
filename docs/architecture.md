@@ -269,6 +269,11 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
   than left permanently unreadable. A connectivity-shaped refetch failure over cached data
   renders a quiet offline notice; every other error keeps its explicit surface.
 - Active stream and Realtime lifecycles belong in focused controllers/reducers, not query cache.
+- Device-local preferences (Realtime model/voice/captions, theme appearance, OpenAI-key
+  presence) live in small vanilla Zustand stores under `src/state/`, hydrated once from secure
+  storage with strict versioned records that degrade to defaults, written optimistically, and
+  bound to React only at the edge (`use-device-state.ts`). They never hold server data or
+  secrets — key material stays in `openAiKeyStore` with presence projected.
 - The connection provider owns only sign-in bootstrap and verification state; it is not a
   general application-state container.
 - PanelUI renders Wave-owned conversation types; it does not own transport types or state.

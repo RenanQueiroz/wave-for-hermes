@@ -1,28 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import { Button, Card, Item, Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
 import { ReactNativeLegal } from 'react-native-legal';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
-import {
-  loadOpenAiKeyState,
-  OPENAI_KEY_STATE_QUERY_KEY,
-  OpenAiKeyCard,
-} from '@/features/realtime/openai-key-card';
+import { OpenAiKeyCard } from '@/features/realtime/openai-key-card';
 import { RealtimeModelCard } from '@/features/realtime/realtime-model-card';
 import { RealtimeVoiceCard } from '@/features/realtime/realtime-voice-card';
 import { AppearanceCard } from '@/features/settings/appearance-card';
+import { openAiKeyState } from '@/state/openai-key-state';
+import { useHydratedStore } from '@/state/use-device-state';
 
 export function SettingsScreen() {
   const connection = useWaveConnection();
   const router = useRouter();
   // The voice picker only matters once Realtime is possible on this device.
-  const keyState = useQuery({
-    queryFn: loadOpenAiKeyState,
-    queryKey: OPENAI_KEY_STATE_QUERY_KEY,
-    staleTime: Infinity,
-  });
+  const keyState = useHydratedStore(openAiKeyState);
 
   if (
     connection.state.phase !== 'connected' &&
@@ -57,7 +50,7 @@ export function SettingsScreen() {
 
         <OpenAiKeyCard />
 
-        {keyState.data?.hasKey ? (
+        {keyState.hasKey ? (
           <>
             <RealtimeModelCard />
             <RealtimeVoiceCard />

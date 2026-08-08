@@ -1,39 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Spinner, Typography } from 'panelui-native';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import {
-  realtimeModelPreferenceQueryKey,
-  realtimeModelPreferenceStore,
-} from '@/features/realtime/realtime-model-preference';
-import {
   isWaveRealtimeModelId,
-  WAVE_REALTIME_DEFAULT_MODEL,
   WAVE_REALTIME_MODEL_OPTIONS,
 } from '@/services/realtime/realtime-model-preference-record';
+import { realtimeModelPreference } from '@/state/device-preferences';
+import { useDevicePreference } from '@/state/use-device-state';
 
 export function RealtimeModelCard() {
-  const queryClient = useQueryClient();
-  const preference = useQuery({
-    queryFn: () => realtimeModelPreferenceStore.load(),
-    queryKey: realtimeModelPreferenceQueryKey,
-    retry: false,
-    staleTime: Infinity,
-  });
-  const savePreference = useMutation({
-    mutationFn: async (value: string) => {
-      if (!isWaveRealtimeModelId(value)) {
-        throw new Error('Choose a supported Realtime model.');
-      }
-      await realtimeModelPreferenceStore.save(value);
-      return value;
-    },
-    onSuccess: (value) => {
-      queryClient.setQueryData(realtimeModelPreferenceQueryKey, value);
-    },
-    retry: false,
-  });
-  const selectedModel = preference.data ?? WAVE_REALTIME_DEFAULT_MODEL;
+  const preference = useDevicePreference(realtimeModelPreference);
+  const [saveError, setSaveError] = useState(false);
+  const select = (value: string) => {
+    if (!isWaveRealtimeModelId(value)) return;
+    setSaveError(false);
+    void realtimeModelPreference.set(value).catch(() => setSaveError(true));
+  };
+  const selectedModel = preference.value;
 
   return (
     <Card testID="realtime-model-card">
@@ -44,7 +28,7 @@ export function RealtimeModelCard() {
         </Card.Description>
       </Card.Header>
       <Card.Content>
-        {preference.isPending ? (
+        {!preference.hydrated ? (
           <View className="items-center py-6">
             <Spinner />
           </View>
@@ -55,21 +39,18 @@ export function RealtimeModelCard() {
             className="gap-3"
             testID="realtime-model-picker">
             {WAVE_REALTIME_MODEL_OPTIONS.map((option) => (
-              <View
-                className={savePreference.isPending ? 'opacity-50' : undefined}
-                key={option.id}>
+              <View key={option.id}>
                 <Button
                   fullWidth
                   accessibilityLabel={option.id}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: selectedModel === option.id }}
                   className="h-auto justify-start px-4 py-3"
-                  disabled={savePreference.isPending}
                   testID={option.testID}
                   variant={
                     selectedModel === option.id ? 'secondary' : 'outline'
                   }
-                  onPress={() => savePreference.mutate(option.id)}>
+                  onPress={() => select(option.id)}>
                   <View className="flex-1 items-start gap-1">
                     <Typography.Paragraph weight="medium">
                       {option.id}
@@ -83,7 +64,7 @@ export function RealtimeModelCard() {
             ))}
           </View>
         )}
-        {savePreference.error ? (
+        {saveError ? (
           <Alert
             className="mt-3"
             variant="destructive"
