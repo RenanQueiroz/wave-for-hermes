@@ -26,7 +26,7 @@ import {
   Typography,
 } from 'panelui-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 
 import type { GatewayClient } from '@/services/gateway/gateway-client';
 import {
@@ -156,6 +156,10 @@ export function SessionModelPill({
   );
 
   const openPicker = useCallback(() => {
+    // The styled sheet renders in the app window, underneath the keyboard's
+    // own window — close the keyboard before opening it (same rule as the
+    // attachment sheet).
+    Keyboard.dismiss();
     setError(undefined);
     setOpen(true);
     void refetchContext();

@@ -50,7 +50,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Keyboard, Pressable, View } from 'react-native';
+import { Animated, Keyboard, Pressable, View } from 'react-native';
+import { useKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
@@ -401,6 +402,15 @@ function ConnectedChatScreen({
   const messages = useMemo(
     () => [...timelineMessages, ...chat.state.messages],
     [chat.state.messages, timelineMessages],
+  );
+  // The empty state centers on the area the keyboard leaves visible: the
+  // docked composer translates up by the keyboard height, so shifting the
+  // centered overlay by half of it keeps it centered in what remains
+  // (`height` animates 0 → -keyboardHeight, so half of it moves up).
+  const { height: animatedKeyboardHeight } = useKeyboardAnimation();
+  const emptyStateShift = useMemo(
+    () => Animated.multiply(animatedKeyboardHeight, 0.5),
+    [animatedKeyboardHeight],
   );
   const emptyStateTitle = useMemo(
     () => emptyStateTitleForSession(sessionId),
@@ -899,16 +909,25 @@ function ConnectedChatScreen({
         {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"
-            className="absolute inset-0 items-center justify-center gap-2 px-6"
+            className="absolute inset-0 px-6"
             testID={pendingSession ? 'chat-empty-new' : 'chat-empty-existing'}>
-            <Typography.Heading type="h2" className="text-center">
-              {pendingSession ? emptyStateTitle : 'No messages yet'}
-            </Typography.Heading>
-            <Typography.Paragraph muted className="text-center">
-              {pendingSession
-                ? 'Chat naturally with your Hermes agent.'
-                : 'This conversation is on your Hermes server but has no messages yet. Send one to continue it here.'}
-            </Typography.Paragraph>
+            <Animated.View
+              style={{
+                alignItems: 'center',
+                flex: 1,
+                gap: 8,
+                justifyContent: 'center',
+                transform: [{ translateY: emptyStateShift }],
+              }}>
+              <Typography.Heading type="h2" className="text-center">
+                {pendingSession ? emptyStateTitle : 'No messages yet'}
+              </Typography.Heading>
+              <Typography.Paragraph muted className="text-center">
+                {pendingSession
+                  ? 'Chat naturally with your Hermes agent.'
+                  : 'This conversation is on your Hermes server but has no messages yet. Send one to continue it here.'}
+              </Typography.Paragraph>
+            </Animated.View>
           </View>
         ) : null}
       </View>
