@@ -9,6 +9,7 @@ import {
   type RunningGatewayServer,
 } from './gateway-server.js';
 import { Journal } from './journal.js';
+import { OpenAiRealtimeFake } from './openai-realtime-fake.js';
 import { normalizeScenario } from './scenario.js';
 import { HarnessState } from './state.js';
 
@@ -35,11 +36,13 @@ export async function startVoiceHarness(
   const host = options.host ?? '127.0.0.1';
   const journal = new Journal();
   const state = new HarnessState();
+  const realtimeFake = new OpenAiRealtimeFake({ journal, state });
 
   const gateway = await startGatewayServer({
     host,
     journal,
     port: options.gatewayPort ?? 8790,
+    realtimeFake,
     state,
   });
 
@@ -96,6 +99,7 @@ export async function startVoiceHarness(
     }
     if (method === 'POST' && path === '/control/reset') {
       state.reset();
+      realtimeFake.reset();
       journal.clear();
       return { body: { ok: true }, status: 200 };
     }

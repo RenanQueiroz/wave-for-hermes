@@ -49,8 +49,29 @@ export interface HarnessTranscribeScript {
   failWith?: number;
 }
 
+/** One scripted OpenAI-Realtime model behavior, executed in order. */
+export type HarnessRealtimeStep =
+  | { delayMs: number; type: 'delay' }
+  | { text: string; type: 'assistant_speech' }
+  | {
+      arguments: Record<string, unknown> | string;
+      callId?: string;
+      name: string;
+      type: 'function_call';
+    }
+  | { itemId?: string; transcript: string; type: 'user_speech' }
+  | { type: 'wait_function_result' }
+  | { type: 'wait_response_create' };
+
+export interface HarnessRealtimeScript {
+  /** Steps for the next Realtime sideband connection; FIFO per call. */
+  script?: HarnessRealtimeStep[];
+}
+
 export interface HarnessScenario {
   audioCapabilities?: { stt: boolean; tts: boolean };
+  /** FIFO of scripted Realtime calls (one entry per sideband connection). */
+  realtimeCalls?: HarnessRealtimeScript[];
   /** FIFO of `session.redirect` outcomes; default is `redirected`. */
   redirects?: HarnessRedirectScript[];
   speech?: HarnessSpeechScript;
@@ -133,6 +154,66 @@ function normalizeRedirect(value: unknown): HarnessRedirectScript {
   };
 }
 
+function normalizeRealtimeStep(
+  value: unknown,
+): HarnessRealtimeStep | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  switch (record.type) {
+    case 'delay': {
+      const delayMs = boundedDelay(record.delayMs);
+      return delayMs === undefined ? undefined : { delayMs, type: 'delay' };
+    }
+    case 'assistant_speech': {
+      const text = boundedText(record.text);
+      return text === undefined
+        ? undefined
+        : { text, type: 'assistant_speech' };
+    }
+    case 'function_call': {
+      const name = boundedText(record.name);
+      if (!name) return undefined;
+      const args =
+        typeof record.arguments === 'string'
+          ? record.arguments.slice(0, MAX_TEXT_CHARS)
+          : (asRecord(record.arguments) ?? {});
+      const callId = boundedText(record.callId);
+      return {
+        arguments: args,
+        name,
+        type: 'function_call',
+        ...(callId === undefined ? {} : { callId }),
+      };
+    }
+    case 'user_speech': {
+      const transcript = boundedText(record.transcript);
+      if (transcript === undefined) return undefined;
+      const itemId = boundedText(record.itemId);
+      return {
+        transcript,
+        type: 'user_speech',
+        ...(itemId === undefined ? {} : { itemId }),
+      };
+    }
+    case 'wait_function_result':
+      return { type: 'wait_function_result' };
+    case 'wait_response_create':
+      return { type: 'wait_response_create' };
+    default:
+      return undefined;
+  }
+}
+
+function normalizeRealtimeScript(value: unknown): HarnessRealtimeScript {
+  const record = asRecord(value) ?? {};
+  const script = Array.isArray(record.script)
+    ? record.script
+        .slice(0, MAX_FRAMES_PER_TURN)
+        .flatMap((step) => normalizeRealtimeStep(step) ?? [])
+    : undefined;
+  return script === undefined ? {} : { script };
+}
+
 export function normalizeScenario(value: unknown): HarnessScenario {
   const record = asRecord(value) ?? {};
   const scenario: HarnessScenario = {};
@@ -162,6 +243,12 @@ export function normalizeScenario(value: unknown): HarnessScenario {
     scenario.redirects = record.redirects
       .slice(0, MAX_LIST_ENTRIES)
       .map(normalizeRedirect);
+  }
+
+  if (Array.isArray(record.realtimeCalls)) {
+    scenario.realtimeCalls = record.realtimeCalls
+      .slice(0, MAX_LIST_ENTRIES)
+      .map(normalizeRealtimeScript);
   }
 
   const speech = asRecord(record.speech);

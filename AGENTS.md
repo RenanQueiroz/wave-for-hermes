@@ -448,11 +448,14 @@ automation tooling is documented in `tools/mobile-agent/README.md`; keep its ser
 contracts in sync when modifying it. Native dependency or app-configuration changes also require
 `npx expo prebuild --clean`, affected native builds, and `npx expo-doctor`.
 
-Voice flows are exercised mic-free against the local fake gateway in `tools/voice-harness`
-(`npm run harness:gateway`; scripts transcripts, turns, redirect outcomes, and speech through
-its loopback control API — see its README). Build it once with `npm run harness:build` so
-`npm test` includes the real-`GatewayClient` integration proof in
-`test/mobile/voice-harness.integration.test.ts` (those tests skip when the harness is unbuilt).
+Voice flows are exercised mic-free against the local fakes in `tools/voice-harness`
+(`npm run harness:gateway`; scripts transcripts, turns, redirect outcomes, speech, and
+scripted OpenAI-Realtime calls through its loopback control API — see its README). Dev builds
+opt realtime voice into the scripted fake via the development-tools "Realtime harness" card
+(`src/dev/realtime-harness.ts`, `__DEV__`-only, dummy-bearer enforced). Build the harness once
+with `npm run harness:build` so `npm test` includes the real-`GatewayClient` integration proof
+in `test/mobile/voice-harness.integration.test.ts` and the full controller-to-both-fakes loop
+in `test/mobile/realtime-harness-e2e.test.ts` (those tests skip when the harness is unbuilt).
 The harness is a scripted test double pinned to the deployed gateway protocol; when a Hermes
 upgrade changes wire shapes, update it in the same change as `src/services/gateway`. It never
 replaces the physical-device audio gates.

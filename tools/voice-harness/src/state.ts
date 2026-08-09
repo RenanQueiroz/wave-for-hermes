@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   DEFAULT_TRANSCRIPT,
+  type HarnessRealtimeScript,
   type HarnessRedirectScript,
   type HarnessScenario,
   type HarnessTurnScript,
@@ -150,6 +151,10 @@ export class HarnessState {
 
   nextRedirectScript(): HarnessRedirectScript {
     return this.scenario.redirects?.shift() ?? { status: 'redirected' };
+  }
+
+  nextRealtimeScript(): HarnessRealtimeScript {
+    return this.scenario.realtimeCalls?.shift() ?? {};
   }
 
   audioCapabilities(): { stt: boolean; tts: boolean } {

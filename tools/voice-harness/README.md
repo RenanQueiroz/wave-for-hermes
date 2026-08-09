@@ -11,6 +11,15 @@ Protocol baseline: Hermes Agent `v2026.8.3` (the deployed gateway image), as
 consumed by Wave. A Hermes upgrade that changes wire shapes must update this
 package together with `src/services/gateway`.
 
+The same listener also serves a **scripted OpenAI-Realtime fake** (`/v1/realtime*`): the SDP
+call exchange, hangup, and the sideband socket — `session.update` echoed as a structurally
+identical `session.updated`, journaled `conversation.item.create`/`response.create`, scripted
+model behaviors (user speech, `ask_hermes` function calls, assistant speech), and an
+auto-responder so an unscripted `response.create` never wedges the sideband's gating. It
+accepts only the dev override's fixed dummy bearer (`sk-wave-harness…`), so a misconfigured
+device with a real key fails loudly instead of leaking. Wave's dev builds opt in through the
+"Realtime harness" card in development tools (see `src/dev/realtime-harness.ts`).
+
 ## Why this exists
 
 Gateway voice mode's STT happens server-side (`POST /api/audio/transcribe`), so
@@ -94,6 +103,23 @@ when drained.
   "speech": { "mode": "stream", "sampleRate": 24000, "msPerChar": 15 },
   "transcribe": { "delayMs": 0, "failWith": 503 }, // fault injection
   "audioCapabilities": { "stt": true, "tts": true },
+  "realtimeCalls": [
+    // one entry per Realtime sideband connection
+    {
+      "script": [
+        { "type": "user_speech", "transcript": "Turn off the kitchen lights" },
+        {
+          "type": "function_call",
+          "name": "ask_hermes",
+          "arguments": { "instruction": "Turn off the kitchen lights" },
+        },
+        { "type": "wait_function_result" }, // pause until Wave delivers the result
+        { "type": "assistant_speech", "text": "Done — the lights are off." },
+        { "type": "wait_response_create" }, // pause until Wave asks for a response
+        { "type": "delay", "delayMs": 250 },
+      ],
+    },
+  ],
 }
 ```
 
@@ -117,8 +143,14 @@ prompt (`You said: …`), redirects answer `redirected`, speech streams PCM.
 
 ## Tests
 
-- `npm run check` (in this package): wire-level self-tests over raw HTTP/WS.
+- `npm run check` (in this package): wire-level self-tests over raw HTTP/WS,
+  including the Realtime fake's protocol.
 - `test/mobile/voice-harness.integration.test.ts` (repo root): the real
-  `GatewayClient` against this harness. Those tests skip until the harness is
-  built — run `npm run harness:build` once, then plain `npm test` includes
-  them.
+  `GatewayClient` against this harness.
+- `test/mobile/realtime-harness-e2e.test.ts` (repo root): the real
+  `WaveRealtimeController` + `OpenAiRealtimeBackend` + orchestrator +
+  gateway executors run a scripted voice call against both fakes at once —
+  no microphone, no OpenAI, no key.
+
+Root tests skip until the harness is built — run `npm run harness:build`
+once, then plain `npm test` includes them.

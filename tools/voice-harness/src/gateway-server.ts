@@ -20,6 +20,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 
 import { sinePcm, wavDataUrl } from './audio.js';
 import type { Journal } from './journal.js';
+import type { OpenAiRealtimeFake } from './openai-realtime-fake.js';
 import type { HarnessSession, HarnessState } from './state.js';
 import { ActiveTurn, type FrameSink } from './turn-engine.js';
 
@@ -36,6 +37,7 @@ interface GatewayServerOptions {
   host: string;
   journal: Journal;
   port: number;
+  realtimeFake: OpenAiRealtimeFake;
   state: HarnessState;
 }
 
@@ -49,7 +51,7 @@ export interface RunningGatewayServer {
 export async function startGatewayServer(
   options: GatewayServerOptions,
 ): Promise<RunningGatewayServer> {
-  const { host, journal, state } = options;
+  const { host, journal, realtimeFake, state } = options;
   const activeTurns = new Map<string, ActiveTurn>();
 
   const server = createServer((request, response) => {
@@ -61,11 +63,28 @@ export async function startGatewayServer(
 
   const rpcSocketServer = new WebSocketServer({ noServer: true });
   const speechSocketServer = new WebSocketServer({ noServer: true });
+  const realtimeSocketServer = new WebSocketServer({ noServer: true });
 
   server.on(
     'upgrade',
     (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       const url = requestUrl(request);
+      // The OpenAI-shaped sideband authenticates by issued call id, not by
+      // the gateway's ticket scheme.
+      if (realtimeFake.isSidebandPath(url.pathname)) {
+        const callId = url.searchParams.get('call_id') ?? '';
+        if (!realtimeFake.hasIssuedCall(callId)) {
+          journal.record('ws.rejected', { path: url.pathname });
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        realtimeSocketServer.handleUpgrade(request, socket, head, (ws) => {
+          journal.record('ws.open', { path: url.pathname });
+          realtimeFake.handleSidebandSocket(ws, callId);
+        });
+        return;
+      }
       const ticket = url.searchParams.get('ticket') ?? '';
       if (!state.consumeTicket(ticket)) {
         journal.record('ws.rejected', { path: url.pathname });
@@ -131,6 +150,30 @@ export async function startGatewayServer(
       response.end(JSON.stringify(body));
       journal.record('http.request', { method, path, status });
     };
+
+    // OpenAI-shaped Realtime surface (dummy-bearer auth, no cookies).
+    if (path.startsWith('/v1/realtime')) {
+      const realtimeResponse = await realtimeFake.handleHttp({
+        authorization: request.headers.authorization,
+        body: await readRawBody(request),
+        contentType: request.headers['content-type'],
+        method,
+        path,
+      });
+      if (realtimeResponse) {
+        response.writeHead(realtimeResponse.status, {
+          'content-type': 'application/json',
+          ...realtimeResponse.headers,
+        });
+        response.end(realtimeResponse.body);
+        journal.record('http.request', {
+          method,
+          path,
+          status: realtimeResponse.status,
+        });
+        return;
+      }
+    }
 
     // Public surface.
     if (method === 'GET' && path === '/api/auth/providers') {
@@ -610,6 +653,7 @@ export async function startGatewayServer(
       for (const turn of activeTurns.values()) turn.interrupt();
       for (const client of rpcSocketServer.clients) client.terminate();
       for (const client of speechSocketServer.clients) client.terminate();
+      for (const client of realtimeSocketServer.clients) client.terminate();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
     port,
@@ -617,19 +661,24 @@ export async function startGatewayServer(
   };
 }
 
-async function readJsonBody(
-  request: IncomingMessage,
-): Promise<Record<string, unknown> | undefined> {
+async function readRawBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of request) {
     const buffer = chunk as Buffer;
     total += buffer.byteLength;
-    if (total > MAX_BODY_BYTES) return undefined;
+    if (total > MAX_BODY_BYTES) return Buffer.alloc(0);
     chunks.push(buffer);
   }
+  return Buffer.concat(chunks);
+}
+
+async function readJsonBody(
+  request: IncomingMessage,
+): Promise<Record<string, unknown> | undefined> {
+  const raw = await readRawBody(request);
   try {
-    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const parsed: unknown = JSON.parse(raw.toString('utf8'));
     return typeof parsed === 'object' && parsed !== null
       ? (parsed as Record<string, unknown>)
       : undefined;
