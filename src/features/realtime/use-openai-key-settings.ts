@@ -9,14 +9,13 @@
  * (native memory shared with the SwiftUI/Compose thread) and is read once at
  * save time; JS only tracks whether a draft exists.
  *
- * This is a hook rather than a section component because Android's
- * `FieldGroup` recognizes only literal `FieldGroup.Section` elements — the
- * screen owns the section JSX.
+ * This remains a hook rather than a section component so the platform-native
+ * Settings screens can share the key lifecycle without sharing presentation.
  */
-import { useNativeState, type TextInputRef } from '@expo/ui';
+import { useNativeState } from '@expo/ui';
 import { useMutation } from '@tanstack/react-query';
 import { fetch as expoFetch } from 'expo/fetch';
-import { useRef, useState } from 'react';
+import { useState, type RefObject } from 'react';
 
 import {
   openAiKeyStore,
@@ -30,9 +29,24 @@ import {
   useHydratedStore,
 } from '@/state/use-device-state';
 
-export function useOpenAiKeySettings() {
+/**
+ * The imperative field surface shared by Expo UI's SwiftUI `SecureField` and
+ * Compose `OutlinedTextField`. Keeping the ref platform-neutral lets the key
+ * lifecycle stay in this hook while each settings screen owns its native
+ * field implementation.
+ */
+export interface OpenAiKeyFieldRef {
+  blur(): Promise<void>;
+  clear(): Promise<void>;
+  focus(): Promise<void>;
+  setSelection(start: number, end: number): Promise<void>;
+  setText(value: string): Promise<void>;
+}
+
+export function useOpenAiKeySettings(
+  draftRef: RefObject<OpenAiKeyFieldRef | null>,
+) {
   const draft = useNativeState('');
-  const draftRef = useRef<TextInputRef>(null);
   const [hasDraft, setHasDraft] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -72,8 +86,11 @@ export function useOpenAiKeySettings() {
       // Blur before the programmatic clear: writing native state into a
       // focused iOS field with an active selection can trap (expo/expo
       // #47434).
-      draftRef.current?.blur();
-      draftRef.current?.clear();
+      const field = draftRef.current;
+      void (async () => {
+        await field?.blur();
+        await field?.clear();
+      })();
       setHasDraft(false);
       setError(undefined);
       void openAiKeyState.refresh();
@@ -100,7 +117,6 @@ export function useOpenAiKeySettings() {
     captions,
     clearError: () => setError(undefined),
     draft,
-    draftRef,
     error,
     hasDraft,
     hasKey: state.hasKey,

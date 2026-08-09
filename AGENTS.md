@@ -139,20 +139,27 @@ documentation before implementing UI.
   animation, so a disabled control never visually dims through classes or its own style — put
   the dim on a wrapper `View`. Icon typings can also declare more than the runtime entry exports
   (`RotateCwIcon`); a green typecheck does not prove an icon exists at runtime.
-- Settings-style screens (Settings, Connect) are native forms: `@expo/ui`
-  `FieldGroup`/`FieldGroup.Section` inside a `Host`, with `TextInput` + `useNativeState` for
-  fields (read `state.value` at submit; blur before programmatic writes — expo/expo #47434),
-  `Picker appearance="menu"` for single choices, and section footers for descriptions. A
-  `FieldGroup` owns its own scrolling and keyboard insets — never nest it in an RN ScrollView
-  or add keyboard-avoidance wrappers around it, and route theme colors into native props via
-  `useCSSVariable` (`useDestructiveColor`). Search and transcript surfaces stay PanelUI/RN. The
-  chat composer is the deliberate direct-Expo-UI exception: all visible composer content uses
+- Settings-style screens use native `@expo/ui` controls inside a `Host`. Settings deliberately has
+  separate `settings-screen.ios.tsx` and `settings-screen.android.tsx` trees backed by
+  `settings-screen.shared.ts`: iOS uses a SwiftUI `Form`/`Section` tree, while Android uses a
+  continuous Material 3 `LazyColumn` with Compose `ListItem`, `Switch`, `OutlinedTextField`, and
+  exposed-dropdown controls. Keep product state, validation, and mutations shared; do not put
+  PanelUI, React Native visual wrappers, universal `FieldGroup`, or `RNHostView` inside either
+  native settings tree. Each platform-native scroll container owns its keyboard insets. Native
+  text fields use `useNativeState` (read `state.value` at submit; blur before programmatic writes —
+  expo/expo #47434).
+- Connect remains a universal `FieldGroup`/`FieldGroup.Section` form with `TextInput`,
+  `Picker appearance="menu"`, and section footers. A `FieldGroup` owns its own scrolling and
+  keyboard insets — never nest it in an RN ScrollView or add keyboard-avoidance wrappers around
+  it, and route theme colors needed by universal native props through `useCSSVariable`
+  (`useDestructiveColor`). Search and transcript surfaces stay PanelUI/RN. The chat composer is the
+  other deliberate direct-Expo-UI surface: all visible composer content uses
   one platform-native `Host`, native observable text/selection state, universal native
   `Icon.select(...)` mappings, and universal `BottomSheet` presentations. The React Native
   `ChatComposerDock` is non-visual and is the only keyboard-movement owner; the native hosts ignore
   keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts, or a
   second keyboard-avoidance path inside the composer. Two Android constraints validated on the
-  emulator: `FieldGroup` recognizes
+  emulator and still applicable to Connect: `FieldGroup` recognizes
   only literal `<FieldGroup.Section>` elements (a custom component wrapping a section becomes
   one cramped row — keep section JSX in the screen, logic in hooks), and section rows already
   get a Material `ListItem` surface (a universal `ListItem` child draws a second box, and bare
