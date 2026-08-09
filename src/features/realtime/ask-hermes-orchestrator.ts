@@ -47,16 +47,23 @@ export interface RealtimeToolCall {
 
 /**
  * The ask executor marks the narrow interval in which its gateway turn is
- * registered and can safely accept `session.redirect`.
+ * registered and can safely accept `session.redirect`, and may report the
+ * turn's sealed interim narration as bounded progress.
  */
 export interface HermesExecutionLifecycle {
   activate(): void;
   deactivate(): void;
+  /** Sealed interim assistant narration from the running turn, in order. */
+  progress?(text: string): void;
 }
+
+/** Sealed interim segments forwarded per owner execution. */
+export const MAX_PROGRESS_NOTES_PER_EXECUTION = 16;
 
 interface ToolExecution {
   active: boolean;
   callIds: Set<string>;
+  progressNotes: number;
   /** Resolves when the owner's redirect lane opens or its turn settles. */
   ready: Promise<void>;
   resolveReady: () => void;
@@ -84,6 +91,7 @@ export class AskHermesOrchestrator {
   private readonly handledCallIds = new Set<string>();
   private readonly isAuthorized: () => boolean;
   private readonly onActiveExecutionChange?: (active: boolean) => void;
+  private readonly onProgress?: (text: string) => void;
   /** The execution whose gateway turn is currently running. */
   private ownerExecution?: ToolExecution;
   /** One serialized chain for every redirect dispatch (steers, corrections). */
@@ -104,12 +112,14 @@ export class AskHermesOrchestrator {
     ): Promise<WaveCorrectHermesToolResult>;
     isAuthorized(): boolean;
     onActiveExecutionChange?(active: boolean): void;
+    onProgress?(text: string): void;
   }) {
     this.deliver = options.deliver;
     this.executeAsk = options.execute;
     this.executeCorrection = options.executeCorrection;
     this.isAuthorized = options.isAuthorized;
     this.onActiveExecutionChange = options.onActiveExecutionChange;
+    this.onProgress = options.onProgress;
   }
 
   /** Stop executing; in-flight work is aborted and nothing more delivers. */
@@ -456,6 +466,22 @@ export class AskHermesOrchestrator {
           this.notifyActiveExecution(false);
         }
       },
+      progress: (text: string) => {
+        if (
+          this.aborted ||
+          this.ownerExecution !== execution ||
+          execution.progressNotes >= MAX_PROGRESS_NOTES_PER_EXECUTION ||
+          !this.onProgress
+        ) {
+          return;
+        }
+        execution.progressNotes += 1;
+        try {
+          this.onProgress(text);
+        } catch {
+          // Progress is best effort; the turn and its answer are primary.
+        }
+      },
     };
   }
 
@@ -488,6 +514,7 @@ function createExecution(callId: string): ToolExecution {
   return {
     active: false,
     callIds: new Set([callId]),
+    progressNotes: 0,
     ready,
     resolveReady,
   };

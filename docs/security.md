@@ -61,7 +61,11 @@ one deliberate exception to "the mobile process never holds an upstream key."
   not queued client-side but delivered into the running work through one bounded non-retrying
   `session.redirect` and acknowledged as `steered`/`queued` with fixed Wave-authored copy.
   `correct_hermes` exists only as an advertised tool while that turn has one registered live
-  redirect lane and still rechecks that trusted execution at dispatch.
+  redirect lane and still rechecks that trusted execution at dispatch. The turn's sealed interim
+  narration is the one additional data class that crosses to OpenAI mid-call: bounded inert
+  plain-text progress notes (Markdown control syntax stripped, code dropped, ≤1,000 chars,
+  per-execution and per-call budgets) under the same trust treatment as the final answer —
+  never deltas, tool payloads, or reasoning.
 - Revocation story: removing the key in Settings deletes it from secure storage and downgrades
   voice mode to the keyless server-side voice; the key itself should also be revoked at OpenAI
   when a device is lost — which is why Settings recommends a dedicated project-scoped key whose

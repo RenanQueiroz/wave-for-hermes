@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { OpenAiRealtimeSideband } from '../../src/services/realtime/openai-realtime-sideband.ts';
+import {
+  MAX_PROGRESS_NOTES_PER_CALL,
+  OpenAiRealtimeSideband,
+} from '../../src/services/realtime/openai-realtime-sideband.ts';
 import { createRealtimeToolSurfaceSessionUpdate } from '../../src/services/realtime/realtime-prompt.ts';
 
 type Listener = (event: { data?: unknown }) => void;
@@ -173,6 +176,84 @@ test('tool-surface updates can converge while a model response is in flight', ()
   assert.equal(sent.length, 1, 'tool results still wait for response safety');
   receive({ response: { id: 'speaking' }, type: 'response.done' });
   assert.equal(sent.length, 3);
+  sideband.close();
+});
+
+test('progress notes are gated, coalesced to the latest, and never trigger a response', () => {
+  const { receive, sent, socket } = fakeSocket();
+  const sideband = new OpenAiRealtimeSideband(socket);
+
+  // Open gate: the note goes out immediately as an inert system item.
+  sideband.injectProgressNote('Checked the **first** sensor.');
+  assert.equal(sent.length, 1);
+  const first = JSON.parse(sent[0]!) as {
+    item: {
+      content: { text: string; type: string }[];
+      role: string;
+      type: string;
+    };
+    type: string;
+  };
+  assert.equal(first.type, 'conversation.item.create');
+  assert.equal(first.item.type, 'message');
+  assert.equal(first.item.role, 'system');
+  assert.equal(
+    first.item.content[0]!.text,
+    '[Hermes progress] Checked the first sensor.',
+  );
+  assert.equal(
+    sent.some((entry) => entry.includes('response.create')),
+    false,
+    'progress never triggers a response on its own',
+  );
+
+  // Closed gate: notes hold and coalesce to the latest sealed segment.
+  receive({ response: { id: 'resp-1' }, type: 'response.created' });
+  sideband.injectProgressNote('stale update');
+  sideband.injectProgressNote('newest update');
+  assert.equal(sent.length, 1);
+  receive({ response: { id: 'resp-1' }, type: 'response.done' });
+  assert.equal(sent.length, 2);
+  assert.match(sent[1]!, /newest update/);
+  assert.doesNotMatch(sent[1]!, /stale update/);
+
+  // User speech holds progress exactly like results.
+  receive({ type: 'input_audio_buffer.speech_started' });
+  sideband.injectProgressNote('while speaking');
+  assert.equal(sent.length, 2);
+  receive({ type: 'input_audio_buffer.speech_stopped' });
+  assert.equal(sent.length, 3);
+  assert.match(sent[2]!, /while speaking/);
+  sideband.close();
+});
+
+test('progress notes hit a hard per-call budget with one suppression marker', () => {
+  const { sent, socket } = fakeSocket();
+  const sideband = new OpenAiRealtimeSideband(socket);
+  for (let index = 0; index < MAX_PROGRESS_NOTES_PER_CALL; index += 1) {
+    sideband.injectProgressNote(`update ${index}`);
+  }
+  assert.equal(sent.length, MAX_PROGRESS_NOTES_PER_CALL);
+  sideband.injectProgressNote('over budget');
+  sideband.injectProgressNote('also over budget');
+  assert.equal(sent.length, MAX_PROGRESS_NOTES_PER_CALL + 1);
+  assert.match(sent.at(-1)!, /suppressed/);
+  assert.doesNotMatch(sent.at(-1)!, /over budget/);
+  sideband.close();
+});
+
+test('a progress note flushes before a queued result and its response', () => {
+  const { receive, sent, socket } = fakeSocket();
+  const sideband = new OpenAiRealtimeSideband(socket);
+  receive({ response: { id: 'resp-1' }, type: 'response.created' });
+  sideband.sendFunctionResult('tool-1', OK_RESULT);
+  sideband.injectProgressNote('nearly done');
+  assert.equal(sent.length, 0);
+  receive({ response: { id: 'resp-1' }, type: 'response.done' });
+  assert.equal(sent.length, 3);
+  assert.match(sent[0]!, /nearly done/);
+  assert.match(sent[1]!, /function_call_output/);
+  assert.match(sent[2]!, /response\.create/);
   sideband.close();
 });
 

@@ -33,6 +33,33 @@ test('ask execution advertises active only after the gateway stream is registere
   assert.deepEqual(lifecycle, [true, false]);
 });
 
+test('sealed interim narration reaches lifecycle.progress; nothing else does', async () => {
+  const progress: string[] = [];
+  const client = {
+    async *streamTurn() {
+      yield { type: 'turn.started' };
+      yield { content: 'Checked the sensors.', type: 'assistant.interim' };
+      yield { delta: 'streaming ', type: 'assistant.delta' };
+      yield { delta: 'private', type: 'reasoning.delta' };
+      yield { status: 'started', toolName: 'search', type: 'tool.status' };
+      yield { content: 'Locked the door.', type: 'assistant.interim' };
+      yield { content: 'All done.', type: 'assistant.completed' };
+      yield { type: 'turn.completed' };
+    },
+  } as unknown as GatewayClient;
+  const execute = createGatewayAskHermesExecutor({
+    client,
+    sessionId: 'trusted-session',
+  });
+  const result = await execute('do work', new AbortController().signal, {
+    activate: () => undefined,
+    deactivate: () => undefined,
+    progress: (text) => progress.push(text),
+  });
+  assert.deepEqual(progress, ['Checked the sensors.', 'Locked the door.']);
+  assert.deepEqual(result, { answer: 'All done.', ok: true, truncated: false });
+});
+
 test('correction executor maps only bounded redirect outcomes without retry', async () => {
   let calls = 0;
   const client = {

@@ -12,6 +12,7 @@ import {
   type WaveRealtimeToolResult,
 } from '@wave/contracts';
 
+import { sanitizeRealtimeProgressNote } from './realtime-progress-note.ts';
 import { WAVE_MAX_REALTIME_EVENT_BYTES } from './realtime-transport.ts';
 import {
   RealtimeToolSurfaceController,
@@ -35,6 +36,11 @@ export class RealtimeSidebandError extends Error {
 }
 
 const MAX_STRING_FIELD = 100_000;
+/** Hard per-call budget for injected progress notes. */
+export const MAX_PROGRESS_NOTES_PER_CALL = 64;
+const PROGRESS_NOTE_PREFIX = '[Hermes progress] ';
+const PROGRESS_SUPPRESSED_NOTE =
+  '[Hermes progress] Further progress updates are suppressed for this call.';
 
 export class OpenAiRealtimeSideband {
   private closed = false;
@@ -46,7 +52,11 @@ export class OpenAiRealtimeSideband {
     (call: SidebandFunctionCall) => void
   >();
   private latestUserItemId?: string;
+  /** Latest un-flushed progress note; newer sealed segments replace older. */
+  private pendingProgressNote?: string;
   private readonly pendingResults: { callId: string; output: string }[] = [];
+  private progressNotesSent = 0;
+  private progressSuppressed = false;
   private responseInProgress = false;
   private readonly responseUserItems = new Map<string, string>();
   private readonly socket: WebSocket;
@@ -124,6 +134,29 @@ export class OpenAiRealtimeSideband {
     return this.flushResults();
   }
 
+  /**
+   * Inject one bounded progress note from the running Hermes work as an
+   * inert system message item — no `response.create`, so the model only
+   * references it the next time it speaks. Notes coalesce to the latest
+   * un-flushed one, flush under the same response-safe gate as results, and
+   * a hard per-call budget ends with one suppression marker.
+   */
+  injectProgressNote(text: string) {
+    if (this.closed) return false;
+    if (this.progressNotesSent >= MAX_PROGRESS_NOTES_PER_CALL) {
+      if (this.progressSuppressed) return false;
+      this.progressSuppressed = true;
+      this.pendingProgressNote = PROGRESS_SUPPRESSED_NOTE;
+      this.flushProgress();
+      return true;
+    }
+    const sanitized = sanitizeRealtimeProgressNote(text);
+    if (!sanitized) return false;
+    this.pendingProgressNote = `${PROGRESS_NOTE_PREFIX}${sanitized}`;
+    this.flushProgress();
+    return true;
+  }
+
   async waitUntilOpen(timeoutMs: number, signal?: AbortSignal) {
     if (this.socket.readyState === 1) return;
     if (this.closed || this.socket.readyState === 3) {
@@ -179,10 +212,40 @@ export class OpenAiRealtimeSideband {
     for (const listener of this.errorListeners) listener(error);
   }
 
+  private flushProgress() {
+    if (
+      this.closed ||
+      this.responseInProgress ||
+      this.userSpeaking ||
+      this.pendingProgressNote === undefined
+    ) {
+      return;
+    }
+    const note = this.pendingProgressNote;
+    this.pendingProgressNote = undefined;
+    try {
+      this.socket.send(
+        JSON.stringify({
+          item: {
+            content: [{ text: note, type: 'input_text' }],
+            role: 'system',
+            type: 'message',
+          },
+          type: 'conversation.item.create',
+        }),
+      );
+      this.progressNotesSent += 1;
+    } catch {
+      // Progress is best effort; result delivery owns the error path.
+    }
+  }
+
   private flushResults() {
     if (this.closed || this.responseInProgress || this.userSpeaking) {
       return !this.closed;
     }
+    // Context lands before any result-triggered response generation.
+    this.flushProgress();
     if (this.pendingResults.length === 0) return true;
     try {
       for (const result of this.pendingResults) {

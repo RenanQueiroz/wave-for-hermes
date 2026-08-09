@@ -18,6 +18,7 @@ import {
   type HermesExecutionLifecycle,
   MAX_OUTSTANDING_CORRECTIONS,
   MAX_OUTSTANDING_TOOL_CALLS,
+  MAX_PROGRESS_NOTES_PER_EXECUTION,
   MAX_TOOL_CALLS_PER_REALTIME_CALL,
 } from '../../src/features/realtime/ask-hermes-orchestrator.ts';
 
@@ -486,6 +487,45 @@ test('S7: owner turns never overlap — rapid asks steer instead', async () => {
   await settled();
   await settled();
   assert.deepEqual(steered, ['second', 'third']);
+  finishAsk();
+  await settled();
+});
+
+test('P1: owner progress forwards bounded notes; nothing forwards after abort', async () => {
+  const notes: string[] = [];
+  let capturedLifecycle!: HermesExecutionLifecycle;
+  let finishAsk!: () => void;
+  const delivered: { callId: string; result: WaveRealtimeToolResult }[] = [];
+  const orchestrator = new AskHermesOrchestrator({
+    deliver: (callId, result) => delivered.push({ callId, result }),
+    execute: (_instruction, _signal, lifecycle) => {
+      capturedLifecycle = lifecycle;
+      lifecycle.activate();
+      return new Promise((resolve) => {
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      });
+    },
+    isAuthorized: () => true,
+    onProgress: (text) => notes.push(text),
+  });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  for (
+    let index = 0;
+    index < MAX_PROGRESS_NOTES_PER_EXECUTION + 3;
+    index += 1
+  ) {
+    capturedLifecycle.progress?.(`note ${index}`);
+  }
+  assert.equal(notes.length, MAX_PROGRESS_NOTES_PER_EXECUTION);
+  orchestrator.abort();
+  capturedLifecycle.progress?.('after abort');
+  assert.equal(notes.length, MAX_PROGRESS_NOTES_PER_EXECUTION);
   finishAsk();
   await settled();
 });

@@ -41,7 +41,11 @@ export function createGatewayAskHermesExecutor({
           active = true;
           lifecycle.activate();
         }
-        if (event.type === 'assistant.completed') {
+        if (event.type === 'assistant.interim') {
+          // Sealed mid-turn narration — the model's live progress channel.
+          // Deltas, tool records, reasoning, and prompts never cross here.
+          lifecycle.progress?.(event.content);
+        } else if (event.type === 'assistant.completed') {
           if (answer.length >= WAVE_MAX_ASK_HERMES_ANSWER_LENGTH) {
             truncated = true;
             continue;

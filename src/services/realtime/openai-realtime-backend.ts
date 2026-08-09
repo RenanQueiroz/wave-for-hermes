@@ -221,6 +221,9 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
       onActiveExecutionChange: (active) => {
         sideband.setHermesExecutionActive(active);
       },
+      onProgress: (text) => {
+        sideband.injectProgressNote(text);
+      },
     });
     // The session binding is trusted call state: tool calls run against the
     // conversation this call was started from, never a model-chosen session.

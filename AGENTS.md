@@ -285,6 +285,12 @@ documentation before implementing UI.
   uses `ask_hermes`, speech-only interruption uses neither, and unclear add-versus-replace intent
   requires one concise clarification. Answers to explicit Hermes approval/clarify prompts remain on
   the existing prompt-response path, not either Realtime tool.
+- The owner turn's sealed interim narration (`assistant.interim`) may cross to OpenAI as bounded
+  inert plain-text progress notes: sanitized of Markdown control syntax with code dropped whole,
+  one line of at most 1,000 characters, coalesced to the latest un-flushed note, bounded per
+  execution and per call (ending in one suppression marker), flushed only under the same
+  response-safe gate as results, and never triggering a model response by themselves. Deltas,
+  tool records, reasoning, and prompt requests never cross this channel.
 - Coalesce an exact normalized `ask_hermes` instruction within one initiating Realtime user turn.
   Distinct tool-call IDs for that instruction must share one execution and each receive the same
   structured result — the owner's answer or the steer's acknowledgement; model retries must not
