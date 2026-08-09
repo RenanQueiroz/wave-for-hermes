@@ -3,6 +3,7 @@ import { Typography } from 'panelui-native';
 import { ScrollView, View } from 'react-native';
 
 import { PcmPlaybackProofCard } from '@/dev/pcm-playback-proof-card';
+import { RealtimeHarnessCard } from '@/dev/realtime-harness-card';
 import { WebRtcProofCard } from '@/dev/webrtc-proof-card';
 
 export function DevelopmentScreen() {
@@ -23,6 +24,7 @@ export function DevelopmentScreen() {
       </View>
       <PcmPlaybackProofCard />
       <WebRtcProofCard />
+      <RealtimeHarnessCard />
     </ScrollView>
   );
 }

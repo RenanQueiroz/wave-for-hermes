@@ -11,6 +11,12 @@ const FORBIDDEN_BRIDGE_STRINGS = [
   // Nothing in the app reads env files; this name appearing in a bundle
   // means a key took a wrong turn at build time.
   'OPENAI_API_KEY',
+  // Dev-only Realtime harness mode (src/dev/realtime-harness*): its
+  // preference key, UI copy, and dummy-bearer marker must all be eliminated
+  // from release bundles with the rest of the __DEV__-gated implementation.
+  'wave.realtime-harness-url.v1',
+  'Realtime harness',
+  'sk-wave-harness',
 ] as const;
 
 /**

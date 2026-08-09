@@ -64,6 +64,13 @@ one deliberate exception to "the mobile process never holds an upstream key."
   voice mode to the keyless server-side voice; the key itself should also be revoked at OpenAI
   when a device is lost — which is why Settings recommends a dedicated project-scoped key whose
   revocation cannot affect anything else the user runs.
+- Development builds have an opt-in Realtime harness mode (`src/dev/realtime-harness*`,
+  configured in the development tools screen) that points live voice at the local scripted fake
+  in `tools/voice-harness` for mic-free automated testing. The seam is `__DEV__`-gated out of
+  release bundles — the production scanner also refuses its preference key, UI copy, and
+  dummy-bearer marker — and secret safety is structural even in dev: the override fetch replaces
+  the Authorization header with a fixed dummy value and the override socket sends no headers, so
+  the saved key never travels toward a harness under any configuration.
 
 ## Threats and controls
 

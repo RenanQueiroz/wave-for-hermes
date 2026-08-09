@@ -21,6 +21,10 @@ import {
 import { AppState, ScrollView, View } from 'react-native';
 
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
+import {
+  resolveRealtimeHarnessOverrides,
+  type RealtimeHarnessOverrides,
+} from '@/dev/realtime-harness';
 import { createGatewayAskHermesExecutor } from '@/features/realtime/gateway-ask-hermes-executor';
 import { createGatewayCorrectHermesExecutor } from '@/features/realtime/gateway-correct-hermes-executor';
 import {
@@ -40,6 +44,7 @@ import type { GatewayClient } from '@/services/gateway/gateway-client';
 import { OpenAiRealtimeBackend } from '@/services/realtime/openai-realtime-backend';
 import { openAiKeyStore } from '@/services/realtime/openai-key-store';
 import type { WaveRealtimeModelId } from '@/services/realtime/realtime-model-preference-record';
+import type { RealtimeTransport } from '@/services/realtime/realtime-transport';
 import { ReactNativeRealtimeTransport } from '@/services/realtime/react-native-realtime-transport';
 import type { WaveTimelineResponse } from '@wave/contracts';
 
@@ -60,6 +65,7 @@ export function KeyedRealtimeVoiceScreen({
     | {
         apiKey: string;
         captions: boolean;
+        harness: RealtimeHarnessOverrides | undefined;
         model: WaveRealtimeModelId;
       }
     | null
@@ -72,10 +78,14 @@ export function KeyedRealtimeVoiceScreen({
       openAiKeyStore.load(),
       realtimeModelPreference.read(),
       realtimeCaptionPreference.read(),
+      // Dev-only harness mode; resolves undefined in production builds.
+      resolveRealtimeHarnessOverrides().catch(() => undefined),
     ])
-      .then(([apiKey, model, captions]) => {
+      .then(([apiKey, model, captions, harness]) => {
         if (!cancelled) {
-          setConfiguration(apiKey ? { apiKey, captions, model } : null);
+          setConfiguration(
+            apiKey ? { apiKey, captions, harness, model } : null,
+          );
         }
       })
       .catch(() => {
@@ -100,6 +110,7 @@ export function KeyedRealtimeVoiceScreen({
       baseUrl={connected.baseUrl}
       client={client}
       connectionId={connected.connectionId}
+      harness={configuration.harness}
       model={configuration.model}
       sessionId={sessionId}
       transcribeInput={configuration.captions}
@@ -112,6 +123,7 @@ function KeyedRealtimeVoiceScreenReady({
   baseUrl,
   client,
   connectionId,
+  harness,
   model,
   sessionId,
   transcribeInput,
@@ -120,6 +132,7 @@ function KeyedRealtimeVoiceScreenReady({
   baseUrl: string;
   client: GatewayClient;
   connectionId: string;
+  harness: RealtimeHarnessOverrides | undefined;
   model: WaveRealtimeModelId;
   sessionId: string;
   transcribeInput: boolean;
@@ -138,8 +151,17 @@ function KeyedRealtimeVoiceScreenReady({
         }),
         model,
         transcribeInput,
+        // Dev-only harness mode: requests move to the local fake (with a
+        // dummy bearer, never the saved key) and WebRTC is replaced by the
+        // scripted transport below. Absent in production builds.
+        ...(harness
+          ? {
+              fetchImpl: harness.fetchImpl,
+              socketFactory: harness.socketFactory,
+            }
+          : {}),
       }),
-    [apiKey, client, model, sessionId, transcribeInput],
+    [apiKey, client, harness, model, sessionId, transcribeInput],
   );
   return (
     <ConnectedVoiceScreen
@@ -147,6 +169,7 @@ function KeyedRealtimeVoiceScreenReady({
       backend={backend}
       baseUrl={baseUrl}
       connectionId={connectionId}
+      harnessActive={Boolean(harness)}
       loadTimeline={(before, signal) =>
         client.getSessionTimeline(
           sessionId,
@@ -155,6 +178,7 @@ function KeyedRealtimeVoiceScreenReady({
         )
       }
       sessionId={sessionId}
+      transport={harness?.transport}
     />
   );
 }
@@ -164,18 +188,22 @@ function ConnectedVoiceScreen({
   baseUrl,
   connectionId,
   ephemeralTranscripts = false,
+  harnessActive = false,
   loadTimeline,
   sessionId,
+  transport,
 }: {
   backend: RealtimeBackend;
   baseUrl: string;
   connectionId: string;
   ephemeralTranscripts?: boolean;
+  harnessActive?: boolean;
   loadTimeline(
     before: string | undefined,
     signal?: AbortSignal,
   ): Promise<WaveTimelineResponse>;
   sessionId: string;
+  transport?: RealtimeTransport;
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -185,9 +213,9 @@ function ConnectedVoiceScreen({
     () =>
       new WaveRealtimeController({
         backend,
-        transport: new ReactNativeRealtimeTransport(),
+        transport: transport ?? new ReactNativeRealtimeTransport(),
       }),
-    [backend],
+    [backend, transport],
   );
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const stopAndRefresh = useCallback(() => {
@@ -249,13 +277,14 @@ function ConnectedVoiceScreen({
         assistantAudioLevel: state.assistantAudioLevel,
         cleanupPending: state.cleanupPending,
         errorKind: state.error?.kind,
+        harnessActive,
         microphoneEnabled: state.microphoneEnabled,
         phase: state.phase,
         remoteAudioTracks: state.remoteAudioTracks,
         userAudioLevel: state.userAudioLevel,
       }),
     });
-  }, [state]);
+  }, [harnessActive, state]);
 
   const end = useCallback(async () => {
     await stopAndRefresh();
