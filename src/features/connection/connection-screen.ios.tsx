@@ -16,9 +16,13 @@ import {
   autocorrectionDisabled,
   buttonStyle,
   disabled,
+  frame,
   font,
   foregroundStyle,
   keyboardType,
+  listRowBackground,
+  listRowInsets,
+  listRowSeparator,
   onSubmit,
   submitLabel,
   textContentType,
@@ -66,25 +70,31 @@ export function ConnectionScreen() {
   return (
     <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
       <Form>
-        <Section>
-          <VStack alignment="leading" spacing={6}>
-            <Text
-              modifiers={[
-                font({ textStyle: 'title2', weight: 'bold' }),
-                accessibilityIdentifier('connection-title'),
-              ]}>
-              {CONNECTION_COPY.title}
-            </Text>
-            <Text
-              modifiers={[
-                SECONDARY_TEXT,
-                font({ textStyle: 'body' }),
-                accessibilityIdentifier('connection-subtitle'),
-              ]}>
-              {CONNECTION_COPY.intro}
-            </Text>
-          </VStack>
-        </Section>
+        <VStack
+          alignment="leading"
+          spacing={6}
+          modifiers={[
+            frame({ maxWidth: Infinity, alignment: 'leading' }),
+            listRowBackground('clear'),
+            listRowSeparator('hidden'),
+            listRowInsets({ top: 24, bottom: 12, leading: 20, trailing: 20 }),
+          ]}>
+          <Text
+            modifiers={[
+              font({ textStyle: 'title2', weight: 'bold' }),
+              accessibilityIdentifier('connection-title'),
+            ]}>
+            {CONNECTION_COPY.title}
+          </Text>
+          <Text
+            modifiers={[
+              SECONDARY_TEXT,
+              font({ textStyle: 'body' }),
+              accessibilityIdentifier('connection-subtitle'),
+            ]}>
+            {CONNECTION_COPY.intro}
+          </Text>
+        </VStack>
 
         {connection.savedConnection ? (
           <Section
