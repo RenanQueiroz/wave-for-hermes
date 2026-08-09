@@ -5,3 +5,5 @@ auth = "oauth"
 [mcp_servers.wave-mobile-agent]
 command = "npm"
 args = ["--silent", "--prefix", "tools/mobile-agent", "run", "mcp"]
+required = true
+startup_timeout_sec = 30

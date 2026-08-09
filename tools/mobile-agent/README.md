@@ -78,6 +78,10 @@ automation itself requires macOS/Xcode. On Android, the server discovers `adb` f
 exports its SDK root before loading Appium, so a standard Android Studio installation does
 not require `ANDROID_HOME` to be exported into the editor process.
 
+Codex treats `wave-mobile-agent` as required and allows 30 seconds for startup because the
+MCP entrypoint builds its TypeScript before serving. This makes a fresh thread wait for the
+tool catalog instead of silently starting before the local server is ready.
+
 ## Typical MCP workflow
 
 1. Call `mobile_doctor`.
