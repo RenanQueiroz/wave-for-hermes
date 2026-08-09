@@ -1,11 +1,18 @@
 /**
- * Trusted Realtime tool orchestration.
+ * Trusted Realtime tool orchestration, steer-by-default.
  *
- * ask_hermes work remains bounded, coalesced, and serialized. A separate
- * correct_hermes lane may redirect only the one ask execution that has
- * explicitly entered its live gateway phase. Queued work is never a valid
- * correction target, and every correction re-checks the same trusted
- * execution immediately before and after its one non-retrying redirect.
+ * At most one ask execution — the turn owner — runs a gateway turn at a time.
+ * A further ask while that owner runs is not queued client-side: it is
+ * delivered into the running work immediately through one non-retrying
+ * `session.redirect`, acknowledged as `steered` or `queued`, and the combined
+ * outcome arrives on the owner's still-pending call. Hermes itself decides
+ * whether to fold the instruction in or run it next.
+ *
+ * A separate correct_hermes lane may redirect only the one owner execution
+ * that has explicitly entered its live gateway phase; steered asks never
+ * become correction targets. All redirect dispatches — steers and
+ * corrections — share one serialized chain, and every dispatch re-checks the
+ * same trusted execution immediately before and after its one attempt.
  */
 import {
   WaveAskHermesArgumentsSchema,
@@ -21,8 +28,13 @@ import {
 export const ASK_HERMES_TOOL_NAME = 'ask_hermes';
 export const CORRECT_HERMES_TOOL_NAME = 'correct_hermes';
 export const MAX_TOOL_CALLS_PER_REALTIME_CALL = 128;
+/** Bound on in-flight steer deliveries, not a queue of pending work. */
 export const MAX_OUTSTANDING_TOOL_CALLS = 8;
 export const MAX_OUTSTANDING_CORRECTIONS = 8;
+/** One steer re-evaluates at most this many times across owner changes. */
+const MAX_STEER_ATTEMPTS = 3;
+/** One steer dispatches `session.redirect` at most this many times. */
+const MAX_STEER_DISPATCHES = 2;
 
 export interface RealtimeToolCall {
   /** Raw JSON argument string from the model. */
@@ -45,6 +57,9 @@ export interface HermesExecutionLifecycle {
 interface ToolExecution {
   active: boolean;
   callIds: Set<string>;
+  /** Resolves when the owner's redirect lane opens or its turn settles. */
+  ready: Promise<void>;
+  resolveReady: () => void;
   result?: WaveAskHermesToolResult;
 }
 
@@ -52,7 +67,6 @@ export class AskHermesOrchestrator {
   private aborted = false;
   private activeExecution?: ToolExecution;
   private correctionOutstanding = 0;
-  private correctionQueue: Promise<void> = Promise.resolve();
   private readonly deliver: (
     callId: string,
     result: WaveRealtimeToolResult,
@@ -70,10 +84,12 @@ export class AskHermesOrchestrator {
   private readonly handledCallIds = new Set<string>();
   private readonly isAuthorized: () => boolean;
   private readonly onActiveExecutionChange?: (active: boolean) => void;
-  private outstanding = 0;
-  private queue: Promise<void> = Promise.resolve();
-  private runningExecution?: ToolExecution;
+  /** The execution whose gateway turn is currently running. */
+  private ownerExecution?: ToolExecution;
+  /** One serialized chain for every redirect dispatch (steers, corrections). */
+  private redirectQueue: Promise<void> = Promise.resolve();
   private readonly signalController = new AbortController();
+  private steerOutstanding = 0;
 
   constructor(options: {
     deliver(callId: string, result: WaveRealtimeToolResult): void;
@@ -169,6 +185,10 @@ export class AskHermesOrchestrator {
       return;
     }
 
+    // A model retry of the same instruction within one user turn reattaches
+    // to the existing execution instead of dispatching duplicate work — for
+    // steered instructions that means the same acknowledgement, never a
+    // second redirect.
     const executionKey = JSON.stringify([
       toolCall.userItemId ?? `tool:${toolCall.callId}`,
       parsed.data.instruction,
@@ -181,26 +201,141 @@ export class AskHermesOrchestrator {
       }
       return;
     }
-    if (this.outstanding >= MAX_OUTSTANDING_TOOL_CALLS) {
-      this.deliverResult(
-        toolCall.callId,
+
+    const execution = createExecution(toolCall.callId);
+    this.executionsByKey.set(executionKey, execution);
+
+    if (!this.ownerExecution) {
+      this.startOwnerTurn(execution, parsed.data.instruction);
+      return;
+    }
+
+    // Busy: no client-side queue. Deliver the instruction into the running
+    // Hermes work as a steer, bounded and serialized with corrections.
+    if (!this.executeCorrection) {
+      this.settleAsk(
+        execution,
         toolError(
           'busy',
-          'This live call has too many Hermes requests waiting.',
+          'Hermes is already working; try again when it finishes.',
           true,
         ),
       );
       return;
     }
+    if (this.steerOutstanding >= MAX_OUTSTANDING_TOOL_CALLS) {
+      this.settleAsk(
+        execution,
+        toolError(
+          'busy',
+          'This live call has too many Hermes requests in flight.',
+          true,
+        ),
+      );
+      return;
+    }
+    this.steerOutstanding += 1;
+    this.redirectQueue = this.redirectQueue.then(async () => {
+      try {
+        await this.runSteer(execution, parsed.data.instruction);
+      } finally {
+        this.steerOutstanding -= 1;
+      }
+    });
+  }
 
-    const execution: ToolExecution = {
-      active: false,
-      callIds: new Set([toolCall.callId]),
-    };
-    this.executionsByKey.set(executionKey, execution);
-    this.outstanding += 1;
-    this.queue = this.queue.then(async () => {
-      this.runningExecution = execution;
+  /**
+   * Deliver one busy ask into the running work. Re-evaluates across owner
+   * changes (bounded), waits for the owner's redirect lane to open, and
+   * falls back to becoming the new owner when the turn completed first.
+   */
+  private async runSteer(
+    execution: ToolExecution,
+    instruction: string,
+    attempt = 0,
+    dispatches = 0,
+  ): Promise<void> {
+    if (this.aborted) {
+      this.settleAsk(
+        execution,
+        toolError('cancelled', 'The live voice call ended.', false),
+      );
+      return;
+    }
+    if (attempt >= MAX_STEER_ATTEMPTS || dispatches >= MAX_STEER_DISPATCHES) {
+      this.settleAsk(
+        execution,
+        toolError(
+          'busy',
+          'Hermes could not accept that request right now; ask again.',
+          true,
+        ),
+      );
+      return;
+    }
+    const owner = this.ownerExecution;
+    if (!owner || owner === execution) {
+      // The running turn settled before this steer could land; this
+      // instruction becomes the new turn owner exactly once.
+      this.startOwnerTurn(execution, instruction);
+      return;
+    }
+    await owner.ready;
+    if (this.aborted) {
+      this.settleAsk(
+        execution,
+        toolError('cancelled', 'The live voice call ended.', false),
+      );
+      return;
+    }
+    if (this.activeExecution !== owner || !owner.active) {
+      // The owner finished (or never opened its lane); re-evaluate.
+      await this.runSteer(execution, instruction, attempt + 1, dispatches);
+      return;
+    }
+
+    let outcome: WaveCorrectHermesToolResult;
+    try {
+      outcome = WaveCorrectHermesToolResultSchema.parse(
+        await this.executeCorrection!(
+          instruction,
+          this.signalController.signal,
+        ),
+      );
+    } catch {
+      this.settleAsk(
+        execution,
+        toolError(
+          'upstream_unavailable',
+          'Hermes could not accept that request.',
+          true,
+        ),
+      );
+      return;
+    }
+    if (outcome.ok) {
+      this.settleAsk(
+        execution,
+        outcome.status === 'redirected' ? steeredAck() : queuedAck(),
+      );
+      return;
+    }
+    if (outcome.status === 'nothing_active') {
+      // Completion race: the turn ended as the redirect landed. Re-evaluate —
+      // either a new owner exists to steer, or this instruction runs itself.
+      await this.runSteer(execution, instruction, attempt + 1, dispatches + 1);
+      return;
+    }
+    this.settleAsk(
+      execution,
+      toolError('busy', 'Hermes rejected that request.', false),
+    );
+  }
+
+  /** Run one gateway turn as the owner; its call carries the final answer. */
+  private startOwnerTurn(execution: ToolExecution, instruction: string) {
+    this.ownerExecution = execution;
+    void (async () => {
       const lifecycle = this.createLifecycle(execution);
       let result: WaveAskHermesToolResult;
       try {
@@ -209,7 +344,7 @@ export class AskHermesOrchestrator {
         } else {
           result = WaveAskHermesToolResultSchema.parse(
             await this.executeAsk(
-              parsed.data.instruction,
+              instruction,
               this.signalController.signal,
               lifecycle,
             ),
@@ -223,16 +358,13 @@ export class AskHermesOrchestrator {
         );
       } finally {
         lifecycle.deactivate();
-        if (this.runningExecution === execution) {
-          this.runningExecution = undefined;
+        execution.resolveReady();
+        if (this.ownerExecution === execution) {
+          this.ownerExecution = undefined;
         }
-        this.outstanding -= 1;
       }
-      execution.result = result;
-      for (const callId of execution.callIds) {
-        this.deliverResult(callId, result);
-      }
-    });
+      this.settleAsk(execution, result);
+    })();
   }
 
   private handleCorrection(toolCall: RealtimeToolCall) {
@@ -269,7 +401,7 @@ export class AskHermesOrchestrator {
     }
 
     this.correctionOutstanding += 1;
-    this.correctionQueue = this.correctionQueue.then(async () => {
+    this.redirectQueue = this.redirectQueue.then(async () => {
       let result: WaveCorrectHermesToolResult;
       try {
         if (
@@ -307,12 +439,13 @@ export class AskHermesOrchestrator {
         if (
           this.aborted ||
           execution.active ||
-          this.runningExecution !== execution
+          this.ownerExecution !== execution
         ) {
           return;
         }
         execution.active = true;
         this.activeExecution = execution;
+        execution.resolveReady();
         this.notifyActiveExecution(true);
       },
       deactivate: () => {
@@ -334,10 +467,30 @@ export class AskHermesOrchestrator {
     }
   }
 
+  private settleAsk(execution: ToolExecution, result: WaveAskHermesToolResult) {
+    execution.result = result;
+    for (const callId of execution.callIds) {
+      this.deliverResult(callId, result);
+    }
+  }
+
   private deliverResult(callId: string, result: WaveRealtimeToolResult) {
     if (this.aborted) return;
     this.deliver(callId, result);
   }
+}
+
+function createExecution(callId: string): ToolExecution {
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+  return {
+    active: false,
+    callIds: new Set([callId]),
+    ready,
+    resolveReady,
+  };
 }
 
 function parseArguments(serialized: string): unknown {
@@ -346,6 +499,22 @@ function parseArguments(serialized: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function steeredAck(): WaveAskHermesToolResult {
+  return WaveAskHermesToolResultSchema.parse({
+    note: 'Delivered into the active Hermes work. The combined result arrives with the original request; do not resend this instruction.',
+    ok: true,
+    status: 'steered',
+  });
+}
+
+function queuedAck(): WaveAskHermesToolResult {
+  return WaveAskHermesToolResultSchema.parse({
+    note: 'Hermes queued this to run right after the current work; it runs automatically. Do not resend this instruction.',
+    ok: true,
+    status: 'queued',
+  });
 }
 
 function toolError(

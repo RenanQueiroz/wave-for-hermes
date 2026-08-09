@@ -1,7 +1,8 @@
 /**
- * Ported ask_hermes rules plus the Stage 5b active-execution correction
+ * Steer-by-default ask_hermes rules plus the active-execution correction
  * boundary: global cap, unknown tools, strict arguments, trusted binding,
- * ask coalescing/concurrency/serialization, and correction gating/races.
+ * coalescing, the turn-owner model with steer delivery and its races, and
+ * correction gating.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -56,18 +57,25 @@ function errorCode(result: WaveRealtimeToolResult) {
   return !result.ok && 'error' in result ? result.error.code : undefined;
 }
 
+function askStatus(result: WaveRealtimeToolResult) {
+  return result.ok && 'status' in result ? result.status : undefined;
+}
+
 function correctionStatus(result: WaveRealtimeToolResult) {
   return 'status' in result ? result.status : undefined;
 }
 
 async function settled() {
-  // Two microtask hops let the serialized queue drain.
+  // A few microtask hops let the serialized redirect chain drain.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 test('R1: refuses further tool calls past the per-call cap', async () => {
-  const { delivered, orchestrator } = harness();
+  const { delivered, orchestrator } = harness({
+    executeCorrection: async () => ({ ok: true, status: 'redirected' }),
+  });
   for (let i = 0; i < MAX_TOOL_CALLS_PER_REALTIME_CALL; i += 1) {
     orchestrator.handleToolCall({
       arguments: args(`task ${i}`),
@@ -169,24 +177,150 @@ test('R5: identical instructions in one user turn share one execution', async ()
   assert.deepEqual(first, second);
 });
 
-test('R6: bounds concurrent executions and reports busy beyond them', async () => {
+test('S1: a busy ask steers into the running work and the owner keeps the answer', async () => {
+  let finishAsk!: () => void;
+  const steered: string[] = [];
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'combined outcome', ok: true, truncated: false });
+      }),
+    executeCorrection: async (instruction) => {
+      steered.push(instruction);
+      return { ok: true, status: 'redirected' };
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('also do this'),
+    callId: 'steer',
+    name: 'ask_hermes',
+  });
+  await settled();
+  assert.deepEqual(steered, ['also do this']);
+  const ack = delivered.find((entry) => entry.callId === 'steer')!.result;
+  assert.equal(askStatus(ack), 'steered');
+  assert.equal(
+    delivered.some((entry) => entry.callId === 'owner'),
+    false,
+    'the owner call stays pending until the turn completes',
+  );
+  finishAsk();
+  await settled();
+  const answer = delivered.find((entry) => entry.callId === 'owner')!.result;
+  assert.equal(
+    answer.ok && 'answer' in answer ? answer.answer : '',
+    'combined outcome',
+  );
+});
+
+test('S2: a build-window redirect acknowledges as queued', async () => {
+  let finishAsk!: () => void;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: async () => ({ ok: true, status: 'queued' }),
+  });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('next thing'),
+    callId: 'steer',
+    name: 'ask_hermes',
+  });
+  await settled();
+  assert.equal(
+    askStatus(delivered.find((entry) => entry.callId === 'steer')!.result),
+    'queued',
+  );
+  finishAsk();
+  await settled();
+});
+
+test('S3: a retried steered instruction reuses the acknowledgement, never a second redirect', async () => {
+  let finishAsk!: () => void;
+  let redirects = 0;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: async () => {
+      redirects += 1;
+      return { ok: true, status: 'redirected' };
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('extra work'),
+    callId: 'steer-1',
+    name: 'ask_hermes',
+    userItemId: 'item-9',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('extra work'),
+    callId: 'steer-2',
+    name: 'ask_hermes',
+    userItemId: 'item-9',
+  });
+  await settled();
+  assert.equal(redirects, 1);
+  const first = delivered.find((entry) => entry.callId === 'steer-1')!.result;
+  const second = delivered.find((entry) => entry.callId === 'steer-2')!.result;
+  assert.deepEqual(first, second);
+  assert.equal(askStatus(first), 'steered');
+  finishAsk();
+  await settled();
+});
+
+test('S4: in-flight steer deliveries are bounded and overflow is retryable busy', async () => {
+  let finishAsk!: () => void;
   const releases: (() => void)[] = [];
   const { delivered, orchestrator } = harness({
-    execute: (instruction) =>
+    execute: (_instruction, _signal, lifecycle) =>
       new Promise((resolve) => {
-        releases.push(() =>
-          resolve({
-            answer: `did: ${instruction}`,
-            ok: true,
-            truncated: false,
-          }),
-        );
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    executeCorrection: () =>
+      new Promise((resolve) => {
+        releases.push(() => resolve({ ok: true, status: 'redirected' }));
       }),
   });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
   for (let i = 0; i < MAX_OUTSTANDING_TOOL_CALLS; i += 1) {
     orchestrator.handleToolCall({
-      arguments: args(`slow ${i}`),
-      callId: `slow-${i}`,
+      arguments: args(`steer ${i}`),
+      callId: `steer-${i}`,
       name: 'ask_hermes',
     });
   }
@@ -202,26 +336,136 @@ test('R6: bounds concurrent executions and reports busy beyond them', async () =
     overflow.result.ok ? undefined : overflow.result.error.retryable,
     true,
   );
-  // Executions are serialized (R7), so each release lets the next one start.
+  // Steer dispatches are serialized; each release lets the next one land.
   for (let i = 0; i < MAX_OUTSTANDING_TOOL_CALLS; i += 1) {
     await settled();
     releases.shift()?.();
   }
   await settled();
-  assert.equal(delivered.length, MAX_OUTSTANDING_TOOL_CALLS + 1);
+  assert.equal(
+    delivered.filter((entry) => askStatus(entry.result) === 'steered').length,
+    MAX_OUTSTANDING_TOOL_CALLS,
+  );
+  finishAsk();
+  await settled();
 });
 
-test('R7: executions run one at a time in arrival order', async () => {
-  const order: string[] = [];
-  let running = 0;
-  const { orchestrator } = harness({
-    execute: async (instruction) => {
-      running += 1;
-      assert.equal(running, 1, 'two executions overlapped');
-      order.push(instruction);
+test('S5: a steer that loses the completion race becomes the new owner once', async () => {
+  const executed: string[] = [];
+  let finishFirst!: () => void;
+  const { delivered, orchestrator } = harness({
+    execute: (instruction, _signal, lifecycle) => {
+      executed.push(instruction);
+      return new Promise((resolve) => {
+        if (instruction === 'first job') {
+          lifecycle.activate();
+          finishFirst = () =>
+            resolve({ answer: 'first done', ok: true, truncated: false });
+        } else {
+          resolve({
+            answer: `ran: ${instruction}`,
+            ok: true,
+            truncated: false,
+          });
+        }
+      });
+    },
+    executeCorrection: async () => {
+      // The redirect raced turn completion: the gateway maps it to conflict,
+      // Wave maps that to nothing_active, and the turn settles in parallel.
+      finishFirst();
       await new Promise((resolve) => setTimeout(resolve, 1));
-      running -= 1;
-      return { answer: 'ok', ok: true, truncated: false };
+      return {
+        message: 'no active turn',
+        ok: false,
+        retryable: false,
+        status: 'nothing_active',
+      };
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('first job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('second job'),
+    callId: 'late',
+    name: 'ask_hermes',
+  });
+  await settled();
+  await settled();
+  assert.deepEqual(executed, ['first job', 'second job']);
+  const late = delivered.find((entry) => entry.callId === 'late')!.result;
+  assert.equal(
+    late.ok && 'answer' in late ? late.answer : '',
+    'ran: second job',
+  );
+});
+
+test('S6: steer attempts are bounded when redirects keep missing', async () => {
+  let finishAsk!: () => void;
+  let redirects = 0;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) =>
+      new Promise((resolve) => {
+        lifecycle.activate();
+        finishAsk = () =>
+          resolve({ answer: 'done', ok: true, truncated: false });
+      }),
+    // The lane stays live yet every redirect reports nothing_active — a
+    // degenerate upstream; the steer must settle instead of spinning.
+    executeCorrection: async () => {
+      redirects += 1;
+      return {
+        message: 'no active turn',
+        ok: false,
+        retryable: false,
+        status: 'nothing_active',
+      };
+    },
+  });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('doomed steer'),
+    callId: 'steer',
+    name: 'ask_hermes',
+  });
+  await settled();
+  await settled();
+  assert.equal(redirects, 2, 'at most two redirect dispatches per steer');
+  const result = delivered.find((entry) => entry.callId === 'steer')!.result;
+  assert.equal(errorCode(result), 'busy');
+  assert.equal(result.ok ? undefined : result.error.retryable, true);
+  finishAsk();
+  await settled();
+});
+
+test('S7: owner turns never overlap — rapid asks steer instead', async () => {
+  let running = 0;
+  let finishAsk!: () => void;
+  const steered: string[] = [];
+  const { orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) => {
+      running += 1;
+      assert.equal(running, 1, 'two owner turns overlapped');
+      lifecycle.activate();
+      return new Promise((resolve) => {
+        finishAsk = () => {
+          running -= 1;
+          resolve({ answer: 'done', ok: true, truncated: false });
+        };
+      });
+    },
+    executeCorrection: async (instruction) => {
+      steered.push(instruction);
+      return { ok: true, status: 'redirected' };
     },
   });
   orchestrator.handleToolCall({
@@ -239,8 +483,11 @@ test('R7: executions run one at a time in arrival order', async () => {
     callId: 'c',
     name: 'ask_hermes',
   });
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.deepEqual(order, ['first', 'second', 'third']);
+  await settled();
+  await settled();
+  assert.deepEqual(steered, ['second', 'third']);
+  finishAsk();
+  await settled();
 });
 
 test('abort cancels in-flight work and stops all delivery', async () => {
@@ -459,7 +706,7 @@ test('completion wins a correction race and never creates new work', async () =>
   );
 });
 
-test('queued corrections never retarget later queued ask work', async () => {
+test('a pending correction never retargets a later owner execution', async () => {
   const finishAsks: (() => void)[] = [];
   let releaseFirstCorrection!: () => void;
   let correctionExecutions = 0;
@@ -488,26 +735,24 @@ test('queued corrections never retarget later queued ask work', async () => {
     callId: 'ask-first',
     name: 'ask_hermes',
   });
-  orchestrator.handleToolCall({
-    arguments: args('second distinct task'),
-    callId: 'ask-second',
-    name: 'ask_hermes',
-  });
   await settled();
   orchestrator.handleToolCall({
     arguments: args('first change'),
     callId: 'correct-first',
     name: 'correct_hermes',
   });
-  orchestrator.handleToolCall({
-    arguments: args('second change'),
-    callId: 'correct-second',
-    name: 'correct_hermes',
-  });
   await settled();
   assert.equal(correctionExecutions, 1);
 
+  // The first owner completes while its correction is still in flight, and a
+  // second distinct task then becomes the new owner.
   finishAsks[0]!();
+  await settled();
+  orchestrator.handleToolCall({
+    arguments: args('second distinct task'),
+    callId: 'ask-second',
+    name: 'ask_hermes',
+  });
   await settled();
   assert.equal(finishAsks.length, 2, 'the second ask is now the active work');
   releaseFirstCorrection();
@@ -515,16 +760,14 @@ test('queued corrections never retarget later queued ask work', async () => {
   assert.equal(
     correctionExecutions,
     1,
-    'the queued correction never executes against the later ask',
+    'the pending correction never executes against the later owner',
   );
-  for (const callId of ['correct-first', 'correct-second']) {
-    assert.equal(
-      correctionStatus(
-        delivered.find((entry) => entry.callId === callId)!.result,
-      ),
-      'nothing_active',
-    );
-  }
+  assert.equal(
+    correctionStatus(
+      delivered.find((entry) => entry.callId === 'correct-first')!.result,
+    ),
+    'nothing_active',
+  );
   finishAsks[1]!();
   await settled();
 });

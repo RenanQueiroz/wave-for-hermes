@@ -261,28 +261,35 @@ documentation before implementing UI.
 - Bind the active Hermes session to trusted call state owned by the app. Do not accept a
   model-controlled Hermes session ID in either Realtime tool's arguments.
 - Realtime starts ask-only. Advertise strict `correct_hermes({ instruction })` only while exactly
-  one `ask_hermes` execution has registered its live gateway redirect lane; queued work is never a
-  correction target. The correction schema has no session, turn, call, run, mode, attachment, or
-  arbitrary-options field. Capture the trusted execution object and recheck it immediately before
-  and after one non-retrying `session.redirect`; a completion race returns `nothing_active` and
-  never becomes new work or targets the next queued ask.
+  one `ask_hermes` execution has registered its live gateway redirect lane; steered asks never
+  become correction targets. The correction schema has no session, turn, call, run, mode,
+  attachment, or arbitrary-options field. Capture the trusted execution object and recheck it
+  immediately before and after one non-retrying `session.redirect`; a completion race returns
+  `nothing_active` and never becomes new work or retargets a later owner execution.
 - Treat Realtime tool surfaces as complete `idle` (`[ask_hermes]`) and `active`
   (`[ask_hermes, correct_hermes]`) snapshots. Serialize `session.update`, coalesce to the latest
   desired state, and acknowledge a snapshot only after a matching full `session.updated`; neither
   model nor voice belongs in an update. Failed/timed-out updates do not retry until a later real
   execution transition, never end the call, and never override the trusted correction gate.
 - Treat Hermes work as background work relative to the live voice conversation. Barge-in interrupts
-  Realtime playback, not the active Hermes run. Serialize and bound additional `ask_hermes` calls
-  for the trusted session; serialize and bound corrections against their captured active execution;
-  and deliver completed results only when no user speech or default Realtime response is in
-  progress. Corrections/constraints to the active deliverable use `correct_hermes`, distinct work
+  Realtime playback, not the active Hermes run. Steer by default, never queue client-side: at most
+  one ask execution (the turn owner) runs a gateway turn at a time, and an additional `ask_hermes`
+  while it runs dispatches one non-retrying `session.redirect` on the owner's live lane —
+  serialized and bounded with corrections on one redirect chain — acknowledged to the model as
+  `steered` (folded into the active work) or `queued` (Hermes runs it next), with the combined
+  outcome arriving on the owner's still-pending call. An ack is never an answer and never reports
+  completion. A steer that loses the completion race becomes the new turn owner exactly once;
+  redirect dispatches per steer are bounded and settle as retryable busy rather than spinning.
+  Deliver completed results only when no user speech or default Realtime response is in progress.
+  Corrections/constraints to the active deliverable use `correct_hermes`, distinct additional work
   uses `ask_hermes`, speech-only interruption uses neither, and unclear add-versus-replace intent
   requires one concise clarification. Answers to explicit Hermes approval/clarify prompts remain on
   the existing prompt-response path, not either Realtime tool.
 - Coalesce an exact normalized `ask_hermes` instruction within one initiating Realtime user turn.
-  Distinct tool-call IDs for that instruction must share one Hermes execution and each receive the
-  same structured result; model retries must not duplicate work, while a later user turn may
-  deliberately repeat the request.
+  Distinct tool-call IDs for that instruction must share one execution and each receive the same
+  structured result — the owner's answer or the steer's acknowledgement; model retries must not
+  duplicate work or dispatch a second redirect, while a later user turn may deliberately repeat
+  the request.
 - Realtime transcripts are ephemeral: store no raw audio, no partial or final transcripts, no
   provider identifiers, no audio-meter history, and no hidden reasoning. Work Wave hands to Hermes
   through `ask_hermes` lands as ordinary turns in the bound session; accepted corrections use that

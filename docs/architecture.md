@@ -138,9 +138,12 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
 - `OpenAiRealtimeBackend` performs the SDP exchange directly against
   `POST /v1/realtime/calls`, attaches the authenticated WebSocket sideband, and wires
   dispatch through `AskHermesOrchestrator`: strict schemas, trusted binding to the initiating
-  conversation, ask serialization/coalescing, bounded queues, and response-safe result delivery.
-  Validated `ask_hermes` instructions execute as ordinary gateway turns, so their side effects
-  land in canonical history. Once that turn's live redirect lane is registered, the sideband sends
+  conversation, coalescing, the steer-by-default turn-owner model (no client-side ask queue;
+  bounded, serialized redirect dispatches), and response-safe result delivery. Validated
+  `ask_hermes` instructions execute as ordinary gateway turns, so their side effects land in
+  canonical history; a further ask while the owner turn runs is delivered into that work through
+  one `session.redirect` and acknowledged as `steered` or `queued`, with the combined outcome
+  arriving on the owner's still-pending call. Once that turn's live redirect lane is registered, the sideband sends
   one complete `[ask_hermes, correct_hermes]` session snapshot and waits for a matching full
   `session.updated`; settlement restores the complete ask-only snapshot. Update failures never
   retry automatically or change trusted authority. The pure prompt/config builders take only
@@ -293,8 +296,9 @@ construct HTTP, WebSocket, Hermes, or OpenAI protocol messages.
   also advertises strict `correct_hermes({ instruction: string })`. Neither schema contains a
   session, turn, call, run, mode, attachment, or arbitrary-options field. The trusted orchestrator
   rechecks the same execution immediately before and after the one non-retrying redirect, so a
-  stale advertised tool or completion race returns `nothing_active` and can never target queued
-  work. Its fixed descriptions never mirror Hermes capabilities. An execution preference is
+  stale advertised tool or completion race returns `nothing_active` and can never retarget a
+  later owner execution or a steered ask. Its fixed descriptions never mirror Hermes
+  capabilities. An execution preference is
   retained only when the user explicitly states it; Hermes otherwise chooses its own tools,
   skills, and plan.
 - Wave owns the spoken interaction. The user addresses Wave naturally, and Wave selects and

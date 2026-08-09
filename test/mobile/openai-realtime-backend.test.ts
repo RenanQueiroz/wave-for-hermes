@@ -62,11 +62,11 @@ test('idle and active prompt snapshots advertise exactly their tool surfaces', (
   const activePrompt = buildWaveRealtimeInstructions('active');
   assert.equal(
     createHash('sha256').update(idlePrompt).digest('hex'),
-    '8e90f89b7a6388a1a887bae590facca2e24fa624ca04bc4594aad78b085237cc',
+    'f35104dfd080225232c96d19158552ac77fd05b6837b59b05a200f01a4380cdc',
   );
   assert.equal(
     createHash('sha256').update(activePrompt).digest('hex'),
-    '25b7b0da1a23fb4cbae0bf2d983d41e8cf5e494ff991f283a8c83712e7468527',
+    'd81934f639e0b22e08d01377e8b2b50bafdb3e2a30ebaed592e1dd28aa6cdf51',
   );
   assert.match(idlePrompt, /ask_hermes/);
   assert.doesNotMatch(idlePrompt, /correct_hermes/);

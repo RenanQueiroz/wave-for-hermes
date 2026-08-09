@@ -69,12 +69,27 @@ export const WaveAskHermesToolErrorCodeSchema = z.enum([
   'upstream_unavailable',
 ]);
 
-export const WaveAskHermesToolResultSchema = z.discriminatedUnion('ok', [
+/**
+ * How a busy-time ask was delivered into the already-running Hermes work:
+ * `steered` folded it into the active execution immediately, `queued` runs it
+ * right after the current work. Either way the combined outcome arrives on
+ * the original request's still-pending call — an ack is never the answer.
+ */
+export const WaveAskHermesAckStatusSchema = z.enum(['queued', 'steered']);
+
+export const WaveAskHermesToolResultSchema = z.union([
   z
     .object({
       answer: z.string().min(1).max(WAVE_MAX_ASK_HERMES_ANSWER_LENGTH),
       ok: z.literal(true),
       truncated: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      note: z.string().trim().min(1).max(300),
+      ok: z.literal(true),
+      status: WaveAskHermesAckStatusSchema,
     })
     .strict(),
   z
@@ -131,6 +146,9 @@ export const WaveRealtimeToolResultSchema = z.union([
   WaveCorrectHermesToolResultSchema,
 ]);
 
+export type WaveAskHermesAckStatus = z.infer<
+  typeof WaveAskHermesAckStatusSchema
+>;
 export type WaveAskHermesArguments = z.infer<
   typeof WaveAskHermesArgumentsSchema
 >;

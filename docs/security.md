@@ -56,10 +56,12 @@ one deliberate exception to "the mobile process never holds an upstream key."
   attempted once and becomes bounded model-setting guidance without parsing or displaying the
   OpenAI response body.
 - Realtime tool calls are validated client-side. `ask_hermes` uses strict arguments, trusted
-  session binding, coalescing, serialization, bounded concurrency, and response-safe delivery,
-  then runs as an ordinary turn under the gateway's own authentication. `correct_hermes` exists
-  only as an advertised tool while that turn has one registered live redirect lane and still
-  rechecks that trusted execution at dispatch.
+  session binding, coalescing, bounded concurrency, and response-safe delivery, then runs as an
+  ordinary turn under the gateway's own authentication; a further ask while that turn runs is
+  not queued client-side but delivered into the running work through one bounded non-retrying
+  `session.redirect` and acknowledged as `steered`/`queued` with fixed Wave-authored copy.
+  `correct_hermes` exists only as an advertised tool while that turn has one registered live
+  redirect lane and still rechecks that trusted execution at dispatch.
 - Revocation story: removing the key in Settings deletes it from secure storage and downgrades
   voice mode to the keyless server-side voice; the key itself should also be revoked at OpenAI
   when a device is lost — which is why Settings recommends a dedicated project-scoped key whose

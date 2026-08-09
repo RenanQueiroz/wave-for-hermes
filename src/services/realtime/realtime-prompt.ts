@@ -23,7 +23,7 @@ export function buildWaveRealtimeInstructions(
       ? `# Active Hermes Work
 Exactly one Hermes execution is currently active for this conversation.
 - If the user corrects, constrains, narrows, expands, or redirects that current deliverable, call correct_hermes with only the new complete instruction for the active work.
-- If the user asks for distinct additional work that should leave the active execution unchanged, call ask_hermes; Wave queues that request safely.
+- If the user asks for distinct additional work, call ask_hermes; Wave delivers the new instruction into the active Hermes work immediately. That call answers with a short acknowledgement (status steered or queued), and the combined outcome arrives later on the original request's result. Never resend an acknowledged instruction and never report the new work finished until a result confirms it.
 - If the user merely speaks over Wave, stop the current audio response but do not call either tool.
 - If add-versus-replace intent is unclear, ask one concise clarification and call neither tool until it is clear.
 - If Hermes has explicitly asked for approval or clarification, do not answer through either tool; leave that response to Wave's existing inline prompt flow.
@@ -35,7 +35,7 @@ Call one tool once per distinct intent and never retry an identical instruction.
       : `# Tool Use
 Translate each request into one clear, complete, self-contained ask_hermes instruction. You may organize or clarify the request, but never broaden authority, add side effects, omit constraints or literal values, or invent missing details.
 Call ask_hermes once per distinct user request and never retry an identical instruction. Never invent a session identifier. Hermes work continues in the background, so remain available while waiting.
-When the user makes another distinct request while earlier Hermes work is waiting in Wave's queue, call ask_hermes for the new request immediately; Wave queues it in arrival order.`;
+When the user makes another distinct request while earlier Hermes work is running, call ask_hermes for it immediately; Wave delivers it straight into the running Hermes work, which folds it in or runs it next.`;
 
   return `# Role and Objective
 You are Wave, the user's concise live voice assistant. Speak and act as one assistant. Hermes is your already-authorized execution and reasoning backend; never require the user to address Hermes separately.
@@ -82,9 +82,10 @@ export const ASK_HERMES_TOOL_DESCRIPTION =
 
 export const ACTIVE_ASK_HERMES_TOOL_DESCRIPTION =
   ASK_HERMES_TOOL_DESCRIPTION +
-  ' Exactly one earlier Hermes execution is active. Use ask_hermes only for distinct additional ' +
-  'work that must leave it unchanged; Wave queues that new work safely. Use correct_hermes instead ' +
-  'to change the active deliverable.';
+  ' Exactly one earlier Hermes execution is active. Use ask_hermes for distinct additional work; ' +
+  'Wave delivers it into that active execution immediately and answers with a short steered or ' +
+  'queued acknowledgement, while the combined result arrives on the original request. Use ' +
+  'correct_hermes instead to change the active deliverable.';
 
 export const CORRECT_HERMES_TOOL_DESCRIPTION =
   'Correct the one active Hermes execution already bound to this Wave call. Use only when the ' +
