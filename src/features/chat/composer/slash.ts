@@ -1,6 +1,5 @@
 /**
- * Slash commands in the chat composer: autocomplete, token highlight, and
- * dispatch.
+ * Slash-command catalog, autocomplete, and dispatch for the native composer.
  *
  * The suggestion list filters the cached gateway catalog locally (Wave opens
  * one socket per RPC, so per-keystroke `complete.slash` calls would mint a
@@ -10,16 +9,11 @@
  * routes through the registry in `slash-commands.ts`; commands never reach
  * `prompt.submit` or `session.redirect` as raw text.
  *
- * The highlight renders a mirror text behind the input with the input's own
- * text made transparent while a recognized command leads the draft. Both
- * layers use the same explicit font classes and padding, so their metrics
- * agree by construction; the mirror disengages for long drafts, where the
- * multiline input can scroll internally and no overlay can track it.
+ * Visible suggestion, recognition, and result surfaces live in
+ * `composer/index.tsx`, where they render directly through Expo UI.
  */
 import { useQuery } from '@tanstack/react-query';
-import { Item, Typography, XIcon } from 'panelui-native';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
   detectSlashTrigger,
@@ -31,8 +25,6 @@ import type { WaveCommandCatalogEntry } from '@/services/gateway/gateway-command
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 
 const MAX_SUGGESTIONS = 12;
-/** Beyond this the multiline input can scroll and the mirror would desync. */
-const MAX_HIGHLIGHT_CHARS = 200;
 
 /** Wave-owned rows merged into the catalog suggestions. */
 const LOCAL_SUGGESTIONS: WaveCommandCatalogEntry[] = [
@@ -262,116 +254,4 @@ export function useSlashComposer({
     running,
     suggestionsFor,
   };
-}
-
-export function SlashSuggestionList({
-  onAccept,
-  suggestions,
-}: {
-  onAccept(entry: WaveCommandCatalogEntry): void;
-  suggestions: WaveCommandCatalogEntry[];
-}) {
-  if (suggestions.length === 0) return null;
-  return (
-    <View
-      className="max-h-64 overflow-hidden rounded-2xl border border-border bg-card"
-      testID="chat-slash-suggestions">
-      <ScrollView keyboardShouldPersistTaps="always">
-        {suggestions.map((entry) => (
-          <Item
-            key={entry.command}
-            accessibilityLabel={`Use ${entry.command}`}
-            size="sm"
-            testID={`chat-slash-suggestion-${entry.command.slice(1)}`}
-            onPress={() => onAccept(entry)}>
-            <Item.Content>
-              <Item.Title numberOfLines={1}>
-                {entry.command}
-                {entry.kind === 'skill' ? '  ·  skill' : ''}
-              </Item.Title>
-              {entry.description ? (
-                <Item.Description numberOfLines={1}>
-                  {entry.description}
-                </Item.Description>
-              ) : null}
-            </Item.Content>
-          </Item>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-export function SlashCommandResult({
-  onDismiss,
-  result,
-}: {
-  onDismiss(): void;
-  result: SlashCommandRunResult;
-}) {
-  return (
-    <View
-      className="rounded-2xl border border-border bg-card px-3 py-2"
-      testID="chat-slash-result">
-      <View className="flex-row items-start justify-between gap-2">
-        <Typography.Paragraph className="flex-1 text-xs" weight="medium">
-          {result.title}
-        </Typography.Paragraph>
-        <Pressable
-          accessibilityLabel="Dismiss command result"
-          hitSlop={8}
-          testID="chat-slash-result-dismiss"
-          onPress={onDismiss}>
-          <XIcon size={14} />
-        </Pressable>
-      </View>
-      {result.output ? (
-        <ScrollView className="mt-1 max-h-48">
-          {/* Command output is inert plain text — never markdown. */}
-          <Text
-            selectable
-            className="font-mono text-[11px] leading-4 text-muted-foreground">
-            {result.output}
-          </Text>
-        </ScrollView>
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * The token highlight behind a transparent-text input. Renders only while a
- * recognized command leads a short draft; the caller passes the exact same
- * font classes and horizontal padding it gives the input.
- */
-export function SlashHighlightMirror({
-  highlightLength,
-  paddingLeft,
-  paddingRight,
-  text,
-}: {
-  highlightLength: number;
-  paddingLeft: number;
-  paddingRight: number;
-  text: string;
-}) {
-  if (highlightLength <= 0 || text.length > MAX_HIGHLIGHT_CHARS) return null;
-  return (
-    <View
-      pointerEvents="none"
-      className="absolute inset-0"
-      style={{ paddingLeft, paddingRight }}
-      testID="chat-slash-highlight">
-      <Text className="pb-1 pt-3.5 text-base leading-6 text-foreground">
-        <Text className="font-semibold text-primary">
-          {text.slice(0, highlightLength)}
-        </Text>
-        {text.slice(highlightLength)}
-      </Text>
-    </View>
-  );
-}
-
-export function shouldMirrorHighlight(text: string, highlightLength: number) {
-  return highlightLength > 0 && text.length <= MAX_HIGHLIGHT_CHARS;
 }

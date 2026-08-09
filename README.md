@@ -82,18 +82,22 @@ currently includes:
   Previous 7 days / Older groups, separates Chats from Automations and external activity without
   hiding unknown future sources, searches titles and messages, renames/deletes sessions, and keeps
   Settings and Disconnect fixed at the bottom;
-- TanStack Query-backed paginated session/timeline state plus PanelUI conversation and chat routes
-  with batched assistant deltas, lifecycle-safe prompt cancellation, coherent grouped turns,
+- TanStack Query-backed paginated session/timeline state plus PanelUI conversation and transcript
+  surfaces with batched assistant deltas, lifecycle-safe prompt cancellation, coherent grouped turns,
   sealed interim narration, in-place bounded tool progress, reviewed ephemeral activity and
   stale-working hints, full-width markdown assistant responses beside user-only bubbles, tool
-  runs summarized as bounded one-line actions, current-session tracking, and a keyboard-sticky rounded composer
-  with an internal attachment control and exactly one trailing action: Send when text is present,
-  live voice when it is empty, or — during an active turn — Correct for text and Stop when empty;
+  runs summarized as bounded one-line actions and current-session tracking. The keyboard-sticky
+  rounded composer is a direct `@expo/ui` native island — including its multiline field, icons,
+  accessory content, and sheets — with an internal attachment control and exactly one trailing
+  action: Send when text is present, live voice when it is empty, or — during an active turn —
+  Correct for text and Stop when empty;
 - inline mid-turn prompts: Hermes approval and clarify requests render in the turn they belong
   to, are answered on the socket bound to that turn, and clear as soon as anything proves them
   settled; secret/sudo requests are declined with copy that says why;
-- a per-conversation model picker: a compact composer pill opens the gateway's own model catalog
-  (bounded, no provider administration), switches are always scoped to that one conversation, a
+- a per-conversation native model picker: its text-only composer trigger resolves the actual
+  default model and effort even before a new chat creates its server session, then opens the
+  gateway's bounded catalog with capability-gated Thinking, Effort, and Fast controls. Changes are
+  always scoped to that one conversation, model capability flags never masquerade as subtitles, a
   busy turn defers the pick to the next turn, and expensive models ask for confirmation first;
 - an end-of-turn action row under every completed reply — a compact "time ago" timestamp
   (tap for the exact time), then icon-only Branch-in-new-chat, Copy (raw markdown),
@@ -102,8 +106,8 @@ currently includes:
   submit (blocked while a turn runs, ordinals computed only from server rows so Wave's local
   correction rows can never skew them);
 - composer slash commands with Desktop-style autocomplete: typing `/` suggests commands and
-  skills from the gateway's catalog (a mid-message `/` suggests skills only), the recognized
-  `/command` token highlights inside the input, and dispatch runs on the command RPC lane —
+  skills from the gateway's catalog (a mid-message `/` suggests skills only), a native accessory
+  identifies the recognized command, and dispatch runs on the command RPC lane —
   skills expand into ordinary turns showing their compact form, `/model`, `/title`,
   `/compress`, `/status`, `/usage`, `/steer`, `/queue` and friends are supported, recognized
   commands run even while a turn is busy, and administration commands are declined with honest
@@ -360,8 +364,11 @@ props or non-PanelUI components, resolve the corresponding `--color-*` token wit
 
 Settings and Connect are native forms built on `@expo/ui` (`FieldGroup`, `TextInput` with
 `useNativeState`, `Picker`, `Switch`, `ListItem`) hosted per screen; the form owns its own
-scrolling and keyboard insets. The rest of the app stays PanelUI, and the chat transcript stays
-on the Wave-owned scroller.
+scrolling and keyboard insets. The chat composer is also direct `@expo/ui`: SwiftUI/Compose owns
+the field and controls, `@expo/material-symbols` supplies the Android half of universal native icon
+mappings, and universal native bottom sheets present attachments and models. A focused non-visual
+React Native dock owns its keyboard translation. The rest of the app stays PanelUI, and the chat
+transcript stays on the Wave-owned scroller.
 
 The [PanelUI CLI](https://www.panelui.dev/docs/cli) is optional. Use it only when a component needs
 to be copied into the repository for deliberate source-level customization; package and copied

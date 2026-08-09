@@ -41,7 +41,7 @@ import {
   normalizeModelCatalog,
   normalizeModelSwitch,
   normalizeReasoningValue,
-  WAVE_REASONING_EFFORTS,
+  WAVE_REASONING_EFFORT_VALUES,
   type WaveModelCatalog,
   type WaveModelSelection,
   type WaveReasoningEffort,
@@ -272,6 +272,11 @@ export class GatewayClient {
    * and becomes the new session's own scoped override.
    */
   private readonly pendingModelPicks = new Map<string, WaveModelSelection>();
+  /** Session options selected before a placeholder's first turn. */
+  private readonly pendingSessionOptions = new Map<
+    string,
+    { fastMode?: boolean; reasoningEffort?: WaveReasoningEffort }
+  >();
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -1222,13 +1227,30 @@ export class GatewayClient {
         sessionScoped: liveSessionId !== undefined,
       };
       const pending = this.pendingModelPicks.get(sessionId);
+      const pendingOptions = this.pendingSessionOptions.get(sessionId);
       return pending
         ? {
             ...catalog,
             currentModel: pending.model,
             currentProvider: pending.provider,
+            ...(pendingOptions?.reasoningEffort !== undefined
+              ? { reasoningEffort: pendingOptions.reasoningEffort }
+              : {}),
+            ...(pendingOptions?.fastMode !== undefined
+              ? { fastMode: pendingOptions.fastMode }
+              : {}),
           }
-        : catalog;
+        : pendingOptions
+          ? {
+              ...catalog,
+              ...(pendingOptions.reasoningEffort !== undefined
+                ? { reasoningEffort: pendingOptions.reasoningEffort }
+                : {}),
+              ...(pendingOptions.fastMode !== undefined
+                ? { fastMode: pendingOptions.fastMode }
+                : {}),
+            }
+          : catalog;
     } catch (error) {
       throw toWaveError(error);
     } finally {
@@ -1246,18 +1268,19 @@ export class GatewayClient {
     effort: WaveReasoningEffort,
     signal?: AbortSignal,
   ): Promise<{ effort: string }> {
-    if (!WAVE_REASONING_EFFORTS.includes(effort)) {
+    if (!WAVE_REASONING_EFFORT_VALUES.includes(effort)) {
       throw new WaveBackendError('Choose a supported thinking level.', {
         kind: 'bad_request',
       });
     }
     const resolved = this.resolveSessionId(sessionId);
     if (isPendingSessionId(resolved)) {
-      // Creating a gateway session as a side effect of a toggle would be
-      // surprising; the knobs only appear for real sessions.
-      throw new WaveBackendError('Send a message first.', {
-        kind: 'bad_request',
+      const pending = this.pendingSessionOptions.get(sessionId) ?? {};
+      this.pendingSessionOptions.set(sessionId, {
+        ...pending,
+        reasoningEffort: effort,
       });
+      return { effort };
     }
     const connection = await this.openSocket(signal);
     try {
@@ -1289,11 +1312,12 @@ export class GatewayClient {
   ): Promise<{ fastMode: boolean }> {
     const resolved = this.resolveSessionId(sessionId);
     if (isPendingSessionId(resolved)) {
-      // Creating a gateway session as a side effect of a toggle would be
-      // surprising; the knobs only appear for real sessions.
-      throw new WaveBackendError('Send a message first.', {
-        kind: 'bad_request',
+      const pending = this.pendingSessionOptions.get(sessionId) ?? {};
+      this.pendingSessionOptions.set(sessionId, {
+        ...pending,
+        fastMode: enabled,
       });
+      return { fastMode: enabled };
     }
     const connection = await this.openSocket(signal);
     try {
@@ -1515,10 +1539,14 @@ export class GatewayClient {
   ): Promise<string> {
     if (isPendingSessionId(sessionId)) {
       const pick = this.pendingModelPicks.get(sessionId);
-      const created = await rpc.call(
-        'session.create',
-        pick ? { model: pick.model, provider: pick.provider } : {},
-      );
+      const options = this.pendingSessionOptions.get(sessionId);
+      const created = await rpc.call('session.create', {
+        ...(pick ? { model: pick.model, provider: pick.provider } : {}),
+        ...(options?.reasoningEffort !== undefined
+          ? { reasoning_effort: options.reasoningEffort }
+          : {}),
+        ...(options?.fastMode !== undefined ? { fast: options.fastMode } : {}),
+      });
       const live = created.session_id;
       const stored = created.stored_session_id;
       if (typeof live !== 'string' || !live) {
@@ -1531,6 +1559,7 @@ export class GatewayClient {
       // only valid on the transport, where interrupt needs it.
       const storedId = typeof stored === 'string' && stored ? stored : live;
       this.pendingModelPicks.delete(sessionId);
+      this.pendingSessionOptions.delete(sessionId);
       this.resolvedSessions.set(sessionId, storedId);
       this.liveSessions.set(storedId, live);
       return live;

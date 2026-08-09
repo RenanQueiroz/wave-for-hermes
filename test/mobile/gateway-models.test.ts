@@ -4,8 +4,11 @@ import test from 'node:test';
 import { GatewayClient } from '../../src/services/gateway/gateway-client.ts';
 import {
   buildModelSwitchValue,
+  modelFamilies,
   normalizeModelCatalog,
   normalizeModelSwitch,
+  resolveModelFastControl,
+  WAVE_REASONING_EFFORTS,
 } from '../../src/services/gateway/gateway-models.ts';
 
 function jsonResponse(body: unknown) {
@@ -78,6 +81,86 @@ test('catalog normalization caps runaway payloads', () => {
   const catalog = normalizeModelCatalog(oversized);
   assert.equal(catalog.providers.length, 24);
   assert.equal(catalog.providers[0].models.length, 60);
+});
+
+test('reasoning levels and model families mirror Hermes picker semantics', () => {
+  assert.deepEqual(WAVE_REASONING_EFFORTS, [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+    'ultra',
+  ]);
+  const models = [
+    { featured: false, id: 'claude-opus', unavailable: false },
+    { featured: false, id: 'claude-opus-fast', unavailable: false },
+    { featured: false, id: 'standalone-fast', unavailable: false },
+  ];
+  assert.deepEqual(modelFamilies(models), [
+    { fastVariant: models[1], option: models[0] },
+    { option: models[2] },
+  ]);
+});
+
+test('fast control supports parameters and provider -fast variants', () => {
+  assert.deepEqual(
+    resolveModelFastControl({
+      currentModel: 'gpt-5',
+      currentProvider: 'openai',
+      fastMode: true,
+      providers: [
+        {
+          current: true,
+          models: [
+            {
+              fast: true,
+              featured: false,
+              id: 'gpt-5',
+              unavailable: false,
+            },
+          ],
+          name: 'OpenAI',
+          slug: 'openai',
+        },
+      ],
+    }),
+    { enabled: true, kind: 'parameter' },
+  );
+  assert.deepEqual(
+    resolveModelFastControl({
+      currentModel: 'claude-opus-fast',
+      currentProvider: 'anthropic',
+      fastMode: false,
+      providers: [
+        {
+          current: true,
+          models: [
+            {
+              featured: false,
+              id: 'claude-opus',
+              unavailable: false,
+            },
+            {
+              featured: false,
+              id: 'claude-opus-fast',
+              unavailable: false,
+            },
+          ],
+          name: 'Anthropic',
+          slug: 'anthropic',
+        },
+      ],
+    }),
+    {
+      baseModel: 'claude-opus',
+      enabled: true,
+      fastModel: 'claude-opus-fast',
+      kind: 'variant',
+      provider: 'anthropic',
+    },
+  );
 });
 
 test('the switch value is session-scoped and flag-proof', () => {
@@ -339,6 +422,18 @@ test('a pending conversation stores the pick locally and sends it on create', as
   );
   assert.equal(calls[0].params.session_id, undefined);
 
+  // Pending controls stay local and ride session.create; they never fall back
+  // to a profile-level config.set.
+  await client.setSessionReasoning('wave-pending-7', 'ultra');
+  await client.setSessionFastMode('wave-pending-7', true);
+  const configured = await client.getSessionModelContext('wave-pending-7');
+  assert.equal(configured.reasoningEffort, 'ultra');
+  assert.equal(configured.fastMode, true);
+  assert.equal(
+    calls.some((call) => call.method === 'config.set'),
+    false,
+  );
+
   // The first turn's session.create carries the pick, exactly once.
   const abort = new AbortController();
   const turn = client.streamTurn('wave-pending-7', 'hello', abort.signal);
@@ -347,7 +442,9 @@ test('a pending conversation stores the pick locally and sends it on create', as
   }
   const created = calls.find((call) => call.method === 'session.create');
   assert.deepEqual(created?.params, {
+    fast: true,
     model: 'hermes-4-405b',
     provider: 'nous',
+    reasoning_effort: 'ultra',
   });
 });

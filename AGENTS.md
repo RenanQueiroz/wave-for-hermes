@@ -145,8 +145,14 @@ documentation before implementing UI.
   `Picker appearance="menu"` for single choices, and section footers for descriptions. A
   `FieldGroup` owns its own scrolling and keyboard insets — never nest it in an RN ScrollView
   or add keyboard-avoidance wrappers around it, and route theme colors into native props via
-  `useCSSVariable` (`useDestructiveColor`). Chat composer, search, and transcript surfaces
-  stay PanelUI/RN. Two Android constraints validated on the emulator: `FieldGroup` recognizes
+  `useCSSVariable` (`useDestructiveColor`). Search and transcript surfaces stay PanelUI/RN. The
+  chat composer is the deliberate direct-Expo-UI exception: all visible composer content uses
+  one platform-native `Host`, native observable text/selection state, universal native
+  `Icon.select(...)` mappings, and universal `BottomSheet` presentations. The React Native
+  `ChatComposerDock` is non-visual and is the only keyboard-movement owner; the native hosts ignore
+  keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts, or a
+  second keyboard-avoidance path inside the composer. Two Android constraints validated on the
+  emulator: `FieldGroup` recognizes
   only literal `<FieldGroup.Section>` elements (a custom component wrapping a section becomes
   one cramped row — keep section JSX in the screen, logic in hooks), and section rows already
   get a Material `ListItem` surface (a universal `ListItem` child draws a second box, and bare
@@ -155,12 +161,17 @@ documentation before implementing UI.
   Android renders the Material exposed dropdown full-width with the section title as label.
 - Keyboard avoidance for the remaining PanelUI/RN surfaces (validated on device): a lone
   field — optionally grouped with its submit button — lifts through
-  `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus; pinned composers dock
-  with `KeyboardAvoider mode="dock"`. Android keyboards also ignore `autoCorrect={false}`
-  on plain-text RN input classes — use `keyboardType="url"`/`"visible-password"` for values
-  that must not be corrected. In `@expo/ui` `TextInput`, `visible-password` maps to the plain
-  Compose text keyboard (verified in source), so the native connect form relies on
-  `autoCorrect={false}` alone on Android.
+  `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus. Android keyboards also ignore
+  `autoCorrect={false}` on plain-text RN input classes — use
+  `keyboardType="url"`/`"visible-password"` for values that must not be corrected. In `@expo/ui`
+  `TextInput`, `visible-password` maps to the plain Compose text keyboard (verified in source), so
+  the native connect form relies on `autoCorrect={false}` alone on Android.
+- Keep Expo UI modifier ownership explicit. On Android, modifiers supplied to the universal
+  `Switch` size the switch control itself rather than its label row, so do not apply
+  `fillMaxWidth()` there. On iOS, a SwiftUI container accessibility identifier is inherited by its
+  descendants and can overwrite their identifiers, so put identifiers on actionable descendants
+  rather than the composer container. Universal `BottomSheet` owns its presentation host and stays
+  a sibling of the manually owned inline composer `Host`.
 - React Native's Android renderer resolves the CSS logical corner classes `rounded-es-*` and
   `rounded-se-*` to the diagonally opposite corner (validated on RN 0.86:
   `BorderRadiusStyle.resolve` reads the tokens inline-axis-first; iOS is correct, and
@@ -176,6 +187,10 @@ documentation before implementing UI.
   focused feature/service module, and development-only integrations in `src/dev`.
 - Use the `@/` aliases rather than long relative imports across feature boundaries.
 - Keep platform-specific behavior explicit and preserve iOS and Android behavior.
+- Name platform-only implementations with explicit `.ios.tsx` and `.android.tsx` suffixes; reserve
+  unsuffixed `.tsx` files for code genuinely shared by both platforms. Keep the empty suffix first
+  in TypeScript's `moduleSuffixes` so package declarations resolve normally while missing local
+  shared modules fall through to the platform pair.
 - Wave supports iOS and Android only. Do not add React Native Web dependencies, web scripts,
   web configuration, `.web.*` implementations, or web-only branches.
 - Add accessible roles, labels, and stable test identifiers to meaningful controls so both people

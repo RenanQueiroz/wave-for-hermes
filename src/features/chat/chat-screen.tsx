@@ -4,58 +4,34 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
-import type {
-  WaveTimelineResponse,
-  WaveToolDetail,
-  WaveTurnInput,
-} from '@wave/contracts';
+import type { WaveTimelineResponse, WaveToolDetail } from '@wave/contracts';
 import { Redirect, Stack, useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
   AlertTriangleIcon,
-  Attachment,
-  BottomSheet,
   Button,
   ChevronRightIcon,
   CircleIcon,
   FileIcon,
-  ImageIcon,
-  Input,
-  KeyboardAvoider,
   LinkIcon,
   Marker,
   Message,
-  PaperclipIcon,
-  MicIcon,
   PencilIcon,
-  PlusIcon,
   Reasoning,
   Response,
   // RotateCcwIcon deliberately: the package's runtime entry exports only the
   // counter-clockwise variant even though the typings declare both.
   RotateCcwIcon,
   SearchIcon,
-  SendIcon,
   Shimmer,
-  Soundwave,
   SparklesIcon,
   Typography,
-  XIcon,
 } from 'panelui-native';
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-import { Animated, Keyboard, Pressable, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Animated, View } from 'react-native';
 import { useKeyboardAnimation } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
-import { CameraIcon } from '@/components/icons/camera-icon';
 import { ConversationScroller } from '@/components/conversation-scroller';
 import { OfflineNotice } from '@/components/offline-notice';
 import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
@@ -69,32 +45,19 @@ import {
   type WaveChatPart,
 } from '@/features/chat/chat-state';
 import { initialConversationAnchor } from '@/features/chat/conversation-anchor';
+import { ChatComposer } from '@/features/chat/composer';
 import {
   deriveToolAction,
   toolActionLabel,
 } from '@/features/chat/tool-actions';
-import { SessionModelPill } from '@/features/chat/model-picker';
-import {
-  SlashCommandResult,
-  SlashHighlightMirror,
-  SlashSuggestionList,
-  shouldMirrorHighlight,
-  useSlashComposer,
-} from '@/features/chat/slash-composer';
-import {
-  highlightedCommandLength,
-  resolveSlashSubmission,
-} from '@/features/chat/slash-commands';
 import {
   branchCount,
   collectPrunedEntryIds,
   regenerateTarget,
 } from '@/features/chat/turn-action-targets';
 import { TurnActionRow } from '@/features/chat/turn-action-row';
-import { useChatAttachments } from '@/features/chat/use-chat-attachments';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useConnectedWave } from '@/state/use-connected-wave';
-import { useDictation } from '@/features/voice/use-dictation';
 import { useMessagePlayback } from '@/features/voice/use-message-playback';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
@@ -123,19 +86,6 @@ import {
 interface ChatScreenProps {
   sessionId: string;
 }
-
-// Explicit per-bar heights for the live-voice glyph. Supplying `levels` is also
-// what makes the Soundwave render still instead of animating.
-const LIVE_VOICE_WAVE_LEVELS = [0.3, 1, 0.65, 0.3];
-
-// Space kept visible between the composer and the open keyboard. Dock travel is
-// keyboardHeight − bottomInset, so undershooting the composer's real bottom
-// padding by this much leaves exactly this gap above the keyboard.
-const KEYBOARD_GAP = 12;
-
-// Strong enough to read as inert on the dark composer; the library's own
-// disabled dim is both subtler and suppressed by its press animation.
-const BLOCKED_COMPOSER_BUTTON_STYLE = { opacity: 0.4 } as const;
 
 const EMPTY_STATE_TITLES = [
   'Ask me anything',
@@ -185,12 +135,8 @@ function ConnectedChatScreen({
   offline: boolean;
   sessionId: string;
 }) {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [input, setInput] = useState('');
-  const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
-  const attachmentState = useChatAttachments();
   // Speech affordances appear only when the gateway advertises the
   // capability; a failed probe hides them rather than caching a "no".
   const speech = useQuery({
@@ -203,7 +149,6 @@ function ConnectedChatScreen({
     queryKey: ['wave', connectionId, baseUrl, 'audio-capabilities'],
     staleTime: 5 * 60_000,
   });
-  const dictation = useDictation({ client: gatewayClient });
   const playback = useMessagePlayback({ client: gatewayClient });
   const canDictate = Boolean(gatewayClient) && speech.data?.stt === true;
   const canSpeak = Boolean(gatewayClient) && speech.data?.tts === true;
@@ -453,139 +398,6 @@ function ConnectedChatScreen({
     (message) => message.role === 'assistant',
   )?.id;
 
-  const [caret, setCaret] = useState(0);
-  const [modelPickerNonce, setModelPickerNonce] = useState(0);
-  const slash = useSlashComposer({
-    actions: {
-      onOpenModelPicker: () => setModelPickerNonce((nonce) => nonce + 1),
-      onOpenResume: () => router.navigate('/search'),
-      onPrefill: setInput,
-      onSendExpanded: (message, display) => void chat.send(message, display),
-      onStartNewChat: () => router.navigate('/new'),
-      onStopTurn: () => void chat.stop(),
-    },
-    baseUrl,
-    chatClient: client,
-    connectionId,
-    gatewayClient,
-    sessionId,
-  });
-  // The command lane: leading recognized slash text runs as a command in both
-  // idle and busy composers; it never becomes a prompt or a correction.
-  const slashResolution = useMemo(
-    () =>
-      attachmentState.attachments.length === 0
-        ? resolveSlashSubmission(input, slash.catalog)
-        : undefined,
-    [attachmentState.attachments.length, input, slash.catalog],
-  );
-  const runSlashFromComposer = useCallback(() => {
-    if (!slashResolution || composerBlocked || slash.running) return;
-    setInput('');
-    void slash.run(slashResolution);
-  }, [composerBlocked, slash, slashResolution]);
-  const slashSuggestions = useMemo(
-    () => (composerBlocked ? [] : slash.suggestionsFor(input.slice(0, caret))),
-    [caret, composerBlocked, input, slash],
-  );
-  const acceptSlashSuggestion = useCallback(
-    (entry: { command: string }) => {
-      const before = input.slice(0, caret);
-      const replaceFrom = before.lastIndexOf('/');
-      if (replaceFrom < 0) return;
-      const next = `${input.slice(0, replaceFrom)}${entry.command} ${input.slice(caret)}`;
-      setInput(next);
-      setCaret(replaceFrom + entry.command.length + 1);
-    },
-    [caret, input],
-  );
-  const slashHighlight = useMemo(
-    () =>
-      slashResolution ? highlightedCommandLength(input, slash.catalog) : 0,
-    [input, slash.catalog, slashResolution],
-  );
-
-  const send = useCallback(() => {
-    const value = input.trim();
-    if (slashResolution) {
-      runSlashFromComposer();
-      return;
-    }
-    if (!value || busy || composerBlocked) return;
-    const attachments = attachmentState.attachments;
-    const turnInput: WaveTurnInput =
-      attachments.length === 0
-        ? value
-        : [
-            { text: value, type: 'text' },
-            ...attachments.map((attachment) => attachment.part),
-          ];
-    const optimisticText = [
-      value,
-      ...attachments.map((attachment) => `[Attached: ${attachment.part.name}]`),
-    ].join('\n');
-    setInput('');
-    attachmentState.clear();
-    void chat.send(turnInput, optimisticText);
-  }, [
-    attachmentState,
-    busy,
-    chat,
-    composerBlocked,
-    input,
-    runSlashFromComposer,
-    slashResolution,
-  ]);
-
-  const correct = useCallback(() => {
-    const value = input;
-    if (slashResolution) {
-      // Desktop parity: a recognized command dispatches through its own RPC
-      // lane even while a turn runs, and never rides session.redirect.
-      runSlashFromComposer();
-      return;
-    }
-    if (
-      !value.trim() ||
-      !busy ||
-      cancelling ||
-      correcting ||
-      composerBlocked ||
-      chat.state.activePrompt ||
-      attachmentState.attachments.length > 0
-    ) {
-      return;
-    }
-    setInput('');
-    void chat.correct(value).then((result) => {
-      if (
-        result.status === 'failed' ||
-        result.status === 'rejected' ||
-        result.status === 'unavailable'
-      ) {
-        setInput((current) => (current.trim() ? current : result.draft));
-      }
-    });
-  }, [
-    attachmentState.attachments.length,
-    busy,
-    cancelling,
-    chat,
-    composerBlocked,
-    correcting,
-    input,
-    runSlashFromComposer,
-    slashResolution,
-  ]);
-
-  const submitComposer = busy ? correct : send;
-  const canCorrect =
-    busy &&
-    !cancelling &&
-    !correcting &&
-    !chat.state.activePrompt &&
-    attachmentState.attachments.length === 0 &&
-    Boolean(input.trim());
   const [activityNow, setActivityNow] = useState(() => Date.now());
   useEffect(() => {
     if (chat.state.liveStatus !== 'working' || !chat.state.lastActivityAt) {
@@ -658,29 +470,7 @@ function ConnectedChatScreen({
     [chat.state.activePrompt, gatewayClient, sessionId],
   );
 
-  // Press to dictate, press again to insert. The transcript is appended so a
-  // half-typed message is never lost.
-  const toggleDictation = useCallback(async () => {
-    if (dictation.state.status === 'recording') {
-      const transcript = await dictation.stop();
-      if (!transcript) return;
-      setInput((current) =>
-        current.trim() ? `${current.trim()} ${transcript}` : transcript,
-      );
-      return;
-    }
-    if (dictation.state.status === 'idle') {
-      await dictation.start();
-    }
-  }, [dictation]);
-
-  const selectAttachmentSource = useCallback((action: () => Promise<void>) => {
-    setAttachmentSheetOpen(false);
-    void action();
-  }, []);
-
   const [turnActionError, setTurnActionError] = useState<string>();
-  const [modelNotice, setModelNotice] = useState<string>();
 
   // Branch: copy this conversation (up to the tapped turn) into a new chat
   // and open it. One non-retrying call; the drawer list refetch reconciles.
@@ -763,11 +553,6 @@ function ConnectedChatScreen({
     },
     [busy, chat, composerBlocked, queryClient, timelineEntries, timelineKey],
   );
-
-  // Icon `color` is a native prop, so the theme token is resolved here.
-  const foreground = useCSSVariable('--color-foreground');
-  const attachmentIconColor =
-    typeof foreground === 'string' ? foreground : undefined;
 
   const renderItem = useCallback(
     ({ item }: { item: WaveChatMessage }) => (
@@ -932,397 +717,37 @@ function ConnectedChatScreen({
         ) : null}
       </View>
 
-      <KeyboardAvoider
-        bottomInset={Math.max(insets.bottom, 12) - KEYBOARD_GAP}
-        className="gap-2 bg-background px-4 pt-2"
-        mode="dock"
-        style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
-        {/* A mid-turn prompt docks above the composer so it is answerable
-            without scrolling; the turn is paused until it is. */}
-        {chat.state.activePrompt && gatewayClient ? (
-          <PromptCard
-            busy={promptBusy}
-            error={promptError}
-            prompt={chat.state.activePrompt}
-            onRespond={respondToPrompt}
-          />
-        ) : null}
-        {attachmentState.attachments.length > 0 ? (
-          <Attachment.Group
-            className="gap-1"
-            orientation="vertical"
-            testID="chat-attachments">
-            {attachmentState.attachments.map((attachment) => (
-              <Attachment
-                key={attachment.id}
-                orientation="horizontal"
-                size="sm"
-                state="done">
-                <Attachment.Media variant="icon">
-                  {attachment.part.type === 'image' ? (
-                    <ImageIcon size={16} />
-                  ) : (
-                    <FileIcon size={16} />
-                  )}
-                </Attachment.Media>
-                <Attachment.Content>
-                  <Attachment.Title numberOfLines={1}>
-                    {attachment.part.name}
-                  </Attachment.Title>
-                  <Attachment.Description>
-                    {attachment.description}
-                  </Attachment.Description>
-                </Attachment.Content>
-                <Attachment.Actions>
-                  <Attachment.Action
-                    accessibilityLabel={`Remove ${attachment.part.name}`}
-                    testID={`remove-attachment-${attachment.id}`}
-                    onPress={() => attachmentState.remove(attachment.id)}>
-                    <XIcon size={14} />
-                  </Attachment.Action>
-                </Attachment.Actions>
-              </Attachment>
-            ))}
-          </Attachment.Group>
-        ) : null}
-
-        {chat.state.correctionError ? (
-          <Alert variant="destructive" testID="chat-correction-error">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Correction not sent</Alert.Title>
-              <Alert.Description>
-                {chat.state.correctionError.message}
-              </Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
-
-        {attachmentState.error ? (
-          <Alert variant="destructive" testID="attachment-error">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Description>{attachmentState.error}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : busy && attachmentState.attachments.length > 0 ? (
-          <Typography.Paragraph
-            muted
-            className="px-2 text-center text-xs"
-            testID="chat-correction-attachment-hint">
-            Corrections are text only. Remove the attachments or wait for this
-            response to finish.
-          </Typography.Paragraph>
-        ) : attachmentState.attachments.length > 0 && !input.trim() ? (
-          <Typography.Paragraph muted className="px-2 text-xs">
-            Add a message to send the selected attachments.
-          </Typography.Paragraph>
-        ) : busy && chat.state.activePrompt && input.trim() ? (
-          <Typography.Paragraph
-            muted
-            className="px-2 text-center text-xs"
-            testID="chat-correction-prompt-hint">
-            Answer the prompt above before correcting this response.
-          </Typography.Paragraph>
-        ) : null}
-
-        {dictation.state.status === 'recording' ? (
-          <Typography.Paragraph
-            muted
-            className="px-2 text-center text-xs"
-            testID="chat-dictation-hint">
-            Listening — tap the microphone again to insert what you said.
-          </Typography.Paragraph>
-        ) : dictation.state.error ? (
-          <Pressable onPress={dictation.dismissError}>
-            <Typography.Paragraph
-              muted
-              className="px-2 text-center text-xs"
-              testID="chat-dictation-error">
-              {dictation.state.error} Tap to dismiss.
-            </Typography.Paragraph>
-          </Pressable>
-        ) : null}
-
-        {modelNotice ? (
-          <Typography.Paragraph
-            muted
-            className="px-2 text-center text-xs"
-            testID="chat-model-notice">
-            {modelNotice}
-          </Typography.Paragraph>
-        ) : null}
-
-        {turnActionError ? (
-          <Pressable onPress={() => setTurnActionError(undefined)}>
-            <Typography.Paragraph
-              muted
-              className="px-2 text-center text-xs"
-              testID="chat-turn-action-error">
-              {turnActionError} Tap to dismiss.
-            </Typography.Paragraph>
-          </Pressable>
-        ) : null}
-
-        {composerBlocked ? (
-          <Typography.Paragraph
-            muted
-            className="px-2 text-center text-xs"
-            testID="chat-composer-blocked-hint">
-            Sending and live voice are paused until this conversation can
-            refresh.
-          </Typography.Paragraph>
-        ) : null}
-
-        {busy && activityLabel && !chat.state.activePrompt ? (
-          <Typography.Paragraph
-            muted
-            accessibilityLiveRegion="polite"
-            className="px-2 text-center text-xs"
-            testID="chat-activity-status">
-            {activityLabel}
-          </Typography.Paragraph>
-        ) : null}
-
-        {slashSuggestions.length > 0 ? (
-          <SlashSuggestionList
-            suggestions={slashSuggestions}
-            onAccept={acceptSlashSuggestion}
-          />
-        ) : null}
-        {slash.result ? (
-          <SlashCommandResult
-            result={slash.result}
-            onDismiss={slash.dismissResult}
-          />
-        ) : null}
-
-        {/* Two-row composer: the expandable text row on top, every control
-            on the row below — attachments and the model pill on the left,
-            dictation and the trailing action on the right. */}
-        <View
-          className="overflow-hidden rounded-[28px] bg-muted pb-1.5"
-          testID="chat-composer-box">
-          <View className="relative">
-            <Input
-              multiline
-              accessibilityLabel={
-                busy ? 'Correct the current response' : 'Ask anything'
-              }
-              // Explicit font classes so the slash-highlight mirror can use
-              // the exact same metrics; the input's own text goes transparent
-              // only while the mirror is active.
-              className={`max-h-32 min-h-12 border-0 bg-transparent px-4 pb-1 pt-3.5 text-base leading-6 ${
-                shouldMirrorHighlight(input, slashHighlight)
-                  ? 'text-transparent'
-                  : ''
-              }`}
-              editable={!(cancelling || correcting)}
-              placeholder={busy ? 'Add a correction' : 'Ask anything'}
-              submitBehavior="submit"
-              testID="chat-composer-input"
-              value={input}
-              onChangeText={(value) => {
-                setInput(value);
-                slash.observeDraft(value);
-              }}
-              onSelectionChange={(event) =>
-                setCaret(event.nativeEvent.selection.end)
-              }
-              onSubmitEditing={submitComposer}
+      <ChatComposer
+        key={sessionId}
+        activePrompt={Boolean(chat.state.activePrompt)}
+        activityLabel={activityLabel}
+        baseUrl={baseUrl}
+        blocked={composerBlocked}
+        busy={busy}
+        canDictate={canDictate}
+        cancelling={cancelling}
+        client={client}
+        connectionId={connectionId}
+        correcting={correcting}
+        correctionError={chat.state.correctionError?.message}
+        gatewayClient={gatewayClient}
+        onCorrect={chat.correct}
+        onDismissTurnActionError={() => setTurnActionError(undefined)}
+        onSend={chat.send}
+        onStop={chat.stop}
+        prompt={
+          chat.state.activePrompt && gatewayClient ? (
+            <PromptCard
+              busy={promptBusy}
+              error={promptError}
+              prompt={chat.state.activePrompt}
+              onRespond={respondToPrompt}
             />
-            {shouldMirrorHighlight(input, slashHighlight) ? (
-              <SlashHighlightMirror
-                highlightLength={slashHighlight}
-                paddingLeft={16}
-                paddingRight={16}
-                text={input}
-              />
-            ) : null}
-          </View>
-          <View className="flex-row items-center gap-1 px-2">
-            {/* The dim lives on a wrapper View: the button's press-feedback
-                animation drives opacity from the UI thread, overriding both
-                class- and style-based opacity on the button itself. */}
-            <View
-              style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
-              <Button
-                size="icon"
-                variant="ghost"
-                accessibilityLabel="Add an attachment"
-                disabled={busy || composerBlocked}
-                className="rounded-full"
-                testID="chat-attachment-button"
-                onPress={() => {
-                  // The styled sheet renders in the app window, underneath the
-                  // keyboard's own window — close the keyboard before opening it.
-                  Keyboard.dismiss();
-                  setAttachmentSheetOpen(true);
-                }}>
-                <PlusIcon size={20} />
-              </Button>
-            </View>
-            {gatewayClient ? (
-              <SessionModelPill
-                baseUrl={baseUrl}
-                connectionId={connectionId}
-                disabled={composerBlocked}
-                gatewayClient={gatewayClient}
-                openNonce={modelPickerNonce}
-                sessionId={sessionId}
-                onNotice={setModelNotice}
-              />
-            ) : null}
-            <View className="flex-1" />
-            {canDictate ? (
-              <View
-                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
-                <Button
-                  size="icon"
-                  variant={
-                    dictation.state.status === 'recording'
-                      ? 'destructive'
-                      : 'ghost'
-                  }
-                  accessibilityLabel={
-                    dictation.state.status === 'recording'
-                      ? 'Stop dictating and insert the transcript'
-                      : 'Dictate a message'
-                  }
-                  disabled={busy || composerBlocked}
-                  loading={dictation.state.status === 'transcribing'}
-                  className="rounded-full"
-                  testID="chat-dictate-button"
-                  onPress={() => void toggleDictation()}>
-                  <MicIcon size={18} />
-                </Button>
-              </View>
-            ) : null}
-            {slashResolution && input.trim() ? (
-              // The command lane is visibly distinct from Send/Correct: this
-              // runs the recognized /command, in idle and busy composers alike.
-              <View
-                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
-                <Button
-                  size="icon"
-                  accessibilityLabel={`Run the ${input.trim().split(/\s/)[0]} command`}
-                  className="rounded-full"
-                  disabled={composerBlocked || slash.running}
-                  loading={slash.running}
-                  testID="chat-run-command-button"
-                  onPress={runSlashFromComposer}>
-                  <ChevronRightIcon size={18} />
-                </Button>
-              </View>
-            ) : correcting ? (
-              <Button
-                size="icon"
-                accessibilityLabel="Sending correction"
-                className="rounded-full"
-                disabled
-                loading
-                testID="chat-correction-loading-button"
-              />
-            ) : canCorrect ? (
-              <Button
-                size="icon"
-                accessibilityLabel="Correct current Wave response"
-                className="rounded-full"
-                testID="chat-correct-button"
-                onPress={correct}>
-                <SendIcon size={18} />
-              </Button>
-            ) : busy ? (
-              <Button
-                size="icon"
-                variant="secondary"
-                accessibilityLabel="Stop Wave response"
-                className="rounded-full"
-                disabled={chat.state.status === 'cancelling'}
-                testID="chat-stop-button"
-                onPress={() => void chat.stop()}>
-                {/* A drawn square: the icon set has no stop glyph, and a
-                    text character sits off-baseline and renders unevenly. */}
-                <View className="h-3.5 w-3.5 rounded-[2px] bg-foreground" />
-              </Button>
-            ) : input.trim() ? (
-              <View
-                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
-                <Button
-                  size="icon"
-                  accessibilityLabel="Send message to Wave"
-                  className="rounded-full"
-                  disabled={composerBlocked}
-                  testID="chat-send-button"
-                  onPress={send}>
-                  <SendIcon size={18} />
-                </Button>
-              </View>
-            ) : (
-              <View
-                style={composerBlocked ? BLOCKED_COMPOSER_BUTTON_STYLE : null}>
-                <Button
-                  size="icon"
-                  accessibilityLabel="Start live voice"
-                  className="rounded-full"
-                  disabled={composerBlocked}
-                  testID="chat-live-button"
-                  onPress={() =>
-                    router.push({
-                      pathname: '/conversation/[sessionId]/voice',
-                      params: { sessionId },
-                    })
-                  }>
-                  <Soundwave
-                    barWidth={4}
-                    bars={4}
-                    height={18}
-                    levels={LIVE_VOICE_WAVE_LEVELS}
-                    state="idle"
-                    style={{ width: 25 }}
-                    variant="bars"
-                  />
-                </Button>
-              </View>
-            )}
-          </View>
-        </View>
-      </KeyboardAvoider>
-
-      <BottomSheet
-        open={attachmentSheetOpen}
-        onOpenChange={setAttachmentSheetOpen}>
-        {/* No Header and no close button: the tiles are the whole sheet, and
-            the backdrop, grabber drag, and Android back all still dismiss.
-            Not BottomSheet.Body either — that is a flex-1 scroll region for
-            sized sheets, and in this auto-sized sheet it collapses to zero
-            height. */}
-        <BottomSheet.Content detached blur showClose={false}>
-          <View className="flex-row gap-3 py-2">
-            <AttachmentSourceButton
-              accessibilityLabel="Take a photo"
-              label="Camera"
-              testID="attachment-source-camera"
-              onPress={() => selectAttachmentSource(attachmentState.takePhoto)}>
-              <CameraIcon color={attachmentIconColor} size={22} />
-            </AttachmentSourceButton>
-            <AttachmentSourceButton
-              accessibilityLabel="Choose a photo"
-              label="Photos"
-              testID="attachment-source-photos"
-              onPress={() => selectAttachmentSource(attachmentState.pickImage)}>
-              <ImageIcon color={attachmentIconColor} size={22} />
-            </AttachmentSourceButton>
-            <AttachmentSourceButton
-              accessibilityLabel="Choose a text file"
-              label="Files"
-              testID="attachment-source-files"
-              onPress={() => selectAttachmentSource(attachmentState.pickFile)}>
-              <PaperclipIcon color={attachmentIconColor} size={22} />
-            </AttachmentSourceButton>
-          </View>
-        </BottomSheet.Content>
-      </BottomSheet>
+          ) : undefined
+        }
+        sessionId={sessionId}
+        turnActionError={turnActionError}
+      />
     </View>
   );
 }
@@ -1331,32 +756,6 @@ function ConnectedChatScreen({
 // between turns is a separator instead.
 function ChatTurnSeparator() {
   return <View className="h-3" />;
-}
-
-function AttachmentSourceButton({
-  accessibilityLabel,
-  children,
-  label,
-  onPress,
-  testID,
-}: {
-  accessibilityLabel: string;
-  children: ReactNode;
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      className="flex-1 items-center gap-2 rounded-2xl bg-muted py-5 active:opacity-70"
-      testID={testID}
-      onPress={onPress}>
-      {children}
-      <Typography className="text-sm font-medium">{label}</Typography>
-    </Pressable>
-  );
 }
 
 /** Assistant parts grouped for rendering: prose blocks and tool runs. */

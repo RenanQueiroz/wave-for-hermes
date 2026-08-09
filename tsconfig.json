@@ -2,6 +2,7 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
+    "moduleSuffixes": ["", ".ios", ".android", ".native"],
     "strict": true,
     "paths": {
       "@/*": ["./src/*"],

@@ -195,7 +195,8 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   Pin/unpin, rename, and delete use typed non-retrying lifecycle mutations; pinning updates every
   paginated cache occurrence optimistically, rolls back an error, and reconciles with the server.
   A deleted current session routes to a new conversation.
-- The PanelUI chat route renders normalized conversation data only. User messages keep bubbles;
+- The chat route renders normalized conversation data only. Its transcript remains PanelUI/RN:
+  user messages keep bubbles;
   agent output is full width — assistant text through `Response` markdown (streaming tail via
   `isStreaming`, sealed and completed text parsed once), tool and handoff records as `Marker`
   action rows with bounded one-line derived labels, a per-turn `Reasoning` disclosure over the
@@ -206,14 +207,20 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   not displayed; upstream event shapes, call IDs, run IDs, and credentials never enter the
   mobile render model.
   `PanelUIProvider` mounts the keyboard controller's `KeyboardProvider` exactly once at the app
-  root — mounting a second one breaks per-frame keyboard animation on Android — and PanelUI's
-  `KeyboardAvoider` docks the rounded `InputGroup` composer above the native keyboard, keeping a
-  small gap while the keyboard is open. Opening the attachment sheet dismisses the keyboard
-  first, since the styled sheet draws under the keyboard's own window. The attachment control
-  sits inside the leading edge. The trailing slot shows exactly one action: when idle, trimmed
-  text selects Send and empty text selects live voice; during a turn, eligible text selects
-  Correct and empty or ineligible content keeps Stop. Corrections are text-only, so attachment,
-  prompt-response, cancellation, and correction-in-flight states cannot race the mutation.
+  root — mounting a second one breaks per-frame keyboard animation on Android. The extracted
+  `ChatComposer` is a direct Expo UI native island: one intrinsic-height `Host` contains the
+  SwiftUI/Compose field, controls, accessory states, and universal icons, while the attachment and
+  model presentations are universal native `BottomSheet` siblings. Native observable state owns
+  the immediate draft, so typing re-renders only the composer controller and not the transcript.
+  The non-visual React Native `ChatComposerDock` alone translates the host with the keyboard;
+  SwiftUI and Compose keyboard insets are disabled to prevent the prior iOS double lift. Opening a
+  sheet first dismisses the keyboard. The model trigger is text-only and resolves the current or
+  pending chat default as `model · effort`; capability metadata gates separate Thinking, Effort,
+  and Fast controls instead of appearing as model subtitles. The trailing slot shows exactly one
+  action: when idle, trimmed text selects Send and empty text selects live voice; during a turn,
+  eligible text selects Correct and empty or ineligible content keeps Stop. Corrections are
+  text-only, so attachment, prompt-response, cancellation, and correction-in-flight states cannot
+  race the mutation.
 - Camera/Photos become bounded inline JPEG turn parts. Supported text-based Files are read from
   the document-picker cache and become bounded inert text-file parts. The mobile client rejects
   unsupported binary files before dispatch.

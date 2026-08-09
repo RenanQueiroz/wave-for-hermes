@@ -49,20 +49,97 @@ export interface WaveModelCatalog {
   reasoningEffort?: string;
   /**
    * True when the answer reflects a real gateway session (resumed live).
-   * A conversation with no session yet reads profile-level state, where the
-   * session-scoped knobs must not be offered.
+   * A pending conversation reads profile-level state, and its chosen knobs
+   * are queued locally for that conversation's eventual `session.create`.
    */
   sessionScoped?: boolean;
 }
 
-/** The efforts Wave offers; the gateway accepts more, Wave sets only these. */
+/** Hermes' active reasoning levels, in ascending order. */
 export const WAVE_REASONING_EFFORTS = [
-  'none',
+  'minimal',
   'low',
   'medium',
   'high',
+  'xhigh',
+  'max',
+  'ultra',
 ] as const;
-export type WaveReasoningEffort = (typeof WAVE_REASONING_EFFORTS)[number];
+export const WAVE_REASONING_EFFORT_VALUES = [
+  'none',
+  ...WAVE_REASONING_EFFORTS,
+] as const;
+export type WaveReasoningLevel = (typeof WAVE_REASONING_EFFORTS)[number];
+export type WaveReasoningEffort = (typeof WAVE_REASONING_EFFORT_VALUES)[number];
+
+export interface WaveModelFamily {
+  fastVariant?: WaveModelOption;
+  option: WaveModelOption;
+}
+
+/** Collapse a provider's `model` / `model-fast` ids into one selectable row. */
+export function modelFamilies(
+  models: readonly WaveModelOption[],
+): WaveModelFamily[] {
+  const byId = new Map(models.map((model) => [model.id, model]));
+  const families: WaveModelFamily[] = [];
+  for (const option of models) {
+    const baseId = option.id.replace(/-fast$/i, '');
+    if (baseId !== option.id && byId.has(baseId)) continue;
+    const fastVariant = byId.get(`${option.id}-fast`);
+    families.push({ option, ...(fastVariant ? { fastVariant } : {}) });
+  }
+  return families;
+}
+
+export type WaveModelFastControl =
+  | { kind: 'none' }
+  | { enabled: boolean; kind: 'parameter' }
+  | {
+      baseModel: string;
+      enabled: boolean;
+      fastModel: string;
+      kind: 'variant';
+      provider: string;
+    };
+
+/** Resolve Hermes' speed parameter and `-fast` sibling mechanisms uniformly. */
+export function resolveModelFastControl(
+  catalog: WaveModelCatalog | undefined,
+): WaveModelFastControl {
+  if (!catalog?.currentModel) return { kind: 'none' };
+  const provider = catalog.providers.find(
+    (row) =>
+      row.slug === catalog.currentProvider ||
+      (!catalog.currentProvider && row.current),
+  );
+  if (!provider) return { kind: 'none' };
+
+  const current = provider.models.find(
+    (option) => option.id === catalog.currentModel,
+  );
+  const baseModel = catalog.currentModel.replace(/-fast$/i, '');
+  const base = provider.models.find((option) => option.id === baseModel);
+  const fastModel = `${baseModel}-fast`;
+  const fastVariant = provider.models.find((option) => option.id === fastModel);
+
+  if (base?.fast === true || current?.fast === true) {
+    return { enabled: catalog.fastMode === true, kind: 'parameter' };
+  }
+  if (base && fastVariant) {
+    return {
+      baseModel,
+      enabled: catalog.currentModel === fastModel,
+      fastModel,
+      kind: 'variant',
+      provider: provider.slug,
+    };
+  }
+  // If priority carried over from another model, keep an off switch reachable.
+  return catalog.fastMode === true
+    ? { enabled: true, kind: 'parameter' }
+    : { kind: 'none' };
+}
 
 /** Bounded projection of `config.get {key:'reasoning'}`. */
 export function normalizeReasoningValue(payload: unknown): string | undefined {
@@ -71,7 +148,10 @@ export function normalizeReasoningValue(payload: unknown): string | undefined {
       ? (payload as Record<string, unknown>)
       : {};
   const value = boundedString(record.value, 24)?.toLowerCase();
-  return value && /^[a-z-]+$/.test(value) ? value : undefined;
+  return value &&
+    WAVE_REASONING_EFFORT_VALUES.includes(value as WaveReasoningEffort)
+    ? value
+    : undefined;
 }
 
 /** Bounded projection of `config.get`/`config.set` `{key:'fast'}`. */
