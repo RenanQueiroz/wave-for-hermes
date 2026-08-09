@@ -52,6 +52,12 @@ export interface RealtimeToolCall {
  */
 export interface HermesExecutionLifecycle {
   activate(): void;
+  /**
+   * Consume one accepted `queued` steer: the gateway runs that text as the
+   * next turn on the owner's socket, so the executor keeps the stream open
+   * for it. Returns false once every queued follow-on is consumed.
+   */
+  consumeQueuedFollowOn?(): boolean;
   deactivate(): void;
   /** Sealed interim assistant narration from the running turn, in order. */
   progress?(text: string): void;
@@ -64,6 +70,8 @@ interface ToolExecution {
   active: boolean;
   callIds: Set<string>;
   progressNotes: number;
+  /** Accepted `queued` steers whose text drains as this owner's next turn. */
+  queuedFollowOns: number;
   /** Resolves when the owner's redirect lane opens or its turn settles. */
   ready: Promise<void>;
   resolveReady: () => void;
@@ -324,6 +332,11 @@ export class AskHermesOrchestrator {
       return;
     }
     if (outcome.ok) {
+      if (outcome.status === 'queued') {
+        // The gateway queued the text as the owner's next turn; the owner's
+        // stream stays open for it so the combined answer is still live.
+        owner.queuedFollowOns += 1;
+      }
       this.settleAsk(
         execution,
         outcome.status === 'redirected' ? steeredAck() : queuedAck(),
@@ -458,6 +471,11 @@ export class AskHermesOrchestrator {
         execution.resolveReady();
         this.notifyActiveExecution(true);
       },
+      consumeQueuedFollowOn: () => {
+        if (this.aborted || execution.queuedFollowOns <= 0) return false;
+        execution.queuedFollowOns -= 1;
+        return true;
+      },
       deactivate: () => {
         if (!execution.active) return;
         execution.active = false;
@@ -515,6 +533,7 @@ function createExecution(callId: string): ToolExecution {
     active: false,
     callIds: new Set([callId]),
     progressNotes: 0,
+    queuedFollowOns: 0,
     ready,
     resolveReady,
   };
@@ -538,7 +557,7 @@ function steeredAck(): WaveAskHermesToolResult {
 
 function queuedAck(): WaveAskHermesToolResult {
   return WaveAskHermesToolResultSchema.parse({
-    note: 'Hermes queued this to run right after the current work; it runs automatically. Do not resend this instruction.',
+    note: 'Hermes queued this to run right after the current work; it runs automatically and the combined result arrives with the original request. Do not resend this instruction.',
     ok: true,
     status: 'queued',
   });

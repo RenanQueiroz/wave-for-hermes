@@ -277,8 +277,10 @@ documentation before implementing UI.
   while it runs dispatches one non-retrying `session.redirect` on the owner's live lane —
   serialized and bounded with corrections on one redirect chain — acknowledged to the model as
   `steered` (folded into the active work) or `queued` (Hermes runs it next), with the combined
-  outcome arriving on the owner's still-pending call. An ack is never an answer and never reports
-  completion. A steer that loses the completion race becomes the new turn owner exactly once;
+  outcome arriving on the owner's still-pending call. A `queued` acceptance keeps the owner's
+  turn stream open: the gateway drains the text as the next turn on the same socket and the
+  stream translates that follow-on turn into the combined answer instead of closing at the first
+  completion. An ack is never an answer and never reports completion. A steer that loses the completion race becomes the new turn owner exactly once;
   redirect dispatches per steer are bounded and settle as retryable busy rather than spinning.
   Deliver completed results only when no user speech or default Realtime response is in progress.
   Corrections/constraints to the active deliverable use `correct_hermes`, distinct additional work

@@ -217,6 +217,65 @@ test(
 );
 
 test(
+  'a queued redirect drains as a follow-on turn the open stream keeps translating',
+  { skip },
+  async () => {
+    const harness = await startHarness();
+    try {
+      const { client } = await signedInClient(harness);
+      await harness.loadScenario({
+        redirects: [{ status: 'queued' }],
+        turns: [
+          {
+            frames: [
+              { type: 'message.start' },
+              {
+                delayMs: 300,
+                payload: { status: 'complete', text: 'First answer.' },
+                type: 'message.complete',
+              },
+            ],
+          },
+          { reply: 'Follow-on answer.' },
+        ],
+      });
+      const pendingId = `${PENDING_SESSION_PREFIX}follow-on`;
+      let queuedFollowOns = 0;
+      const completions: string[] = [];
+      let turnsCompleted = 0;
+      for await (const event of client.streamTurn(
+        pendingId,
+        'first job',
+        undefined,
+        { followOn: () => queuedFollowOns-- > 0 },
+      )) {
+        if (event.type === 'turn.started' && turnsCompleted === 0) {
+          if (queuedFollowOns === 0 && completions.length === 0) {
+            const redirect = await client.redirectTurn(
+              pendingId,
+              'run this next',
+            );
+            assert.equal(redirect.status, 'queued');
+            queuedFollowOns += 1;
+          }
+        }
+        if (event.type === 'assistant.completed') {
+          completions.push(event.content);
+        }
+        if (event.type === 'turn.completed') turnsCompleted += 1;
+      }
+      assert.equal(turnsCompleted, 2, 'the stream translated both turns');
+      assert.deepEqual(completions, ['First answer.', 'Follow-on answer.']);
+      const journal = await harness.journalEntries();
+      const drained = journal.find((entry) => entry.kind === 'turn.drain');
+      assert.equal(drained?.detail.text, 'run this next');
+    } finally {
+      await harness.close();
+    }
+  },
+);
+
+test(
   'redirectTurn surfaces scripted queued/race outcomes the way Wave maps them',
   { skip },
   async () => {

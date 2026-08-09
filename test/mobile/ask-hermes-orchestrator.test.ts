@@ -491,6 +491,43 @@ test('S7: owner turns never overlap — rapid asks steer instead', async () => {
   await settled();
 });
 
+test('S8: a queued steer arms one follow-on turn on the owner lifecycle', async () => {
+  let capturedLifecycle!: HermesExecutionLifecycle;
+  let finishAsk!: () => void;
+  const { delivered, orchestrator } = harness({
+    execute: (_instruction, _signal, lifecycle) => {
+      capturedLifecycle = lifecycle;
+      lifecycle.activate();
+      return new Promise((resolve) => {
+        finishAsk = () =>
+          resolve({ answer: 'combined', ok: true, truncated: false });
+      });
+    },
+    executeCorrection: async () => ({ ok: true, status: 'queued' }),
+  });
+  orchestrator.handleToolCall({
+    arguments: args('long job'),
+    callId: 'owner',
+    name: 'ask_hermes',
+  });
+  await settled();
+  assert.equal(capturedLifecycle.consumeQueuedFollowOn?.(), false);
+  orchestrator.handleToolCall({
+    arguments: args('run this next'),
+    callId: 'steer',
+    name: 'ask_hermes',
+  });
+  await settled();
+  assert.equal(
+    askStatus(delivered.find((entry) => entry.callId === 'steer')!.result),
+    'queued',
+  );
+  assert.equal(capturedLifecycle.consumeQueuedFollowOn?.(), true);
+  assert.equal(capturedLifecycle.consumeQueuedFollowOn?.(), false);
+  finishAsk();
+  await settled();
+});
+
 test('P1: owner progress forwards bounded notes; nothing forwards after abort', async () => {
   const notes: string[] = [];
   let capturedLifecycle!: HermesExecutionLifecycle;

@@ -53,6 +53,38 @@ export async function startGatewayServer(
 ): Promise<RunningGatewayServer> {
   const { host, journal, realtimeFake, state } = options;
   const activeTurns = new Map<string, ActiveTurn>();
+  /** Texts accepted by a `queued` redirect, drained as follow-on turns. */
+  const queuedTexts = new Map<string, string[]>();
+
+  function startTurn(
+    session: HarnessSession,
+    sink: FrameSink,
+    text: string,
+  ): void {
+    const turn = new ActiveTurn({
+      journal,
+      script: state.nextTurnScript() ?? {},
+      session,
+      sink,
+      state,
+      text,
+    });
+    activeTurns.set(session.storedId, turn);
+    void turn.done.finally(() => {
+      if (activeTurns.get(session.storedId) === turn) {
+        activeTurns.delete(session.storedId);
+      }
+      const queued = queuedTexts.get(session.storedId)?.shift();
+      if (
+        queued !== undefined &&
+        sink.isOpen() &&
+        state.resolveSession(session.storedId) === session
+      ) {
+        journal.record('turn.drain', { text: queued });
+        startTurn(session, sink, queued);
+      }
+    });
+  }
 
   const server = createServer((request, response) => {
     void handleHttp(request, response).catch(() => {
@@ -487,23 +519,7 @@ export async function startGatewayServer(
       respond({ status: 'streaming' });
       const previous =
         activeTurns.get(session.storedId)?.done ?? Promise.resolve();
-      void previous.then(() => {
-        const scriptSource = state.nextTurnScript() ?? {};
-        const turn = new ActiveTurn({
-          journal,
-          script: scriptSource,
-          session,
-          sink,
-          state,
-          text,
-        });
-        activeTurns.set(session.storedId, turn);
-        void turn.done.finally(() => {
-          if (activeTurns.get(session.storedId) === turn) {
-            activeTurns.delete(session.storedId);
-          }
-        });
-      });
+      void previous.then(() => startTurn(session, sink, text));
       return;
     }
 
@@ -531,6 +547,14 @@ export async function startGatewayServer(
       const status = script.status ?? 'redirected';
       if (status === 'redirected' || status === 'queued') {
         state.appendMessage(session, 'user', text);
+      }
+      if (status === 'queued') {
+        // Like the real gateway's queued_prompt: the text drains as the
+        // session's next turn on the same transport once the current turn
+        // finishes.
+        const pending = queuedTexts.get(session.storedId) ?? [];
+        pending.push(text);
+        queuedTexts.set(session.storedId, pending);
       }
       respond({ status, text });
       return;

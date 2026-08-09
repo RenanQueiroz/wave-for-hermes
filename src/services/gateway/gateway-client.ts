@@ -739,6 +739,14 @@ export class GatewayClient {
     signal?: AbortSignal,
     options: {
       /**
+       * Consulted after each completed turn. The gateway drains
+       * server-queued follow-up text (a build-window `session.redirect`)
+       * as the next turn on this same socket; returning true keeps the
+       * stream open and translates that follow-on turn as a continuation
+       * instead of closing at the first `turn.completed`.
+       */
+      followOn?: () => boolean;
+      /**
        * Regenerate: truncate stored history before this visible user ordinal
        * and replay the text as the turn (the gateway validates the ordinal
        * and refuses stale ones with a clear error). Ordinal 0 explicitly
@@ -777,7 +785,7 @@ export class GatewayClient {
         }
       }
       const turnId = `gw-turn-${Date.now()}`;
-      const translator = new GatewayTurnTranslator({
+      let translator = new GatewayTurnTranslator({
         messageId: `${turnId}-assistant`,
         sessionId,
         turnId,
@@ -802,7 +810,25 @@ export class GatewayClient {
           events.fail();
         });
       try {
-        yield* this.pump(events, translator, signal);
+        let followOnIndex = 0;
+        for (;;) {
+          let terminal: WaveTurnEvent['type'] | undefined;
+          for await (const event of this.pump(events, translator, signal)) {
+            terminal = event.type;
+            yield event;
+          }
+          // Only a cleanly completed turn can carry server-drained follow-on
+          // work; errors and dropped streams end the generator as before.
+          if (terminal !== 'turn.completed' || !options.followOn?.()) break;
+          followOnIndex += 1;
+          const followOnTurnId = `${turnId}-followon-${followOnIndex}`;
+          translator = new GatewayTurnTranslator({
+            messageId: `${followOnTurnId}-assistant`,
+            sessionId,
+            turnId: followOnTurnId,
+          });
+          yield translator.start();
+        }
       } catch (error) {
         // A rejected submit fails the queue; report the submit's actual error
         // rather than the queue's generic dropped-stream one.

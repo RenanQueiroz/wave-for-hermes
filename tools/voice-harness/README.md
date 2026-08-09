@@ -135,6 +135,9 @@ prompt (`You said: …`), redirects answer `redirected`, speech streams PCM.
   user row, so timeline reconciliation matches the real gateway's
   `_record_inflight_correction` behavior.
 - `session.interrupt` cancels the scripted turn and emits `turn.interrupted`.
+- A scripted `queued` redirect drains its text as the session's next turn on
+  the same socket once the current turn finishes (journaled as `turn.drain`),
+  matching the real gateway's `queued_prompt` behavior.
 - The speak-stream socket answers `start` → binary Int16 LE PCM → `end`
   (or `fallback` in fallback mode) with single-use tickets, matching the
   `speak_stream_ws` contract in `gateway-speech-stream.ts`.

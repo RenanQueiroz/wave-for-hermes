@@ -206,3 +206,148 @@ test(
     }
   },
 );
+
+test(
+  'a second ask while Hermes works steers into the run end-to-end',
+  { skip },
+  async () => {
+    if (!harnessModule) throw new Error('harness unavailable');
+    const harness = await harnessModule.startVoiceHarness({
+      controlPort: 0,
+      gatewayPort: 0,
+    });
+    try {
+      const journalEntries = async () => {
+        const response = await fetch(`${harness.controlUrl}/control/journal`);
+        return (
+          (await response.json()) as {
+            entries: { detail: Record<string, unknown>; kind: string }[];
+          }
+        ).entries;
+      };
+      const scenario = await fetch(`${harness.controlUrl}/control/scenario`, {
+        body: JSON.stringify({
+          realtimeCalls: [
+            {
+              script: [
+                { transcript: 'Start the report', type: 'user_speech' },
+                {
+                  arguments: { instruction: 'Write the weekly report' },
+                  name: 'ask_hermes',
+                  type: 'function_call',
+                },
+                { delayMs: 250, type: 'delay' },
+                {
+                  arguments: { instruction: 'Also include the sales numbers' },
+                  name: 'ask_hermes',
+                  type: 'function_call',
+                },
+                { type: 'wait_function_result' },
+                // The model answers the steered ack out loud (this response
+                // also settles the ack's response.create), then the owner's
+                // combined answer arrives as the second function result.
+                {
+                  text: 'Adding the sales numbers to the report.',
+                  type: 'assistant_speech',
+                },
+                { type: 'wait_function_result' },
+                {
+                  text: 'Report done, sales included.',
+                  type: 'assistant_speech',
+                },
+              ],
+            },
+          ],
+          redirects: [{ status: 'redirected' }],
+          turns: [
+            {
+              frames: [
+                { type: 'message.start' },
+                { payload: { text: 'Drafting… ' }, type: 'message.delta' },
+                {
+                  delayMs: 900,
+                  payload: {
+                    status: 'complete',
+                    text: 'Weekly report finished with sales numbers.',
+                  },
+                  type: 'message.complete',
+                },
+              ],
+            },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      assert.equal(scenario.status, 200);
+
+      const tokens = await signInWithPassword(
+        {
+          baseUrl: harness.gatewayUrl,
+          password: 'secret',
+          provider: 'password',
+          username: 'tester',
+        },
+        globalThis.fetch,
+      );
+      const client = new GatewayClient({ baseUrl: harness.gatewayUrl, tokens });
+      const sessionId = `${PENDING_SESSION_PREFIX}steer-e2e`;
+      const overrides = createRealtimeHarnessOverrides(harness.gatewayUrl);
+      const backend = new OpenAiRealtimeBackend({
+        apiKey: 'sk-user-saved-key-that-must-never-cross-000000',
+        executeAskHermes: createGatewayAskHermesExecutor({ client, sessionId }),
+        executeCorrectHermes: createGatewayCorrectHermesExecutor({
+          client,
+          sessionId,
+        }),
+        fetchImpl: overrides.fetchImpl,
+        socketFactory: overrides.socketFactory,
+      });
+      const controller = new WaveRealtimeController({
+        backend,
+        transport: overrides.transport,
+      });
+      await controller.start(sessionId);
+
+      // The second ask was delivered into the running turn as a steer…
+      await until(
+        async () =>
+          (await journalEntries()).some(
+            (entry) =>
+              entry.kind === 'session.redirect' &&
+              entry.detail.text === 'Also include the sales numbers' &&
+              entry.detail.scripted === 'redirected',
+          ),
+        'the steer to reach the fake gateway as session.redirect',
+      );
+      // …acknowledged as steered, while the owner call carried the answer.
+      await until(async () => {
+        const outputs = (await journalEntries())
+          .filter(
+            (entry) =>
+              entry.kind === 'realtime.item.create' &&
+              entry.detail.itemType === 'function_call_output',
+          )
+          .map((entry) => String(entry.detail.output));
+        return (
+          outputs.some((output) => output.includes('"status":"steered"')) &&
+          outputs.some((output) =>
+            output.includes('Weekly report finished with sales numbers.'),
+          )
+        );
+      }, 'the steered ack and the combined owner answer');
+
+      // Exactly one gateway turn ran; the steer never became a second one.
+      const journal = await journalEntries();
+      const submits = journal.filter(
+        (entry) =>
+          entry.kind === 'rpc.call' && entry.detail.method === 'prompt.submit',
+      );
+      assert.equal(submits.length, 1, 'one owner turn, no queued second turn');
+
+      await controller.stop();
+    } finally {
+      await harness.close();
+    }
+  },
+);

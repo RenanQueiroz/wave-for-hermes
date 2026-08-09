@@ -34,6 +34,9 @@ export function createGatewayAskHermesExecutor({
         sessionId,
         instruction,
         signal,
+        // An accepted `queued` steer drains as the next turn on this same
+        // socket; keep streaming so its output joins the combined answer.
+        { followOn: () => lifecycle.consumeQueuedFollowOn?.() ?? false },
       )) {
         // streamTurn yields only after it has registered the live gateway RPC
         // lane. Before this point a correction must fail closed.

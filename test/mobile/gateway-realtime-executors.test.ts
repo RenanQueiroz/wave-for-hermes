@@ -33,6 +33,43 @@ test('ask execution advertises active only after the gateway stream is registere
   assert.deepEqual(lifecycle, [true, false]);
 });
 
+test('a consumed queued follow-on keeps streaming and joins the combined answer', async () => {
+  const client = {
+    async *streamTurn(
+      _sessionId: string,
+      _input: unknown,
+      _signal: AbortSignal | undefined,
+      options: { followOn?: () => boolean },
+    ) {
+      yield { type: 'turn.started' };
+      yield { content: 'First outcome.', type: 'assistant.completed' };
+      yield { type: 'turn.completed' };
+      // The real client consults followOn after each completed turn and
+      // keeps translating the drained follow-on turn on the same socket.
+      if (options.followOn?.()) {
+        yield { type: 'turn.started' };
+        yield { content: 'Follow-on outcome.', type: 'assistant.completed' };
+        yield { type: 'turn.completed' };
+      }
+    },
+  } as unknown as GatewayClient;
+  const execute = createGatewayAskHermesExecutor({
+    client,
+    sessionId: 'trusted-session',
+  });
+  let followOns = 1;
+  const result = await execute('do work', new AbortController().signal, {
+    activate: () => undefined,
+    consumeQueuedFollowOn: () => followOns-- > 0,
+    deactivate: () => undefined,
+  });
+  assert.deepEqual(result, {
+    answer: 'First outcome.\n\nFollow-on outcome.',
+    ok: true,
+    truncated: false,
+  });
+});
+
 test('sealed interim narration reaches lifecycle.progress; nothing else does', async () => {
   const progress: string[] = [];
   const client = {
