@@ -90,7 +90,7 @@ export const TurnActionRow = memo(function TurnActionRow({
             : formatTimeAgo(createdAt, now)}
         </Typography.Paragraph>
       </Pressable>
-      <Typography.Paragraph muted className="px-1.5 text-xs">
+      <Typography.Paragraph muted className="ps-3 pe-1">
         ·
       </Typography.Paragraph>
       {onBranch ? (
