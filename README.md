@@ -62,6 +62,9 @@ currently includes:
   gateway voice now streams clause-level speech through it while the turn is still generating,
   with buffered synthesis as the explicit fallback;
 - the repository-local mobile agent bridge in [`tools/mobile-agent`](./tools/mobile-agent/README.md);
+- a local fake Hermes gateway in [`tools/voice-harness`](./tools/voice-harness/README.md) for
+  mic-free automated voice testing (`npm run harness:gateway`), with scripted transcripts, turns,
+  redirect outcomes, and streamed speech behind a loopback control API;
 - repo-level Expo MCP configuration for Codex and Claude Code;
 - a typed gateway client (`src/services/gateway`) that signs in with the gateway's password
   provider, stores only rotating session tokens in platform secure storage, streams turns over the
@@ -351,7 +354,9 @@ npm run mobile:smoke:production
 ```
 
 For device discovery, screenshots, accessibility trees, gestures, logs, and the local mobile MCP
-server, see [`tools/mobile-agent/README.md`](./tools/mobile-agent/README.md).
+server, see [`tools/mobile-agent/README.md`](./tools/mobile-agent/README.md). For mic-free voice
+testing against a scripted local gateway, see
+[`tools/voice-harness/README.md`](./tools/voice-harness/README.md).
 
 ## UI system
 

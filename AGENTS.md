@@ -448,6 +448,15 @@ automation tooling is documented in `tools/mobile-agent/README.md`; keep its ser
 contracts in sync when modifying it. Native dependency or app-configuration changes also require
 `npx expo prebuild --clean`, affected native builds, and `npx expo-doctor`.
 
+Voice flows are exercised mic-free against the local fake gateway in `tools/voice-harness`
+(`npm run harness:gateway`; scripts transcripts, turns, redirect outcomes, and speech through
+its loopback control API — see its README). Build it once with `npm run harness:build` so
+`npm test` includes the real-`GatewayClient` integration proof in
+`test/mobile/voice-harness.integration.test.ts` (those tests skip when the harness is unbuilt).
+The harness is a scripted test double pinned to the deployed gateway protocol; when a Hermes
+upgrade changes wire shapes, update it in the same change as `src/services/gateway`. It never
+replaces the physical-device audio gates.
+
 ## Documentation is part of the change
 
 Keep documentation accurate in the same change as the code. Stale documentation is worse than no

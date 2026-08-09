@@ -1,0 +1,24 @@
+{
+  "name": "@wave/voice-harness",
+  "version": "0.1.0",
+  "description": "Local fake Hermes gateway for mic-free automated voice-mode testing",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run build && npm test",
+    "start": "npm run build --silent && node --enable-source-maps dist/cli.js start",
+    "test": "npm run build --silent && node --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "@types/ws": "8.18.1",
+    "typescript": "6.0.3"
+  }
+}

@@ -95,6 +95,8 @@
     "test": "npm run test:mobile && npm run test --workspace @wave/contracts",
     "test:mobile": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./test/mobile/register-expo-fetch-loader.mjs --test test/mobile/*.test.ts",
     "typecheck": "tsc --noEmit && npm run typecheck --workspace @wave/contracts",
+    "harness:build": "npm --prefix tools/voice-harness install && npm --prefix tools/voice-harness run build",
+    "harness:gateway": "npm --prefix tools/voice-harness run start",
     "verify:boundaries": "node scripts/verify-workspace-boundaries.mjs",
     "mobile:build": "npm --prefix tools/mobile-agent run build",
     "mobile:check": "npm --prefix tools/mobile-agent run check",
