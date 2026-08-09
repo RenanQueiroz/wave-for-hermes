@@ -493,7 +493,7 @@ export function ChatComposer({
             onConfirm={model.confirmSelection}>
             <Column
               alignment="start"
-              spacing={8}
+              spacing={0}
               modifiers={nativeFillWidthModifiers()}>
               <ComposerAccessoryContent
                 activePrompt={activePrompt}
@@ -701,8 +701,32 @@ function ComposerAccessoryContent({
   suggestions: WaveCommandCatalogEntry[];
   turnActionError?: string;
 }) {
+  const hasContent =
+    attachments.attachments.length > 0 ||
+    Boolean(correctionError) ||
+    Boolean(attachments.error) ||
+    (busy && attachments.attachments.length > 0) ||
+    (attachments.attachments.length > 0 && !draft.trim()) ||
+    (busy && activePrompt && Boolean(draft.trim())) ||
+    dictation.state.status === 'recording' ||
+    Boolean(dictation.state.error) ||
+    Boolean(modelNotice) ||
+    Boolean(turnActionError) ||
+    blocked ||
+    Boolean(busy && activityLabel && !activePrompt) ||
+    Boolean(slashResolution) ||
+    suggestions.length > 0 ||
+    Boolean(slashResult);
+
   return (
-    <>
+    // Keep one native child mounted ahead of the input. Inserting suggestion
+    // rows directly into the Host's child list can replace Compose's focused
+    // text-field subtree and dismiss the IME.
+    <Column
+      alignment="start"
+      spacing={8}
+      style={{ paddingBottom: hasContent ? 8 : 0 }}
+      modifiers={nativeFillWidthModifiers()}>
       {attachments.attachments.length > 0 ? (
         <Column
           alignment="start"
@@ -871,7 +895,7 @@ function ComposerAccessoryContent({
           onDismiss={onDismissSlashResult}
         />
       ) : null}
-    </>
+    </Column>
   );
 }
 
