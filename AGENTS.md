@@ -139,40 +139,32 @@ documentation before implementing UI.
   animation, so a disabled control never visually dims through classes or its own style — put
   the dim on a wrapper `View`. Icon typings can also declare more than the runtime entry exports
   (`RotateCwIcon`); a green typecheck does not prove an icon exists at runtime.
-- Settings-style screens use native `@expo/ui` controls inside a `Host`. Settings deliberately has
-  separate `settings-screen.ios.tsx` and `settings-screen.android.tsx` trees backed by
-  `settings-screen.shared.ts`: iOS uses a SwiftUI `Form`/`Section` tree, while Android uses a
-  continuous Material 3 `LazyColumn` with Compose `ListItem`, `Switch`, `OutlinedTextField`, and
-  exposed-dropdown controls. Keep product state, validation, and mutations shared; do not put
-  PanelUI, React Native visual wrappers, universal `FieldGroup`, or `RNHostView` inside either
-  native settings tree. Each platform-native scroll container owns its keyboard insets. Native
-  text fields use `useNativeState` (read `state.value` at submit; blur before programmatic writes —
-  expo/expo #47434).
-- Connect remains a universal `FieldGroup`/`FieldGroup.Section` form with `TextInput`,
-  `Picker appearance="menu"`, and section footers. A `FieldGroup` owns its own scrolling and
-  keyboard insets — never nest it in an RN ScrollView or add keyboard-avoidance wrappers around
-  it, and route theme colors needed by universal native props through `useCSSVariable`
-  (`useDestructiveColor`). Search and transcript surfaces stay PanelUI/RN. The chat composer is the
-  other deliberate direct-Expo-UI surface: all visible composer content uses
+- Settings and Connect use platform-specific native `@expo/ui` trees inside a `Host`, backed by
+  shared behavior modules. Settings has `settings-screen.ios.tsx`,
+  `settings-screen.android.tsx`, and `settings-screen.shared.ts`: iOS uses a SwiftUI
+  `Form`/`Section` tree, while Android uses a continuous Material 3 `LazyColumn` with Compose
+  `ListItem`, `Switch`, `OutlinedTextField`, and exposed-dropdown controls. Connect follows the
+  same split through `connection-screen.ios.tsx`, `connection-screen.android.tsx`, and
+  `connection-screen.shared.ts`; its heading, explanatory copy, fields, errors, and actions all
+  belong to the native tree, and the Expo Router route keeps its redundant page header hidden.
+  Keep product state, validation, and mutations shared; do not put PanelUI, React Native visual
+  wrappers, universal `FieldGroup`, or `RNHostView` inside either native screen. Each
+  platform-native scroll container owns its keyboard insets. Native text fields use
+  `useNativeState` and read `state.value` at submit; blur before programmatic writes in a focused
+  iOS field (expo/expo #47434).
+- Search and transcript surfaces stay PanelUI/RN. The chat composer is the other deliberate
+  direct-Expo-UI surface: all visible composer content uses
   one platform-native `Host`, native observable text/selection state, universal native
   `Icon.select(...)` mappings, and universal `BottomSheet` presentations. The React Native
   `ChatComposerDock` is non-visual and is the only keyboard-movement owner; the native hosts ignore
   keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts, or a
-  second keyboard-avoidance path inside the composer. Two Android constraints validated on the
-  emulator and still applicable to Connect: `FieldGroup` recognizes
-  only literal `<FieldGroup.Section>` elements (a custom component wrapping a section becomes
-  one cramped row — keep section JSX in the screen, logic in hooks), and section rows already
-  get a Material `ListItem` surface (a universal `ListItem` child draws a second box, and bare
-  text outside a row defaults to black). Rows and footers therefore go through the
-  platform-split `@/components/form-row` (`FormRow`, `FormPickerRow`, `FormFooterText`);
-  Android renders the Material exposed dropdown full-width with the section title as label.
+  second keyboard-avoidance path inside the composer.
 - Keyboard avoidance for the remaining PanelUI/RN surfaces (validated on device): a lone
   field — optionally grouped with its submit button — lifts through
-  `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus. Android keyboards also ignore
-  `autoCorrect={false}` on plain-text RN input classes — use
-  `keyboardType="url"`/`"visible-password"` for values that must not be corrected. In `@expo/ui`
-  `TextInput`, `visible-password` maps to the plain Compose text keyboard (verified in source), so
-  the native connect form relies on `autoCorrect={false}` alone on Android.
+  `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus. The native Connect fields use
+  Compose `OutlinedTextField` keyboard classes (`uri`, `ascii`, and `password`) with explicit IME
+  actions on Android, and SwiftUI keyboard/content-type modifiers on iOS; keep focus progression
+  and keyboard submission native rather than adding a React Native avoidance layer.
 - Keep Expo UI modifier ownership explicit. On Android, modifiers supplied to the universal
   `Switch` size the switch control itself rather than its label row, so do not apply
   `fillMaxWidth()` there. On iOS, a SwiftUI container accessibility identifier is inherited by its

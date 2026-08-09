@@ -67,7 +67,7 @@ function ThemedApp() {
       <WaveConnectionProvider>
         <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="connect" options={{ title: 'Connect Wave' }} />
+          <Stack.Screen name="connect" options={{ headerShown: false }} />
           <Stack.Screen name="(app)" options={{ headerShown: false }} />
         </Stack>
         <AnimatedSplashOverlay />
