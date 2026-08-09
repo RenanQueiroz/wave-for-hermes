@@ -1,24 +1,25 @@
-import { Button, Text } from '@expo/ui/swift-ui';
+import { Button } from '@expo/ui/swift-ui';
 
 import {
   accessibilityIdentifier,
   accessibilityLabel,
-  background,
+  buttonBorderShape,
   buttonStyle,
   contentShape,
+  controlSize,
   disabled,
   font,
   foregroundStyle,
   frame,
   lineLimit,
   opacity,
-  padding,
   shapes,
+  tint,
 } from '@expo/ui/swift-ui/modifiers';
 
 import type { NativeModelPillProps } from '@/features/chat/composer/model/pill.types';
 
-/** Exact-height SwiftUI capsule; the universal text button adds outer padding. */
+/** Native SwiftUI capsule with the same 40-point frame as the icon buttons. */
 export function NativeModelPill({
   accessibilityLabel: label,
   backgroundColor,
@@ -30,27 +31,24 @@ export function NativeModelPill({
 }: NativeModelPillProps) {
   return (
     <Button
+      label={value}
       testID={testID}
       onPress={inactive ? undefined : onPress}
       modifiers={[
-        buttonStyle('plain'),
-        padding({ bottom: 8, leading: 12, top: 8, trailing: 12 }),
-        background(backgroundColor, shapes.capsule()),
+        buttonStyle('borderedProminent'),
+        buttonBorderShape('capsule'),
+        controlSize('regular'),
         frame({ height: 40 }),
         contentShape(shapes.capsule()),
+        tint(backgroundColor),
+        lineLimit(1),
+        font({ size: 13, weight: 'medium' }),
+        foregroundStyle(foregroundColor),
         accessibilityLabel(label),
         accessibilityIdentifier(testID),
         disabled(inactive),
         opacity(inactive ? 0.45 : 1),
-      ]}>
-      <Text
-        modifiers={[
-          lineLimit(1),
-          font({ size: 13, weight: 'medium' }),
-          foregroundStyle(foregroundColor),
-        ]}>
-        {value}
-      </Text>
-    </Button>
+      ]}
+    />
   );
 }

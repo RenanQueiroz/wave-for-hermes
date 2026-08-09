@@ -1,10 +1,13 @@
-import { Button, Row, Text } from '@expo/ui';
+import { FilledTonalButton, Shape, Text } from '@expo/ui/jetpack-compose';
+import {
+  height,
+  testID as testIDModifier,
+} from '@expo/ui/jetpack-compose/modifiers';
 
-import { nativeAccessibilityModifiers } from '@/features/chat/composer/modifiers';
 import type { NativeModelPillProps } from '@/features/chat/composer/model/pill.types';
 
 export function NativeModelPill({
-  accessibilityLabel,
+  accessibilityLabel: _accessibilityLabel,
   backgroundColor,
   disabled,
   foregroundColor,
@@ -13,29 +16,23 @@ export function NativeModelPill({
   testID,
 }: NativeModelPillProps) {
   return (
-    <Button
-      disabled={disabled}
-      testID={testID}
-      variant="text"
-      style={{
-        backgroundColor,
-        borderRadius: 20,
-        height: 40,
-        paddingHorizontal: 12,
+    <FilledTonalButton
+      colors={{
+        containerColor: backgroundColor,
+        contentColor: foregroundColor,
       }}
-      modifiers={nativeAccessibilityModifiers(accessibilityLabel, testID)}
-      onPress={onPress}>
-      <Row alignment="center">
-        <Text
-          numberOfLines={1}
-          textStyle={{
-            color: foregroundColor,
-            fontSize: 13,
-            fontWeight: '500',
-          }}>
-          {label}
-        </Text>
-      </Row>
-    </Button>
+      contentPadding={{ bottom: 0, end: 12, start: 12, top: 0 }}
+      enabled={!disabled}
+      shape={Shape.Pill({})}
+      modifiers={[height(40), testIDModifier(testID)]}
+      onClick={disabled ? undefined : onPress}>
+      <Text
+        color={foregroundColor}
+        maxLines={1}
+        overflow="ellipsis"
+        style={{ fontSize: 13, fontWeight: '500' }}>
+        {label}
+      </Text>
+    </FilledTonalButton>
   );
 }
