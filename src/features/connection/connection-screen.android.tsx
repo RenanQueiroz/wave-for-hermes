@@ -3,8 +3,11 @@ import { Host } from '@expo/ui';
 import {
   Button,
   Column,
+  Icon,
   LazyColumn,
   OutlinedTextField,
+  Row,
+  Spacer,
   Surface,
   Text,
   TextButton,
@@ -141,11 +144,9 @@ export function ConnectionScreen() {
             </Column>
           ) : (
             <Column
-              verticalArrangement={{ spacedBy: 12 }}
+              verticalArrangement={{ spacedBy: 8 }}
               modifiers={[fillMaxWidth(), padding(24, 8, 24, 0)]}>
-              <Text
-                color={colors.primary}
-                style={{ typography: 'titleMedium' }}>
+              <Text color={colors.primary} style={{ typography: 'titleSmall' }}>
                 Sign in to Hermes
               </Text>
               {connection.connectionError ? (
@@ -268,7 +269,7 @@ export function ConnectionScreen() {
                   </FieldError>
                 ) : null}
               </OutlinedTextField>
-
+              <Spacer modifiers={[fillMaxWidth(), padding(0, 0, 8, 0)]} />
               <Button
                 enabled={!connection.signingIn}
                 modifiers={[
@@ -278,6 +279,17 @@ export function ConnectionScreen() {
                 onClick={connection.submitSignIn}>
                 <Text>{connection.signingIn ? 'Signing in…' : 'Sign in'}</Text>
               </Button>
+              <Row
+                horizontalArrangement="start"
+                modifiers={[fillMaxWidth(), padding(0, 16, 0, 0)]}>
+                <Icon
+                  contentDescription="Connection information"
+                  size={20}
+                  source={require('@expo/material-symbols/info.xml')}
+                  tint={colors.onSurfaceVariant}
+                  modifiers={[testIDModifier('connection-info-icon')]}
+                />
+              </Row>
               <Text
                 color={colors.onSurfaceVariant}
                 style={{ typography: 'bodySmall' }}>
