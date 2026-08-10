@@ -9,6 +9,7 @@ import {
   Icon,
   LazyColumn,
   OutlinedTextField,
+  Row,
   Surface,
   Text,
   useMaterialColors,
@@ -61,7 +62,7 @@ function SectionHeader({
       style={{ typography: 'titleSmall' }}
       modifiers={[
         fillMaxWidth(),
-        padding(16, 24, 16, 8),
+        padding(24, 24, 24, 8),
         testIDModifier(testID),
       ]}>
       {children}
@@ -72,12 +73,25 @@ function SectionHeader({
 function SectionFooter({ children }: { children: string }) {
   const colors = useMaterialColors();
   return (
-    <Text
-      color={colors.onSurfaceVariant}
-      style={{ typography: 'bodyMedium' }}
-      modifiers={[fillMaxWidth(), padding(16, 8, 16, 16)]}>
-      {children}
-    </Text>
+    <Column
+      verticalArrangement={{ spacedBy: 8 }}
+      modifiers={[fillMaxWidth(), padding(24, 16, 24, 16)]}>
+      <Row horizontalArrangement="start" modifiers={[fillMaxWidth()]}>
+        <Icon
+          contentDescription="Connection information"
+          size={20}
+          source={require('@expo/material-symbols/info.xml')}
+          tint={colors.onSurfaceVariant}
+          modifiers={[testIDModifier('connection-info-icon')]}
+        />
+      </Row>
+      <Text
+        color={colors.onSurfaceVariant}
+        style={{ typography: 'bodyMedium' }}
+        modifiers={[fillMaxWidth(), padding(4, 0, 0, 0)]}>
+        {children}
+      </Text>
+    </Column>
   );
 }
 

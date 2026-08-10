@@ -1,4 +1,5 @@
 import {
+  Box,
   Column,
   ListItem,
   RadioButton,
@@ -38,7 +39,15 @@ interface SettingsListItemPalette {
   secondaryContent: string;
 }
 
+export interface SettingsListItemContentInsets {
+  bottom?: number;
+  end?: number;
+  start?: number;
+  top?: number;
+}
+
 interface SettingsListItemBaseProps {
+  contentInsets?: SettingsListItemContentInsets;
   destructive?: boolean;
   description?: string;
   enabled?: boolean;
@@ -82,7 +91,7 @@ interface SettingsListGroupProps {
 
 // Change these PanelUI semantic tokens to restyle every Android settings row.
 const SETTINGS_LIST_ITEM_COLOR_TOKENS = {
-  container: '--color-surface',
+  container: '--color-surface-tertiary',
   content: '--color-foreground',
   destructiveContent: '--color-destructive-foreground',
   secondaryContent: '--color-muted-foreground',
@@ -101,8 +110,46 @@ const LIST_ITEM_INNER_CORNER_RADIUS = 4;
 const LIST_ITEM_OUTER_CORNER_RADIUS = 16;
 const LIST_ITEM_SEGMENT_GAP = 2;
 
+// Added to Compose ListItem's built-in insets. Override any side per row with
+// contentInsets; change these defaults to adjust every Android settings item.
+const DEFAULT_SETTINGS_LIST_ITEM_CONTENT_INSETS = {
+  bottom: 8,
+  end: 4,
+  start: 4,
+  top: 8,
+} satisfies Required<SettingsListItemContentInsets>;
+
 function resolveColor(value: string | number | undefined, fallback: string) {
   return typeof value === 'string' ? value : fallback;
+}
+
+function resolveContentInset(value: number | undefined, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, value)
+    : fallback;
+}
+
+function resolveContentInsets(
+  contentInsets: SettingsListItemContentInsets | undefined,
+): Required<SettingsListItemContentInsets> {
+  return {
+    bottom: resolveContentInset(
+      contentInsets?.bottom,
+      DEFAULT_SETTINGS_LIST_ITEM_CONTENT_INSETS.bottom,
+    ),
+    end: resolveContentInset(
+      contentInsets?.end,
+      DEFAULT_SETTINGS_LIST_ITEM_CONTENT_INSETS.end,
+    ),
+    start: resolveContentInset(
+      contentInsets?.start,
+      DEFAULT_SETTINGS_LIST_ITEM_CONTENT_INSETS.start,
+    ),
+    top: resolveContentInset(
+      contentInsets?.top,
+      DEFAULT_SETTINGS_LIST_ITEM_CONTENT_INSETS.top,
+    ),
+  };
 }
 
 function useSettingsListItemPalette(
@@ -189,7 +236,13 @@ export function SettingsListGroup({
 
 export function SettingsListItem(props: SettingsListItemProps) {
   const enabled = props.enabled ?? true;
+  const contentInsets = resolveContentInsets(props.contentInsets);
   const palette = useSettingsListItemPalette(Boolean(props.destructive));
+  const hasLeadingContent = props.leadingContent != null;
+  const hasTrailingContent =
+    props.type === 'switch' ||
+    props.type === 'radio' ||
+    props.trailingContent != null;
   const modifiers = [
     fillMaxWidth(),
     clip(getSettingsListItemShape(props.position ?? 'only')),
@@ -215,7 +268,16 @@ export function SettingsListItem(props: SettingsListItemProps) {
   return (
     <ListItem colors={palette.listItem} modifiers={modifiers}>
       <ListItem.HeadlineContent>
-        <Column verticalArrangement={{ spacedBy: 4 }}>
+        <Column
+          verticalArrangement={{ spacedBy: 4 }}
+          modifiers={[
+            padding(
+              hasLeadingContent ? 0 : contentInsets.start,
+              contentInsets.top,
+              hasTrailingContent ? 0 : contentInsets.end,
+              contentInsets.bottom,
+            ),
+          ]}>
           {props.overline ? (
             <Text
               color={palette.secondaryContent}
@@ -235,31 +297,39 @@ export function SettingsListItem(props: SettingsListItemProps) {
           ) : null}
         </Column>
       </ListItem.HeadlineContent>
-      {props.leadingContent ? (
+      {hasLeadingContent ? (
         <ListItem.LeadingContent>
-          {props.leadingContent}
+          <Box modifiers={[padding(contentInsets.start, 0, 0, 0)]}>
+            {props.leadingContent}
+          </Box>
         </ListItem.LeadingContent>
       ) : null}
       {props.type === 'switch' ? (
         <ListItem.TrailingContent>
-          <Switch
-            enabled={enabled}
-            onCheckedChange={props.onValueChange}
-            value={props.value}
-            modifiers={props.testID ? [testIDModifier(props.testID)] : []}
-          />
+          <Box modifiers={[padding(0, 0, contentInsets.end, 0)]}>
+            <Switch
+              enabled={enabled}
+              onCheckedChange={props.onValueChange}
+              value={props.value}
+              modifiers={props.testID ? [testIDModifier(props.testID)] : []}
+            />
+          </Box>
         </ListItem.TrailingContent>
       ) : props.type === 'radio' ? (
         <ListItem.TrailingContent>
-          <RadioButton
-            selected={props.selected}
-            onClick={enabled ? props.onSelect : undefined}
-            modifiers={props.testID ? [testIDModifier(props.testID)] : []}
-          />
+          <Box modifiers={[padding(0, 0, contentInsets.end, 0)]}>
+            <RadioButton
+              selected={props.selected}
+              onClick={enabled ? props.onSelect : undefined}
+              modifiers={props.testID ? [testIDModifier(props.testID)] : []}
+            />
+          </Box>
         </ListItem.TrailingContent>
       ) : props.trailingContent ? (
         <ListItem.TrailingContent>
-          {props.trailingContent}
+          <Box modifiers={[padding(0, 0, contentInsets.end, 0)]}>
+            {props.trailingContent}
+          </Box>
         </ListItem.TrailingContent>
       ) : null}
     </ListItem>

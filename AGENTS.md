@@ -155,9 +155,11 @@ documentation before implementing UI.
   colors for static, pressable, switch, and radio variants, while Compose still owns their native
   controls and interaction semantics. Keep its title, overline, and description in one explicitly
   styled headline stack so wrapped copy retains the same typography and vertical rhythm instead of
-  switching to Compose's roomier three-line list template. For switch rows, wire the same setter to
-  the row's `toggleable` modifier and the nested Switch's `onCheckedChange`, so both native hit
-  targets toggle the setting.
+  switching to Compose's roomier three-line list template. Its centralized default content insets
+  are additional to Compose's built-in padding; per-row overrides must distribute the outer start
+  and end inset to leading/trailing accessories when present rather than padding only the headline.
+  For switch rows, wire the same setter to the row's `toggleable` modifier and the nested Switch's
+  `onCheckedChange`, so both native hit targets toggle the setting.
   Keep product state, validation, and mutations shared; do not put PanelUI, React Native visual
   wrappers, universal `FieldGroup`, or `RNHostView` inside either native screen. Each
   platform-native scroll container owns its keyboard insets. Native text fields use
