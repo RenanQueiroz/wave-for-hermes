@@ -8,28 +8,29 @@ import {
   ExposedDropdownMenuBox,
   Icon,
   LazyColumn,
-  ListItem,
   OutlinedTextField,
   Surface,
-  Switch,
   Text,
   useMaterialColors,
   useNativeState,
 } from '@expo/ui/jetpack-compose';
 import {
-  clickable,
   fillMaxSize,
   fillMaxWidth,
   imePadding,
   menuAnchor,
   padding,
   testID as testIDModifier,
-  toggleable,
 } from '@expo/ui/jetpack-compose/modifiers';
 import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { useCSSVariable } from 'uniwind';
 
 import type { OpenAiKeyFieldRef } from '@/features/realtime/use-openai-key-settings';
+import {
+  SettingsListGroup,
+  SettingsListItem,
+} from '@/features/settings/settings-list-item';
 import {
   SETTINGS_APPEARANCE_OPTIONS,
   SETTINGS_COPY,
@@ -43,6 +44,8 @@ interface SettingsOption {
   testID: string;
   value: string;
 }
+
+type NativeColor = NonNullable<Parameters<typeof Surface>[0]['color']>;
 
 function SectionHeader({
   children,
@@ -97,95 +100,6 @@ function SettingsError({
       ]}>
       {children}
     </Text>
-  );
-}
-
-function SettingsSwitchRow({
-  description,
-  enabled,
-  label,
-  onChange,
-  testID,
-  value,
-}: {
-  description: string;
-  enabled: boolean;
-  label: string;
-  onChange: (value: boolean) => void;
-  testID: string;
-  value: boolean;
-}) {
-  const colors = useMaterialColors();
-  return (
-    <ListItem
-      colors={{
-        containerColor: colors.background,
-        contentColor: colors.onBackground,
-        supportingContentColor: colors.onSurfaceVariant,
-        trailingContentColor: colors.onSurfaceVariant,
-      }}
-      modifiers={[
-        fillMaxWidth(),
-        ...(enabled
-          ? [toggleable(value, () => onChange(!value), { role: 'switch' })]
-          : []),
-      ]}>
-      <ListItem.HeadlineContent>
-        <Text>{label}</Text>
-      </ListItem.HeadlineContent>
-      <ListItem.SupportingContent>
-        <Text>{description}</Text>
-      </ListItem.SupportingContent>
-      <ListItem.TrailingContent>
-        <Switch
-          enabled={enabled}
-          value={value}
-          modifiers={[testIDModifier(testID)]}
-        />
-      </ListItem.TrailingContent>
-    </ListItem>
-  );
-}
-
-function SettingsActionRow({
-  destructive = false,
-  description,
-  enabled = true,
-  label,
-  onPress,
-  testID,
-}: {
-  destructive?: boolean;
-  description?: string;
-  enabled?: boolean;
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  const colors = useMaterialColors();
-  return (
-    <ListItem
-      colors={{
-        containerColor: colors.background,
-        contentColor: destructive ? colors.error : colors.onBackground,
-        supportingContentColor: colors.onSurfaceVariant,
-      }}
-      modifiers={[
-        fillMaxWidth(),
-        ...(enabled ? [clickable(onPress)] : []),
-        testIDModifier(testID),
-      ]}>
-      <ListItem.HeadlineContent>
-        <Text color={destructive ? colors.error : colors.onBackground}>
-          {label}
-        </Text>
-      </ListItem.HeadlineContent>
-      {description ? (
-        <ListItem.SupportingContent>
-          <Text>{description}</Text>
-        </ListItem.SupportingContent>
-      ) : null}
-    </ListItem>
   );
 }
 
@@ -279,6 +193,7 @@ function SettingsDropdown({
 export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
   const settings = useSettingsScreen(keyDraftRef);
+  const background = useCSSVariable('--color-background');
   const colors = useMaterialColors({
     colorScheme:
       settings.appearance === 'system' ? undefined : settings.appearance,
@@ -290,30 +205,24 @@ export function SettingsScreen() {
 
   const forcedColorScheme =
     settings.appearance === 'system' ? undefined : settings.appearance;
+  const pageBackground: NativeColor =
+    typeof background === 'string' ? background : colors.background;
 
   return (
     <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
-      <Surface color={colors.background} modifiers={[fillMaxSize()]}>
+      <Surface color={pageBackground} modifiers={[fillMaxSize()]}>
         <LazyColumn
           contentPadding={{ bottom: 32 }}
           modifiers={[fillMaxSize(), imePadding()]}>
           <SectionHeader testID="gateway-connection-card">
             Connection
           </SectionHeader>
-          <ListItem
-            colors={{
-              containerColor: colors.background,
-              contentColor: colors.onBackground,
-              supportingContentColor: colors.onSurfaceVariant,
-            }}
-            modifiers={[fillMaxWidth()]}>
-            <ListItem.HeadlineContent>
-              <Text>{settings.connected.label}</Text>
-            </ListItem.HeadlineContent>
-            <ListItem.SupportingContent>
-              <Text>{settings.connected.baseUrl}</Text>
-            </ListItem.SupportingContent>
-          </ListItem>
+          <SettingsListGroup>
+            <SettingsListItem
+              description={settings.connected.baseUrl}
+              label={settings.connected.label}
+            />
+          </SettingsListGroup>
           <SectionFooter>{SETTINGS_COPY.connectionFooter}</SectionFooter>
 
           <SectionHeader testID="openai-key-card">
@@ -326,42 +235,37 @@ export function SettingsScreen() {
                   {settings.keyError}
                 </SettingsError>
               ) : null}
-              <ListItem
-                colors={{
-                  containerColor: colors.background,
-                  contentColor: colors.onBackground,
-                }}
-                modifiers={[
-                  fillMaxWidth(),
-                  testIDModifier('openai-key-present'),
-                ]}>
-                <ListItem.HeadlineContent>
-                  <Text>An OpenAI key is saved on this device.</Text>
-                </ListItem.HeadlineContent>
-              </ListItem>
-              <SettingsSwitchRow
-                description={SETTINGS_COPY.realtimePreferenceDescription}
-                enabled={!settings.realtimeEnabledPending}
-                label="Prefer live voice"
-                testID="realtime-enabled-switch"
-                value={settings.realtimeEnabled}
-                onChange={settings.setRealtimeEnabled}
-              />
-              <SettingsSwitchRow
-                description={SETTINGS_COPY.captionsDescription}
-                enabled={settings.captionsHydrated}
-                label="Live captions"
-                testID="realtime-captions-switch"
-                value={settings.captions}
-                onChange={settings.setCaptions}
-              />
-              <SettingsActionRow
-                destructive
-                enabled={!settings.keyBusy}
-                label={settings.removeKeyPending ? 'Removing…' : 'Remove key'}
-                testID="openai-key-remove"
-                onPress={settings.removeKey}
-              />
+              <SettingsListGroup>
+                <SettingsListItem
+                  label="An OpenAI key is saved on this device."
+                  testID="openai-key-present"
+                />
+                <SettingsListItem
+                  description={SETTINGS_COPY.realtimePreferenceDescription}
+                  enabled={!settings.realtimeEnabledPending}
+                  label="Prefer live voice"
+                  type="switch"
+                  testID="realtime-enabled-switch"
+                  value={settings.realtimeEnabled}
+                  onValueChange={settings.setRealtimeEnabled}
+                />
+                <SettingsListItem
+                  description={SETTINGS_COPY.captionsDescription}
+                  enabled={settings.captionsHydrated}
+                  label="Live captions"
+                  type="switch"
+                  testID="realtime-captions-switch"
+                  value={settings.captions}
+                  onValueChange={settings.setCaptions}
+                />
+                <SettingsListItem
+                  destructive
+                  enabled={!settings.keyBusy}
+                  label={settings.removeKeyPending ? 'Removing…' : 'Remove key'}
+                  testID="openai-key-remove"
+                  onPress={settings.removeKey}
+                />
+              </SettingsListGroup>
             </>
           ) : (
             <Column
@@ -476,20 +380,22 @@ export function SettingsScreen() {
           <SectionFooter>{SETTINGS_COPY.themeFooter}</SectionFooter>
 
           <SectionHeader testID="legal-card">About</SectionHeader>
-          <SettingsActionRow
-            description={SETTINGS_COPY.licensesDescription}
-            label="Open-source licenses"
-            testID="open-source-licenses"
-            onPress={settings.openLicenses}
-          />
-          {settings.showDevelopmentTools ? (
-            <SettingsActionRow
-              description={SETTINGS_COPY.developmentToolsDescription}
-              label="Open development tools"
-              testID="open-development-tools"
-              onPress={settings.openDevelopmentTools}
+          <SettingsListGroup>
+            <SettingsListItem
+              description={SETTINGS_COPY.licensesDescription}
+              label="Open-source licenses"
+              testID="open-source-licenses"
+              onPress={settings.openLicenses}
             />
-          ) : null}
+            {settings.showDevelopmentTools ? (
+              <SettingsListItem
+                description={SETTINGS_COPY.developmentToolsDescription}
+                label="Open development tools"
+                testID="open-development-tools"
+                onPress={settings.openDevelopmentTools}
+              />
+            ) : null}
+          </SettingsListGroup>
           <SectionFooter>{SETTINGS_COPY.aboutFooter}</SectionFooter>
         </LazyColumn>
       </Surface>

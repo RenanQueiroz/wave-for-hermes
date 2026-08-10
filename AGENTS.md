@@ -147,6 +147,17 @@ documentation before implementing UI.
   same split through `connection-screen.ios.tsx`, `connection-screen.android.tsx`, and
   `connection-screen.shared.ts`; its heading, explanatory copy, fields, errors, and actions all
   belong to the native tree, and the Expo Router route keeps its redundant page header hidden.
+  Android Settings uses a shadowless, start-aligned Material app bar; resolve the same semantic
+  background token into its Compose page surface so the app bar and page stay continuous. Keep
+  grouped `ListItem` rows inset, separated, rounded at the section edges, and on their shared
+  PanelUI-backed surface color instead of the page background. Android settings
+  rows go through `settings-list-item.android.tsx`: its one PanelUI semantic-token map owns row
+  colors for static, pressable, switch, and radio variants, while Compose still owns their native
+  controls and interaction semantics. Keep its title, overline, and description in one explicitly
+  styled headline stack so wrapped copy retains the same typography and vertical rhythm instead of
+  switching to Compose's roomier three-line list template. For switch rows, wire the same setter to
+  the row's `toggleable` modifier and the nested Switch's `onCheckedChange`, so both native hit
+  targets toggle the setting.
   Keep product state, validation, and mutations shared; do not put PanelUI, React Native visual
   wrappers, universal `FieldGroup`, or `RNHostView` inside either native screen. Each
   platform-native scroll container owns its keyboard insets. Native text fields use

@@ -1,6 +1,7 @@
 import { Stack, useNavigation } from 'expo-router';
 import { DrawerActions } from 'expo-router/react-navigation';
 import { useCallback } from 'react';
+import { Platform } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
 import { MenuButton } from '@/components/navigation/menu-button';
@@ -31,7 +32,8 @@ export default function AppStackLayout() {
             : undefined,
         headerTintColor:
           typeof foreground === 'string' ? foreground : undefined,
-        headerTitleAlign: 'center',
+        headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
+        headerShadowVisible: Platform.OS === 'android' ? false : undefined,
       }}>
       <Stack.Screen name="new" options={{ headerShown: false }} />
       <Stack.Screen
@@ -47,8 +49,18 @@ export default function AppStackLayout() {
         options={{ headerShown: false, presentation: 'modal' }}
       />
       <Stack.Screen name="search" options={{ title: 'Search conversations' }} />
-      <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-      <Stack.Screen name="development" options={{ title: 'Development' }} />
+      <Stack.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+        }}
+      />
+      <Stack.Screen
+        name="development"
+        options={{
+          title: 'Development',
+        }}
+      />
     </Stack>
   );
 }
