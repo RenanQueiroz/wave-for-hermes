@@ -15,6 +15,7 @@ import {
   accessibilityIdentifier,
   autocorrectionDisabled,
   buttonStyle,
+  controlSize,
   disabled,
   frame,
   font,
@@ -23,6 +24,7 @@ import {
   listRowBackground,
   listRowInsets,
   listRowSeparator,
+  listSectionSpacing,
   onSubmit,
   submitLabel,
   textContentType,
@@ -69,7 +71,7 @@ export function ConnectionScreen() {
 
   return (
     <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
-      <Form>
+      <Form modifiers={[listSectionSpacing('compact')]}>
         <VStack
           alignment="leading"
           spacing={6}
@@ -129,113 +131,137 @@ export function ConnectionScreen() {
             />
           </Section>
         ) : (
-          <Section
-            title="Sign in to Hermes"
-            footer={<Text>{CONNECTION_COPY.signInFooter}</Text>}>
-            {connection.connectionError ? (
-              <ErrorText testID="connection-sign-in-error">
-                {connection.connectionError}
-              </ErrorText>
-            ) : null}
+          <>
+            <Section title="Sign in to Hermes">
+              {connection.connectionError ? (
+                <ErrorText testID="connection-sign-in-error">
+                  {connection.connectionError}
+                </ErrorText>
+              ) : null}
 
-            <TextField
-              placeholder="Gateway URL (https://…)"
-              text={
-                connection.baseUrl as Parameters<typeof TextField>[0]['text']
-              }
-              modifiers={[
-                disabled(connection.signingIn),
-                autocorrectionDisabled(),
-                textInputAutocapitalization('never'),
-                keyboardType('url'),
-                textContentType('URL'),
-                submitLabel('next'),
-                // Expo UI stores this callback as a native submit event; it
-                // does not invoke the ref-reading handler during render.
-                // eslint-disable-next-line react-hooks/refs
-                onSubmit(focusUsername),
-                accessibilityIdentifier('gateway-url-input'),
-              ]}
-              onTextChange={
-                connection.fieldErrors.baseUrl
-                  ? () => connection.clearFieldError('baseUrl')
-                  : undefined
-              }
-            />
-            {connection.fieldErrors.baseUrl ? (
-              <ErrorText testID="gateway-url-error">
-                {connection.fieldErrors.baseUrl}
-              </ErrorText>
-            ) : null}
+              <TextField
+                placeholder="Gateway URL (https://…)"
+                text={
+                  connection.baseUrl as Parameters<typeof TextField>[0]['text']
+                }
+                modifiers={[
+                  disabled(connection.signingIn),
+                  autocorrectionDisabled(),
+                  textInputAutocapitalization('never'),
+                  keyboardType('url'),
+                  textContentType('URL'),
+                  submitLabel('next'),
+                  // Expo UI stores this callback as a native submit event; it
+                  // does not invoke the ref-reading handler during render.
+                  // eslint-disable-next-line react-hooks/refs
+                  onSubmit(focusUsername),
+                  accessibilityIdentifier('gateway-url-input'),
+                ]}
+                onTextChange={
+                  connection.fieldErrors.baseUrl
+                    ? () => connection.clearFieldError('baseUrl')
+                    : undefined
+                }
+              />
+              {connection.fieldErrors.baseUrl ? (
+                <ErrorText testID="gateway-url-error">
+                  {connection.fieldErrors.baseUrl}
+                </ErrorText>
+              ) : null}
 
-            <TextField
-              ref={usernameRef}
-              placeholder="Username"
-              text={
-                connection.username as Parameters<typeof TextField>[0]['text']
-              }
-              modifiers={[
-                disabled(connection.signingIn),
-                autocorrectionDisabled(),
-                textInputAutocapitalization('never'),
-                keyboardType('ascii-capable'),
-                textContentType('username'),
-                submitLabel('next'),
-                // Expo UI stores this callback as a native submit event; it
-                // does not invoke the ref-reading handler during render.
-                // eslint-disable-next-line react-hooks/refs
-                onSubmit(focusPassword),
-                accessibilityIdentifier('gateway-username-input'),
-              ]}
-              onTextChange={
-                connection.fieldErrors.username
-                  ? () => connection.clearFieldError('username')
-                  : undefined
-              }
-            />
-            {connection.fieldErrors.username ? (
-              <ErrorText testID="gateway-username-error">
-                {connection.fieldErrors.username}
-              </ErrorText>
-            ) : null}
+              <TextField
+                ref={usernameRef}
+                placeholder="Username"
+                text={
+                  connection.username as Parameters<typeof TextField>[0]['text']
+                }
+                modifiers={[
+                  disabled(connection.signingIn),
+                  autocorrectionDisabled(),
+                  textInputAutocapitalization('never'),
+                  keyboardType('ascii-capable'),
+                  textContentType('username'),
+                  submitLabel('next'),
+                  // Expo UI stores this callback as a native submit event; it
+                  // does not invoke the ref-reading handler during render.
+                  // eslint-disable-next-line react-hooks/refs
+                  onSubmit(focusPassword),
+                  accessibilityIdentifier('gateway-username-input'),
+                ]}
+                onTextChange={
+                  connection.fieldErrors.username
+                    ? () => connection.clearFieldError('username')
+                    : undefined
+                }
+              />
+              {connection.fieldErrors.username ? (
+                <ErrorText testID="gateway-username-error">
+                  {connection.fieldErrors.username}
+                </ErrorText>
+              ) : null}
 
-            <SecureField
-              ref={passwordRef}
-              placeholder="Password"
-              text={
-                connection.password as Parameters<typeof SecureField>[0]['text']
-              }
-              modifiers={[
-                disabled(connection.signingIn),
-                autocorrectionDisabled(),
-                textInputAutocapitalization('never'),
-                textContentType('password'),
-                submitLabel('go'),
-                onSubmit(connection.submitSignIn),
-                accessibilityIdentifier('gateway-password-input'),
-              ]}
-              onTextChange={
-                connection.fieldErrors.password
-                  ? () => connection.clearFieldError('password')
-                  : undefined
-              }
-            />
-            {connection.fieldErrors.password ? (
-              <ErrorText testID="gateway-password-error">
-                {connection.fieldErrors.password}
-              </ErrorText>
-            ) : null}
+              <SecureField
+                ref={passwordRef}
+                placeholder="Password"
+                text={
+                  connection.password as Parameters<
+                    typeof SecureField
+                  >[0]['text']
+                }
+                modifiers={[
+                  disabled(connection.signingIn),
+                  autocorrectionDisabled(),
+                  textInputAutocapitalization('never'),
+                  textContentType('password'),
+                  submitLabel('go'),
+                  onSubmit(connection.submitSignIn),
+                  accessibilityIdentifier('gateway-password-input'),
+                ]}
+                onTextChange={
+                  connection.fieldErrors.password
+                    ? () => connection.clearFieldError('password')
+                    : undefined
+                }
+              />
+              {connection.fieldErrors.password ? (
+                <ErrorText testID="gateway-password-error">
+                  {connection.fieldErrors.password}
+                </ErrorText>
+              ) : null}
+            </Section>
 
             <Button
-              label={connection.signingIn ? 'Signing in…' : 'Sign in'}
               modifiers={[
                 buttonStyle('borderedProminent'),
+                controlSize('large'),
                 disabled(connection.signingIn),
+                listRowBackground('clear'),
+                listRowSeparator('hidden'),
+                listRowInsets({ top: 0, bottom: 4, leading: 0, trailing: 0 }),
                 accessibilityIdentifier('gateway-sign-in-button'),
               ]}
-              onPress={connection.submitSignIn}
-            />
-          </Section>
+              onPress={connection.submitSignIn}>
+              <Text modifiers={[frame({ maxWidth: Infinity })]}>
+                {connection.signingIn ? 'Signing in…' : 'Sign in'}
+              </Text>
+            </Button>
+
+            <Text
+              modifiers={[
+                SECONDARY_TEXT,
+                font({ textStyle: 'footnote' }),
+                listRowBackground('clear'),
+                listRowSeparator('hidden'),
+                listRowInsets({
+                  top: 12,
+                  bottom: 12,
+                  leading: 20,
+                  trailing: 20,
+                }),
+              ]}>
+              {CONNECTION_COPY.signInFooter}
+            </Text>
+          </>
         )}
       </Form>
     </Host>

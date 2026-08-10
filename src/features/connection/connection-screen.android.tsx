@@ -71,7 +71,7 @@ export function ConnectionScreen() {
     <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
       <Surface color={colors.background} modifiers={[fillMaxSize()]}>
         <LazyColumn
-          contentPadding={{ bottom: 32 }}
+          contentPadding={{ top: 32, bottom: 32 }}
           modifiers={[fillMaxSize(), imePadding()]}>
           <Column
             verticalArrangement={{ spacedBy: 8 }}

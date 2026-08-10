@@ -13,26 +13,18 @@ interface FieldValidationError {
 }
 
 const HTTP_POLICY_TEXT =
-  'A bare address defaults to HTTPS. Plain HTTP is allowed for localhost ' +
-  'and Tailscale (100.64.0.0/10) addresses, where the transport is already ' +
-  'private. Typing http:// explicitly also allows a private LAN address — ' +
-  "192.168.x.x or a Mac's name.local — but that traffic crosses your " +
-  'network unencrypted. If a name.local address does not resolve on this ' +
-  'device, use the LAN IP instead.' +
-  (__DEV__
-    ? ' Development builds also accept an explicit HTTP URL for trusted local testing.'
-    : '');
+  'Wave uses HTTPS by default. Localhost and Tailscale can use HTTP ' +
+  'automatically. For a private LAN address, enter http:// explicitly; HTTP ' +
+  'traffic is unencrypted.';
 
 export const CONNECTION_COPY = {
   intro: 'Sign in to your Hermes agent to chat from this phone.',
   signInFooter:
-    'Use the same username and password as the Hermes dashboard.\n\n' +
-    'Credentials stay on this phone: Wave keeps only rotating gateway session ' +
-    'tokens in the platform secure store. Your password is sent to the gateway ' +
-    `once and never saved.\n\n${HTTP_POLICY_TEXT}`,
+    'Use the same login as the Hermes dashboard. Wave sends your password ' +
+    `once and never saves it.\n\n${HTTP_POLICY_TEXT}`,
   signOutFooter:
-    "Signing out removes this device's session tokens from the phone. The " +
-    'gateway invalidates them the next time its token secret rotates.',
+    "Signing out removes this phone's session tokens. The gateway invalidates " +
+    'them when its token secret next rotates.',
   title: 'Your Hermes, in Wave',
 } as const;
 
@@ -68,21 +60,21 @@ export function useConnectionScreen() {
     if (!trimmedUrl) {
       setValidationError({
         field: 'baseUrl',
-        message: 'Enter the URL of your Hermes gateway.',
+        message: 'Enter your Hermes gateway URL.',
       });
       return;
     }
     if (!trimmedUsername) {
       setValidationError({
         field: 'username',
-        message: 'Enter your Hermes username.',
+        message: 'Enter your username.',
       });
       return;
     }
     if (!password.value) {
       setValidationError({
         field: 'password',
-        message: 'Enter your Hermes password.',
+        message: 'Enter your password.',
       });
       return;
     }
