@@ -173,7 +173,11 @@ documentation before implementing UI.
   wrappers, universal `FieldGroup`, or `RNHostView` inside either native screen. Each
   platform-native scroll container owns its keyboard insets. Native text fields use
   `useNativeState` and read `state.value` at submit; blur before programmatic writes in a focused
-  iOS field (expo/expo #47434). Every tap on a Realtime voice option, including the
+  iOS field (expo/expo #47434). The app stack owns the root iOS Settings route's Expo Router
+  `Stack.Title large` and native header appearance so it is configured before a cold route mount:
+  the expanded title is transparent over the page background and collapses to a system-material
+  blur, while detail routes stay inline and Android retains its Material header. Every tap on a
+  Realtime voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the
   user's secure-stored key, caches it by app-owned model and voice, and owns the single

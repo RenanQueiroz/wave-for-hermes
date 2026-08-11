@@ -32,6 +32,8 @@ export default function AppStackLayout() {
             : undefined,
         headerTintColor:
           typeof foreground === 'string' ? foreground : undefined,
+        headerLargeTitleStyle:
+          typeof foreground === 'string' ? { color: foreground } : undefined,
         headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
         headerShadowVisible: Platform.OS === 'android' ? false : undefined,
       }}>
@@ -49,12 +51,18 @@ export default function AppStackLayout() {
         options={{ headerShown: false, presentation: 'modal' }}
       />
       <Stack.Screen name="search" options={{ title: 'Search conversations' }} />
-      <Stack.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-        }}
-      />
+      <Stack.Screen name="settings">
+        <Stack.Title large>Settings</Stack.Title>
+        {Platform.OS === 'ios' ? (
+          <Stack.Header
+            largeStyle={{
+              backgroundColor: 'transparent',
+              shadowColor: 'transparent',
+            }}
+            style={{ shadowColor: 'transparent' }}
+          />
+        ) : null}
+      </Stack.Screen>
       <Stack.Screen
         name="settings/[selection]"
         options={{
