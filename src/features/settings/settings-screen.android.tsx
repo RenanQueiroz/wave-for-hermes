@@ -269,7 +269,6 @@ export function SettingsScreen() {
               onPress={settings.openAppearanceSettings}
             />
           </SettingsListGroup>
-          <SectionFooter>{SETTINGS_COPY.themeFooter}</SectionFooter>
 
           <SectionHeader testID="legal-card">About</SectionHeader>
           <SettingsListGroup>
@@ -288,7 +287,6 @@ export function SettingsScreen() {
               />
             ) : null}
           </SettingsListGroup>
-          <SectionFooter>{SETTINGS_COPY.aboutFooter}</SectionFooter>
         </LazyColumn>
       </Surface>
       {disconnectOpen ? (

@@ -17,11 +17,9 @@ import {
 } from '@/features/settings/selection/settings-selection.shared';
 
 export const SETTINGS_COPY = {
-  aboutFooter:
-    "Wave stores only this device's rotating sign-in tokens — and your OpenAI key, if you add one — in the platform secure store.",
   captionsDescription:
     'Show what you said during live voice. Adds $0.0045 per minute of transcription billed to your key.',
-  connectionFooter: "This phone's sign-in to your Hermes gateway.",
+  connectionFooter: 'Your Hermes sign-in is stored securely on this phone.',
   disconnectAlertMessage:
     "Wave will remove this phone's saved sign-in. Active Hermes work will continue, and the gateway can invalidate outstanding tokens only when its token secret rotates.",
   disconnectDescription: "Remove this phone's saved sign-in.",
@@ -30,10 +28,9 @@ export const SETTINGS_COPY = {
   licensesDescription:
     'Review the open-source software and licenses included in this build.',
   realtimeFooter:
-    'Full-duplex voice runs directly against OpenAI with your own API key. Use a dedicated project-scoped key so you can revoke it independently. It is stored only on this phone and sent only to OpenAI.',
+    'Your OpenAI key is stored securely on this phone and sent only to OpenAI.',
   realtimePreferenceDescription:
     'Use Realtime for voice mode. Off means the keyless server-side voice.',
-  themeFooter: 'Run Wave light, dark, or follow this phone.',
 } as const;
 
 /**

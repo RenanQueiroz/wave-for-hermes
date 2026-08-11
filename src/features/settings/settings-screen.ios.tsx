@@ -229,8 +229,7 @@ export function SettingsScreen() {
         <Section
           header={
             <SectionHeader id="appearance-card">Appearance</SectionHeader>
-          }
-          footer={<Text>{SETTINGS_COPY.themeFooter}</Text>}>
+          }>
           <SettingsRow
             description={settings.selectedAppearanceLabel}
             enabled={settings.appearanceHydrated}
@@ -240,9 +239,7 @@ export function SettingsScreen() {
           />
         </Section>
 
-        <Section
-          header={<SectionHeader id="legal-card">About</SectionHeader>}
-          footer={<Text>{SETTINGS_COPY.aboutFooter}</Text>}>
+        <Section header={<SectionHeader id="legal-card">About</SectionHeader>}>
           <SettingsRow
             description={SETTINGS_COPY.licensesDescription}
             label="Open-source licenses"
