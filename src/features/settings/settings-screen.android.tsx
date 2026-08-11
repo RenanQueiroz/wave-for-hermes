@@ -4,6 +4,7 @@ import {
   AlertDialog,
   Button,
   Column,
+  FilledTonalButton,
   Icon,
   LazyColumn,
   OutlinedTextField,
@@ -299,10 +300,14 @@ export function SettingsScreen() {
             if (!settings.disconnecting) setDisconnectOpen(false);
           }}>
           <AlertDialog.Title>
-            <Text>Disconnect this device?</Text>
+            <Text style={{ typography: 'headlineSmall' }}>
+              Disconnect this device?
+            </Text>
           </AlertDialog.Title>
           <AlertDialog.Text>
-            <Text>{SETTINGS_COPY.disconnectAlertMessage}</Text>
+            <Text style={{ typography: 'bodyMedium' }}>
+              {SETTINGS_COPY.disconnectAlertMessage}
+            </Text>
           </AlertDialog.Text>
           <AlertDialog.DismissButton>
             <TextButton
@@ -312,7 +317,7 @@ export function SettingsScreen() {
             </TextButton>
           </AlertDialog.DismissButton>
           <AlertDialog.ConfirmButton>
-            <TextButton
+            <FilledTonalButton
               enabled={!settings.disconnecting}
               colors={{ contentColor: colors.error }}
               modifiers={[testIDModifier('disconnect-device-confirm')]}
@@ -321,7 +326,7 @@ export function SettingsScreen() {
                 settings.disconnect();
               }}>
               <Text>Disconnect</Text>
-            </TextButton>
+            </FilledTonalButton>
           </AlertDialog.ConfirmButton>
         </AlertDialog>
       ) : null}
