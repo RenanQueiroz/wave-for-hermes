@@ -144,6 +144,7 @@ function ConnectedChatScreen({
   const router = useRouter();
   const navigation = useNavigation();
   const drawerNavigation = navigation.getParent();
+  const [composerBottomOffset, setComposerBottomOffset] = useState(0);
   const queryClient = useQueryClient();
   // Speech affordances appear only when the gateway advertises the
   // capability; a failed probe hides them rather than caching a "no".
@@ -681,13 +682,17 @@ function ConnectedChatScreen({
           // covers fast flings instead.
           recycleItems={false}
           drawDistance={500}
-          contentContainerClassName="px-4 py-3"
+          contentContainerClassName="px-4 pt-3"
+          contentContainerStyle={{
+            paddingBottom: Math.max(composerBottomOffset + 12, 12),
+          }}
           contentInsetAdjustmentBehavior="automatic"
           data={messages}
           extraData={rowExtraData}
           ItemSeparatorComponent={ChatTurnSeparator}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
+          jumpButtonBottomOffset={composerBottomOffset + 12}
           keyExtractor={(message) => message.id}
           ListFooterComponent={
             chat.state.status === 'submitting' ? (
@@ -711,6 +716,7 @@ function ConnectedChatScreen({
           <View
             pointerEvents="none"
             className="absolute inset-0 px-6"
+            style={{ bottom: composerBottomOffset }}
             testID={pendingSession ? 'chat-empty-new' : 'chat-empty-existing'}>
             <Animated.View
               style={{
@@ -731,39 +737,39 @@ function ConnectedChatScreen({
             </Animated.View>
           </View>
         ) : null}
+        <ChatComposer
+          key={sessionId}
+          activePrompt={Boolean(chat.state.activePrompt)}
+          activityLabel={activityLabel}
+          baseUrl={baseUrl}
+          blocked={composerBlocked}
+          busy={busy}
+          canDictate={canDictate}
+          cancelling={cancelling}
+          client={client}
+          connectionId={connectionId}
+          correcting={correcting}
+          correctionError={chat.state.correctionError?.message}
+          gatewayClient={gatewayClient}
+          onCorrect={chat.correct}
+          onDismissTurnActionError={() => setTurnActionError(undefined)}
+          onBottomOffsetChange={setComposerBottomOffset}
+          onSend={chat.send}
+          onStop={chat.stop}
+          prompt={
+            chat.state.activePrompt && gatewayClient ? (
+              <PromptCard
+                busy={promptBusy}
+                error={promptError}
+                prompt={chat.state.activePrompt}
+                onRespond={respondToPrompt}
+              />
+            ) : undefined
+          }
+          sessionId={sessionId}
+          turnActionError={turnActionError}
+        />
       </View>
-
-      <ChatComposer
-        key={sessionId}
-        activePrompt={Boolean(chat.state.activePrompt)}
-        activityLabel={activityLabel}
-        baseUrl={baseUrl}
-        blocked={composerBlocked}
-        busy={busy}
-        canDictate={canDictate}
-        cancelling={cancelling}
-        client={client}
-        connectionId={connectionId}
-        correcting={correcting}
-        correctionError={chat.state.correctionError?.message}
-        gatewayClient={gatewayClient}
-        onCorrect={chat.correct}
-        onDismissTurnActionError={() => setTurnActionError(undefined)}
-        onSend={chat.send}
-        onStop={chat.stop}
-        prompt={
-          chat.state.activePrompt && gatewayClient ? (
-            <PromptCard
-              busy={promptBusy}
-              error={promptError}
-              prompt={chat.state.activePrompt}
-              onRespond={respondToPrompt}
-            />
-          ) : undefined
-        }
-        sessionId={sessionId}
-        turnActionError={turnActionError}
-      />
     </View>
   );
 }

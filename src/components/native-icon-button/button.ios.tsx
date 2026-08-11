@@ -1,6 +1,5 @@
 import { Icon } from '@expo/ui';
 import { Button, ProgressView } from '@expo/ui/swift-ui';
-
 import {
   accessibilityIdentifier,
   accessibilityLabel,
@@ -15,11 +14,15 @@ import {
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 
-import type { NativeComposerIconButtonProps } from '@/features/chat/composer/icons/button.types';
+import {
+  NATIVE_ICON_BUTTON_SIZE,
+  type NativeIconButtonProps,
+} from '@/components/native-icon-button/button.types';
 
-export function NativeComposerIconButton({
+export function NativeIconButton({
   accessibilityLabel: label,
   backgroundColor,
+  buttonSize = NATIVE_ICON_BUTTON_SIZE,
   disabled,
   foregroundColor,
   icon,
@@ -28,8 +31,10 @@ export function NativeComposerIconButton({
   onPress,
   testID,
   variant = 'plain',
-}: NativeComposerIconButtonProps) {
+}: NativeIconButtonProps) {
   const inactive = Boolean(disabled || loading);
+  const progressSize = Math.min(iconSize, 18);
+
   return (
     <Button
       testID={testID}
@@ -37,8 +42,8 @@ export function NativeComposerIconButton({
       modifiers={[
         buttonStyle(variant === 'plain' ? 'plain' : 'borderedProminent'),
         buttonBorderShape('circle'),
-        controlSize('regular'),
-        frame({ height: 40, width: 40 }),
+        controlSize(buttonSize <= 32 ? 'small' : 'regular'),
+        frame({ height: buttonSize, width: buttonSize }),
         contentShape(shapes.circle()),
         ...(backgroundColor ? [tint(backgroundColor)] : []),
         accessibilityLabel(label),
@@ -47,13 +52,16 @@ export function NativeComposerIconButton({
         opacity(inactive ? 0.45 : 1),
       ]}>
       {loading ? (
-        <ProgressView modifiers={[frame({ height: 18, width: 18 })]} />
+        <ProgressView
+          modifiers={[frame({ height: progressSize, width: progressSize })]}
+        />
       ) : (
         <Icon
           accessibilityLabel={label}
           color={foregroundColor}
           name={icon}
           size={iconSize}
+          style={{ height: iconSize, width: iconSize }}
         />
       )}
     </Button>

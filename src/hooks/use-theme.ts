@@ -23,6 +23,7 @@ export function useTheme() {
   ]);
 
   return {
+    mode,
     text: resolveColor(text, fallback.text),
     background: resolveColor(background, fallback.background),
     backgroundElement: resolveColor(

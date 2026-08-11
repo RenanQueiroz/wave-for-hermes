@@ -11,10 +11,10 @@ import type {
   LegendListProps,
   LegendListRef,
 } from '@legendapp/list/react-native';
-import { Button, ChevronDownIcon, ScrollFade } from 'panelui-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -23,6 +23,8 @@ import {
   isNearConversationEnd,
   MAINTAIN_AT_END_VIEWPORT_FRACTION,
 } from '@/components/conversation-scroll';
+import { ConversationEdgeFade } from '@/components/conversation-edge-fade';
+import { ConversationJumpButton } from '@/components/conversation-jump-button';
 import { LegendList } from '@/components/legend-list';
 
 type OwnedListProps =
@@ -39,8 +41,6 @@ export interface ConversationScrollerProps<ItemT> extends Omit<
 > {
   className?: string;
   contentContainerClassName?: string;
-  /** Edge fade size passed to the surrounding ScrollFade. */
-  fadeSize?: number;
   /**
    * Decide the opening anchor from the first non-empty data: return an index
    * to open with that item at the top of the viewport — the reader's own
@@ -53,24 +53,120 @@ export interface ConversationScrollerProps<ItemT> extends Omit<
 }
 
 export function ConversationScroller<ItemT>({
+  className,
   data,
-  fadeSize = 40,
   initialAnchor,
   jumpButtonBottomOffset = 16,
+  onContentSizeChange,
+  onLayout,
+  onMomentumScrollEnd,
   onScroll,
+  onScrollEndDrag,
   ...listProps
 }: ConversationScrollerProps<ItemT>) {
   const listRef = useRef<LegendListRef>(null);
   const [nearEnd, setNearEnd] = useState(true);
+  const [edgeFades, setEdgeFades] = useState({ end: false, start: false });
+  const nearEndRef = useRef(true);
   const sawScrollRef = useRef(false);
+  const metricsRef = useRef({
+    contentHeight: 0,
+    offsetY: 0,
+    viewportHeight: 0,
+  });
+  const updateNearEnd = useCallback((next: boolean) => {
+    nearEndRef.current = next;
+    setNearEnd((previous) => (previous === next ? previous : next));
+  }, []);
+  const updateEdgeFades = useCallback(
+    ({
+      contentHeight,
+      offsetY,
+      viewportHeight,
+    }: {
+      contentHeight: number;
+      offsetY: number;
+      viewportHeight: number;
+    }) => {
+      const next = {
+        end: contentHeight - offsetY - viewportHeight > 1,
+        start: offsetY > 1,
+      };
+      setEdgeFades((current) =>
+        current.end === next.end && current.start === next.start
+          ? current
+          : next,
+      );
+    },
+    [],
+  );
+  const updateFromNativeEvent = useCallback(
+    (nativeEvent: NativeScrollEvent) => {
+      metricsRef.current = {
+        contentHeight: nativeEvent.contentSize.height,
+        offsetY: nativeEvent.contentOffset.y,
+        viewportHeight: nativeEvent.layoutMeasurement.height,
+      };
+      updateNearEnd(isNearConversationEnd(nativeEvent));
+      updateEdgeFades(metricsRef.current);
+    },
+    [updateEdgeFades, updateNearEnd],
+  );
   const trackNearEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       sawScrollRef.current = true;
-      const next = isNearConversationEnd(event.nativeEvent);
-      setNearEnd((previous) => (previous === next ? previous : next));
+      updateFromNativeEvent(event.nativeEvent);
       onScroll?.(event);
     },
-    [onScroll],
+    [onScroll, updateFromNativeEvent],
+  );
+  const trackScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      updateFromNativeEvent(event.nativeEvent);
+      onScrollEndDrag?.(event);
+    },
+    [onScrollEndDrag, updateFromNativeEvent],
+  );
+  const trackMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      updateFromNativeEvent(event.nativeEvent);
+      onMomentumScrollEnd?.(event);
+    },
+    [onMomentumScrollEnd, updateFromNativeEvent],
+  );
+  const trackLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const viewportHeight = event.nativeEvent.layout.height;
+      metricsRef.current.viewportHeight = viewportHeight;
+      updateEdgeFades(metricsRef.current);
+      if (
+        sawScrollRef.current ||
+        metricsRef.current.contentHeight <= viewportHeight
+      ) {
+        updateNearEnd(
+          isNearConversationEnd({
+            contentOffset: { x: 0, y: metricsRef.current.offsetY },
+            contentSize: {
+              height: metricsRef.current.contentHeight,
+              width: 0,
+            },
+            layoutMeasurement: { height: viewportHeight, width: 0 },
+          }),
+        );
+      }
+      onLayout?.(event);
+    },
+    [onLayout, updateEdgeFades, updateNearEnd],
+  );
+  const trackContentSizeChange = useCallback(
+    (width: number, height: number) => {
+      metricsRef.current.contentHeight = height;
+      updateEdgeFades(metricsRef.current);
+      if (height <= metricsRef.current.viewportHeight) updateNearEnd(true);
+      else if (!nearEndRef.current) updateNearEnd(false);
+      onContentSizeChange?.(width, height);
+    },
+    [onContentSizeChange, updateEdgeFades, updateNearEnd],
   );
   // The opening position is decided once, from the first non-empty data —
   // usually a commit after mount — and applied imperatively so the anchored
@@ -85,7 +181,14 @@ export function ConversationScroller<ItemT>({
     anchoredRef.current = true;
     const index = initialAnchor?.(data);
     if (index === undefined) {
-      void listRef.current?.scrollToEnd({ animated: false });
+      void listRef.current?.scrollToEnd({ animated: false }).then(() => {
+        const metrics = metricsRef.current;
+        metrics.offsetY = Math.max(
+          metrics.contentHeight - metrics.viewportHeight,
+          0,
+        );
+        updateEdgeFades(metrics);
+      });
       return;
     }
     void listRef.current
@@ -94,52 +197,51 @@ export function ConversationScroller<ItemT>({
         // A non-animated positioning emits no scroll events, so disengage
         // auto-follow once the anchor has settled unless the reader has
         // already scrolled themselves.
-        if (!sawScrollRef.current) setNearEnd(false);
+        if (!sawScrollRef.current) updateNearEnd(false);
       });
-  }, [data, initialAnchor]);
+  }, [data, initialAnchor, updateEdgeFades, updateNearEnd]);
   const jumpToNewest = useCallback(() => {
     // One deliberate reader-initiated scroll. Legend List's programmatic
     // scrolls do not surface through onScroll, so the landing re-engages
     // auto-follow explicitly once the animation settles; a reader touch
     // after that emits real events and immediately corrects the state.
     void listRef.current?.scrollToEnd({ animated: true }).then(() => {
-      setNearEnd(true);
+      updateNearEnd(true);
+      const metrics = metricsRef.current;
+      metrics.offsetY = Math.max(
+        metrics.contentHeight - metrics.viewportHeight,
+        0,
+      );
+      updateEdgeFades(metrics);
     });
-  }, []);
+  }, [updateEdgeFades, updateNearEnd]);
 
   return (
     <View className="flex-1">
-      <ScrollFade className="flex-1" orientation="vertical" size={fadeSize}>
-        <LegendList
-          {...listProps}
-          ref={listRef}
-          alignItemsAtEnd
-          data={data}
-          maintainScrollAtEnd={nearEnd}
-          maintainScrollAtEndThreshold={MAINTAIN_AT_END_VIEWPORT_FRACTION}
-          maintainVisibleContentPosition
-          onScroll={trackNearEnd}
-        />
-      </ScrollFade>
+      <LegendList
+        {...listProps}
+        ref={listRef}
+        alignItemsAtEnd
+        className={className ? `flex-1 ${className}` : 'flex-1'}
+        data={data}
+        maintainScrollAtEnd={nearEnd}
+        maintainScrollAtEndThreshold={MAINTAIN_AT_END_VIEWPORT_FRACTION}
+        maintainVisibleContentPosition
+        scrollEventThrottle={16}
+        onContentSizeChange={trackContentSizeChange}
+        onLayout={trackLayout}
+        onMomentumScrollEnd={trackMomentumScrollEnd}
+        onScroll={trackNearEnd}
+        onScrollEndDrag={trackScrollEndDrag}
+      />
+      <ConversationEdgeFade edge="start" visible={edgeFades.start} />
+      <ConversationEdgeFade edge="end" visible={edgeFades.end} />
       {!nearEnd ? (
         <View
           pointerEvents="box-none"
           className="absolute inset-x-0 items-center"
           style={{ bottom: jumpButtonBottomOffset }}>
-          {/* The muted token carries alpha, so over transcript text it goes
-              translucent. Layering it on the page background reproduces the
-              composer field's gray as a fully opaque floating chip. */}
-          <View className="overflow-hidden rounded-full bg-background shadow-lg">
-            <Button
-              size="icon"
-              variant="secondary"
-              accessibilityLabel="Jump to the newest message"
-              className="rounded-full border border-border bg-muted"
-              testID="conversation-jump-to-newest"
-              onPress={jumpToNewest}>
-              <ChevronDownIcon size={18} />
-            </Button>
-          </View>
+          <ConversationJumpButton onPress={jumpToNewest} />
         </View>
       ) : null}
     </View>

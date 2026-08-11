@@ -192,12 +192,16 @@ documentation before implementing UI.
   user's secure-stored key, caches it by app-owned model and voice, and owns the single
   `expo-audio` player lifecycle; platform-native settings rows only dispatch the selection.
 - Search and transcript surfaces stay PanelUI/RN. The chat composer is the other deliberate
-  direct-Expo-UI surface: all visible composer content uses
-  one platform-native `Host`, native observable text/selection state, universal native
-  `Icon.select(...)` mappings, and universal `BottomSheet` presentations. The React Native
-  `ChatComposerDock` is non-visual and is the only keyboard-movement owner; the native hosts ignore
-  keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts, or a
-  second keyboard-avoidance path inside the composer.
+  direct-Expo-UI surface: all controls and text use one platform-native `Host`, native observable
+  text/selection state, universal native `Icon.select(...)` mappings, and universal `BottomSheet`
+  presentations. The React Native `ChatComposerDock` is the sole keyboard-movement owner and
+  positions the composer as an overlay so the transcript can scroll beneath it; it reports its
+  effective resting or keyboard-raised bottom footprint so the transcript keeps reachable content
+  above the dock. iOS may render the dock's non-interactive background with Expo `GlassView` when
+  Liquid Glass is available, with a solid semantic fallback; Android always composites the
+  translucent PanelUI muted token over the page into an opaque native surface. The native hosts
+  ignore keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts,
+  or a second keyboard-avoidance path inside the composer.
 - The conversation drawer is chat chrome. Enable its edge-swipe gesture only on `/new` and
   top-level `/conversation/[sessionId]` routes; Settings, search, development, voice, and other
   pushed routes must not expose or swipe-open it. Keep Disconnect out of the drawer.
@@ -404,17 +408,26 @@ documentation before implementing UI.
   fall back to a generic action; handoffs are detected by Wave-constructed ids, never titles;
   raw tool input/output is not displayed.
 - Every completed assistant turn carries the Wave-owned action row (`turn-action-row.tsx`):
-  time-ago timestamp plus icon-only Branch / Copy / Read-aloud / Refresh. It renders only on
-  sealed turns, receives the copy text through a lazy accessor (never as a prop), and Branch and
-  Refresh are one-shot gateway mutations disabled while a turn runs. Refresh ordinals and branch
-  counts come only from server timeline rows — `ordinalExempt` rows and Wave-injected correction
-  rows never shift them — and the optimistic timeline prune is always reconciled by the
-  authoritative refetch.
+  time-ago timestamp plus icon-only Branch / Copy / Read-aloud / Refresh. The complete visible row
+  is one native Expo UI `Host`/`Row`; do not split its timestamp and controls across React Native
+  and native layout trees. Native icon controls share the composer's platform button and symbol
+  metrics. Keep the Host's explicit first-frame height together with native vertical
+  `matchContents`: the virtualized row needs the former for a stable initial proposal and iOS needs
+  the latter to keep SwiftUI content at the Host's measured origin before interaction. It renders
+  only on sealed turns, receives the copy text through a lazy accessor (never as a prop), and
+  Branch and Refresh are one-shot gateway mutations disabled while a turn runs.
+  Refresh ordinals and branch counts come only from server timeline rows — `ordinalExempt` rows and
+  Wave-injected correction rows never shift them — and the optimistic timeline prune is always
+  reconciled by the authoritative refetch.
 - Conversation surfaces render through the Wave-owned `ConversationScroller`
   (`src/components/conversation-scroller.tsx`), which composes Legend List v3 and owns the
   transcript scroll contract: pin-to-newest only inside the at-end band, no dragging the reader
   mid-read, a jump-to-newest button while auto-follow is disengaged, stable history prepends,
   and a one-time anchored opening at the reader's last message when the tail response overflows.
+  The jump control is a shared native icon button whose visibility is reconciled directly from
+  Legend List scroll, drag-end, momentum-end, layout, and content-size metrics. Edge fades are
+  passive pointer-free gradient siblings; never wrap the list in PanelUI `ScrollFade` or compose
+  its Reanimated event handler with the scroller's ordinary JavaScript callback.
   Do not reintroduce FlatList there or adopt PanelUI `MessageScroller` for unbounded histories —
   it is not virtualized. Keep turn rows memoized with stable `renderItem`/`keyExtractor`, and
   mark only the active turn as streaming: its arriving tail streams through `Response`

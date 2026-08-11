@@ -10,11 +10,15 @@ import {
   testID as testIDModifier,
 } from '@expo/ui/jetpack-compose/modifiers';
 
-import type { NativeComposerIconButtonProps } from '@/features/chat/composer/icons/button.types';
+import {
+  NATIVE_ICON_BUTTON_SIZE,
+  type NativeIconButtonProps,
+} from '@/components/native-icon-button/button.types';
 
-export function NativeComposerIconButton({
+export function NativeIconButton({
   accessibilityLabel,
   backgroundColor,
+  buttonSize = NATIVE_ICON_BUTTON_SIZE,
   disabled,
   foregroundColor,
   icon,
@@ -23,7 +27,7 @@ export function NativeComposerIconButton({
   onPress,
   testID,
   variant = 'plain',
-}: NativeComposerIconButtonProps) {
+}: NativeIconButtonProps) {
   const inactive = Boolean(disabled || loading);
   const Component =
     variant === 'filled'
@@ -31,6 +35,8 @@ export function NativeComposerIconButton({
       : variant === 'tonal'
         ? FilledTonalIconButton
         : IconButton;
+  const progressSize = Math.min(iconSize, 18);
+
   return (
     <Component
       colors={{
@@ -39,12 +45,12 @@ export function NativeComposerIconButton({
         disabledContentColor: foregroundColor,
       }}
       enabled={!inactive}
-      modifiers={[size(40, 40), testIDModifier(testID)]}
+      modifiers={[size(buttonSize, buttonSize), testIDModifier(testID)]}
       onClick={inactive ? undefined : onPress}>
       {loading ? (
         <CircularProgressIndicator
           color={foregroundColor}
-          modifiers={[size(18, 18)]}
+          modifiers={[size(progressSize, progressSize)]}
           strokeWidth={2}
         />
       ) : (

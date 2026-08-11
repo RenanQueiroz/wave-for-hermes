@@ -26,10 +26,10 @@ import {
 import { Keyboard } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
+import { NativeIconButton } from '@/components/native-icon-button';
 import { useChatAttachments } from '@/features/chat/composer/attachments';
 import { ChatComposerDock } from '@/features/chat/composer/dock';
 import { CHAT_COMPOSER_ICONS } from '@/features/chat/composer/icons';
-import { NativeComposerIconButton } from '@/features/chat/composer/icons/button';
 import { ChatComposerHost } from '@/features/chat/composer/host';
 import { ChatComposerInput } from '@/features/chat/composer/input';
 import type { ChatComposerInputRef } from '@/features/chat/composer/input.types';
@@ -38,6 +38,10 @@ import {
   nativeContainerTestIDModifiers,
   nativeFillWidthModifiers,
 } from '@/features/chat/composer/modifiers';
+import {
+  nativeComposerSurfaceModifiers,
+  nativeComposerSurfaceStyle,
+} from '@/features/chat/composer/surface';
 import {
   appendDictationTranscript,
   displayModelName,
@@ -70,6 +74,7 @@ import type { GatewayClient } from '@/services/gateway/gateway-client';
 import type { WaveCommandCatalogEntry } from '@/services/gateway/gateway-commands';
 import { modelFamilies } from '@/services/gateway/gateway-models';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
+import { compositeOverlay } from '@/utils/colors';
 
 const SHEET_TO_PICKER_DELAY_MS = 300;
 
@@ -88,6 +93,7 @@ export interface ChatComposerProps {
   gatewayClient?: GatewayClient;
   onCorrect(text: string): Promise<WaveCorrectionResult>;
   onDismissTurnActionError(): void;
+  onBottomOffsetChange(offset: number): void;
   onSend(input: WaveTurnInput, optimisticText?: string): Promise<void>;
   onStop(): Promise<void>;
   prompt?: ReactNode;
@@ -103,6 +109,7 @@ interface ComposerColors {
   foreground: string;
   muted: string;
   mutedForeground: string;
+  opaqueMuted: string;
   primary: string;
   primaryForeground: string;
   secondary: string;
@@ -124,6 +131,7 @@ export function ChatComposer({
   gatewayClient,
   onCorrect,
   onDismissTurnActionError,
+  onBottomOffsetChange,
   onSend,
   onStop,
   prompt,
@@ -149,31 +157,32 @@ export function ChatComposer({
     '--color-secondary',
     '--color-secondary-foreground',
   ]);
-  const colors = useMemo<ComposerColors>(
-    () => ({
+  const colors = useMemo<ComposerColors>(() => {
+    const muted = resolveColor(mutedToken, theme.backgroundElement);
+    return {
       background: theme.background,
       border: resolveColor(borderToken, theme.backgroundSelected),
       card: resolveColor(cardToken, theme.backgroundElement),
       destructive: resolveColor(destructiveToken, '#ef4444'),
       foreground: theme.text,
-      muted: resolveColor(mutedToken, theme.backgroundElement),
+      muted,
       mutedForeground: theme.textSecondary,
+      opaqueMuted: compositeOverlay(theme.background, muted),
       primary: theme.primary,
       primaryForeground: resolveColor(primaryForegroundToken, theme.background),
       secondary: resolveColor(secondaryToken, theme.backgroundElement),
       secondaryForeground: resolveColor(secondaryForegroundToken, theme.text),
-    }),
-    [
-      borderToken,
-      cardToken,
-      destructiveToken,
-      mutedToken,
-      primaryForegroundToken,
-      secondaryForegroundToken,
-      secondaryToken,
-      theme,
-    ],
-  );
+    };
+  }, [
+    borderToken,
+    cardToken,
+    destructiveToken,
+    mutedToken,
+    primaryForegroundToken,
+    secondaryForegroundToken,
+    secondaryToken,
+    theme,
+  ]);
 
   const nativeText = useNativeState('');
   const nativeSelection = useNativeState({ end: 0, start: 0 });
@@ -188,6 +197,7 @@ export function ChatComposer({
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
+  const [surfaceHeight, setSurfaceHeight] = useState(100);
   const attachments = useChatAttachments();
   const dictation = useDictation({ client: gatewayClient });
   const model = useSessionModelPicker({
@@ -480,10 +490,19 @@ export function ChatComposer({
         break;
     }
   }, [action.kind, correct, onStop, router, runSlash, send, sessionId]);
+  const updateSurfaceHeight = useCallback((height: number) => {
+    setSurfaceHeight((current) =>
+      Math.abs(current - height) < 0.5 ? current : height,
+    );
+  }, []);
 
   return (
     <>
-      <ChatComposerDock>
+      <ChatComposerDock
+        colorScheme={theme.mode}
+        onBottomOffsetChange={onBottomOffsetChange}
+        surfaceBackgroundColor={colors.opaqueMuted}
+        surfaceHeight={surfaceHeight}>
         {prompt}
         <ChatComposerHost seedColor={colors.primary}>
           <NativeModelConfirmation
@@ -520,12 +539,13 @@ export function ChatComposer({
                 alignment="start"
                 spacing={2}
                 style={{
-                  backgroundColor: colors.muted,
+                  ...nativeComposerSurfaceStyle(colors.opaqueMuted),
                   borderRadius: 28,
                   paddingBottom: 10,
                 }}
                 modifiers={[
                   ...nativeFillWidthModifiers(),
+                  ...nativeComposerSurfaceModifiers(updateSurfaceHeight),
                   ...nativeContainerTestIDModifiers('chat-composer-box'),
                 ]}>
                 <ChatComposerInput
@@ -572,7 +592,7 @@ export function ChatComposer({
                   spacing={8}
                   style={{ paddingHorizontal: 12 }}
                   modifiers={nativeFillWidthModifiers()}>
-                  <NativeComposerIconButton
+                  <NativeIconButton
                     accessibilityLabel="Add an attachment"
                     backgroundColor={colors.secondary}
                     disabled={busy || blocked}
@@ -595,7 +615,7 @@ export function ChatComposer({
                   ) : null}
                   <Spacer flexible />
                   {canDictate ? (
-                    <NativeComposerIconButton
+                    <NativeIconButton
                       accessibilityLabel={
                         dictation.state.status === 'recording'
                           ? 'Stop dictating and insert the transcript'
@@ -623,7 +643,7 @@ export function ChatComposer({
                       onPress={() => void toggleDictation()}
                     />
                   ) : null}
-                  <NativeComposerIconButton
+                  <NativeIconButton
                     accessibilityLabel={action.label}
                     backgroundColor={
                       action.kind === 'stop' ? colors.card : colors.primary
@@ -773,7 +793,7 @@ function ComposerAccessoryContent({
                 </Text>
               </Column>
               <Spacer flexible />
-              <NativeComposerIconButton
+              <NativeIconButton
                 accessibilityLabel={`Remove ${attachment.part.name}`}
                 foregroundColor={colors.foreground}
                 icon={CHAT_COMPOSER_ICONS.remove}
@@ -1033,7 +1053,7 @@ function SlashResult({
           {result.title}
         </Text>
         <Spacer flexible />
-        <NativeComposerIconButton
+        <NativeIconButton
           accessibilityLabel="Dismiss command result"
           foregroundColor={colors.foreground}
           icon={CHAT_COMPOSER_ICONS.remove}

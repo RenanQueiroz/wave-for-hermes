@@ -1,8 +1,11 @@
 import type { IconName } from '@expo/ui';
 
-export interface NativeComposerIconButtonProps {
+export const NATIVE_ICON_BUTTON_SIZE = 40;
+
+export interface NativeIconButtonProps {
   accessibilityLabel: string;
   backgroundColor?: string;
+  buttonSize?: number;
   disabled?: boolean;
   foregroundColor: string;
   icon: IconName;
