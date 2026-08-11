@@ -177,24 +177,6 @@ export function DrawerSessionRow({
         }),
         testIDModifier(`drawer-session-${sessionId}`),
       ]}>
-      <ListItem.LeadingContent>
-        <Box
-          contentAlignment="center"
-          modifiers={[width(GLYPH_COLUMN_WIDTH), height(GLYPH_COLUMN_WIDTH)]}>
-          {glyphIcon ? (
-            <Icon
-              contentDescription={glyph.kind === 'none' ? '' : glyph.label}
-              size={glyph.kind === 'live' ? 12 : 16}
-              source={glyphIcon}
-              tint={
-                glyph.kind === 'live' && glyph.status !== 'waiting'
-                  ? colors.primary
-                  : colors.mutedForeground
-              }
-            />
-          ) : null}
-        </Box>
-      </ListItem.LeadingContent>
       <ListItem.HeadlineContent>
         <Text
           color={colors.foreground}
@@ -204,8 +186,29 @@ export function DrawerSessionRow({
           {title}
         </Text>
       </ListItem.HeadlineContent>
+      {/* Trailing cluster: status/source glyph, pinned bookmark, overflow —
+          no reserved leading column, so idle titles keep the full row. */}
       <ListItem.TrailingContent>
-        <Row verticalAlignment="center">
+        <Row verticalAlignment="center" horizontalArrangement={{ spacedBy: 2 }}>
+          {glyphIcon ? (
+            <Box
+              contentAlignment="center"
+              modifiers={[
+                width(GLYPH_COLUMN_WIDTH),
+                height(GLYPH_COLUMN_WIDTH),
+              ]}>
+              <Icon
+                contentDescription={glyph.kind === 'none' ? '' : glyph.label}
+                size={glyph.kind === 'live' ? 12 : 16}
+                source={glyphIcon}
+                tint={
+                  glyph.kind === 'live' && glyph.status !== 'waiting'
+                    ? colors.primary
+                    : colors.mutedForeground
+                }
+              />
+            </Box>
+          ) : null}
           {pinned ? (
             <Icon
               contentDescription="Pinned conversation"

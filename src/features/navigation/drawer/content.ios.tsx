@@ -29,6 +29,8 @@ import { memo, useCallback } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useRecyclingState } from '@legendapp/list/react-native';
+
 import { OfflineNotice } from '@/components/offline-notice';
 import {
   DRAWER_COPY,
@@ -511,20 +513,35 @@ const SessionRowHost = memo(function SessionRowHost({
   onPin(session: WaveSessionSummary): void;
   onRename(session: WaveSessionSummary): void;
 }) {
+  // Resets when the recycled row is reused for another session, so an open
+  // action sheet never carries over.
+  const [menuOpen, setMenuOpen] = useRecyclingState(false);
   return (
     <Host style={{ height: DRAWER_ROW_HEIGHTS.sessionRow, width: '100%' }}>
+      {/* Keyed by session and pinned state: a mounted SwiftUI menu keeps a
+          stale action snapshot when its props change in place (labels update
+          but taps go dead — the "Unpin stops working" bug), and a recycled
+          menu must never dispatch the previous session's actions. Remounting
+          the hosted subtree is the AGENTS-documented remedy for stale hosted
+          SwiftUI in recycled Legend List cells. */}
       <DrawerSessionRow
+        key={`${session.id}-${session.pinned ? 'pinned' : 'unpinned'}`}
         colors={colors}
         glyph={glyph}
-        pinDisabled={pinning}
+        menuOpen={menuOpen}
         pinned={session.pinned}
         rowAccessibilityLabel={drawerRowAccessibilityLabel(session, glyph)}
         selected={selected}
         sessionId={session.id}
         title={sessionTitle(session)}
         onDelete={() => onDelete(session)}
+        onMenuOpenChange={setMenuOpen}
         onOpen={() => void onOpen(session.id)}
-        onPin={() => onPin(session)}
+        // Guarded here, not with a native disabled() on the menu item — see
+        // the note in session-row.ios.tsx.
+        onPin={() => {
+          if (!pinning) onPin(session);
+        }}
         onRename={() => onRename(session)}
       />
     </Host>

@@ -1,10 +1,10 @@
 import {
   Button,
+  ConfirmationDialog,
   ContextMenu,
   Divider,
   HStack,
   Image,
-  Menu,
   Spacer,
   Text,
 } from '@expo/ui/swift-ui';
@@ -14,7 +14,6 @@ import {
   background,
   buttonStyle,
   clipShape,
-  disabled,
   font,
   foregroundStyle,
   frame,
@@ -41,7 +40,6 @@ export const DRAWER_ROW_HEIGHTS = {
 } as const;
 
 const ROW_CORNER_RADIUS = 10;
-const GLYPH_COLUMN_WIDTH = 22;
 
 function glyphImage(glyph: DrawerRowGlyph, colors: DrawerColors) {
   if (glyph.kind === 'live') {
@@ -156,7 +154,6 @@ function SessionActionItems({
   onDelete,
   onPin,
   onRename,
-  pinDisabled,
   pinned,
   sessionId,
   variant,
@@ -164,7 +161,6 @@ function SessionActionItems({
   onDelete(): void;
   onPin(): void;
   onRename(): void;
-  pinDisabled: boolean;
   pinned: boolean;
   sessionId: string;
   variant: 'context' | 'menu';
@@ -184,16 +180,20 @@ function SessionActionItems({
         ]}
         onPress={onRename}
       />
+      {/* Deliberately no native disabled() while a pin settles: SwiftUI menu
+          items can retain a stale disabled state when the update lands while
+          the menu is closed, leaving Unpin permanently dead. The pending
+          guard lives in the onPin closure instead. */}
       <Button
         label={pinned ? 'Unpin' : 'Pin'}
         systemImage={pinned ? DRAWER_ICONS.unpin : DRAWER_ICONS.pin}
         modifiers={[
           accessibilityIdentifier(`drawer-session-pin-${sessionId}${idSuffix}`),
-          disabled(pinDisabled),
         ]}
         onPress={onPin}
       />
-      <Divider />
+      {/* Action sheets have no separators; the divider is context-menu only. */}
+      {variant === 'context' ? <Divider /> : null}
       <Button
         label="Delete"
         role="destructive"
@@ -212,11 +212,12 @@ function SessionActionItems({
 export function DrawerSessionRow({
   colors,
   glyph,
+  menuOpen,
   onDelete,
+  onMenuOpenChange,
   onOpen,
   onPin,
   onRename,
-  pinDisabled,
   pinned,
   rowAccessibilityLabel,
   selected,
@@ -225,22 +226,27 @@ export function DrawerSessionRow({
 }: {
   colors: DrawerColors;
   glyph: DrawerRowGlyph;
+  menuOpen: boolean;
   onDelete(): void;
+  onMenuOpenChange(open: boolean): void;
   onOpen(): void;
   onPin(): void;
   onRename(): void;
-  pinDisabled: boolean;
   pinned: boolean;
   rowAccessibilityLabel: string;
   selected: boolean;
   sessionId: string;
   title: string;
 }) {
+  // Close the sheet before dispatching, mirroring Android's DropdownMenu.
+  const closeThen = (action: () => void) => () => {
+    onMenuOpenChange(false);
+    action();
+  };
   const actionProps = {
-    onDelete,
-    onPin,
-    onRename,
-    pinDisabled,
+    onDelete: closeThen(onDelete),
+    onPin: closeThen(onPin),
+    onRename: closeThen(onRename),
     pinned,
     sessionId,
   };
@@ -284,13 +290,8 @@ export function DrawerSessionRow({
                   height: DRAWER_ROW_HEIGHTS.sessionRow,
                   maxWidth: Infinity,
                 }),
-                padding({ leading: 4 }),
+                padding({ leading: 12 }),
               ]}>
-              <HStack
-                alignment="center"
-                modifiers={[frame({ width: GLYPH_COLUMN_WIDTH })]}>
-                {glyphImage(glyph, colors)}
-              </HStack>
               <Text
                 modifiers={[
                   font({ size: 15 }),
@@ -302,6 +303,9 @@ export function DrawerSessionRow({
               <Spacer />
             </HStack>
           </Button>
+          {/* Trailing cluster: status/source glyph, pinned bookmark, menu —
+              no reserved leading column, so idle titles keep the full row. */}
+          {glyphImage(glyph, colors)}
           {pinned ? (
             <Image
               color={colors.mutedForeground}
@@ -312,21 +316,37 @@ export function DrawerSessionRow({
               ]}
             />
           ) : null}
-          <Menu
-            label={
-              <Image
-                color={colors.mutedForeground}
-                size={16}
-                systemName={DRAWER_ICONS.ellipsis}
-              />
-            }
-            modifiers={[
-              frame({ height: DRAWER_ROW_HEIGHTS.sessionRow, width: 36 }),
-              accessibilityIdentifier(`drawer-session-actions-${sessionId}`),
-              accessibilityLabel(`Conversation actions for ${title}`),
-            ]}>
-            <SessionActionItems {...actionProps} variant="menu" />
-          </Menu>
+          {/* A state-driven ConfirmationDialog instead of a SwiftUI Menu:
+              menus hosted in recycled Legend List cells intermittently stop
+              dispatching their item taps after the list reorganizes (the
+              "Unpin stops working" bug). The sheet's actions mount at
+              presentation time from current props, so they always dispatch. */}
+          <ConfirmationDialog
+            isPresented={menuOpen}
+            title={title}
+            onIsPresentedChange={onMenuOpenChange}>
+            <ConfirmationDialog.Trigger>
+              <Button
+                onPress={() => onMenuOpenChange(true)}
+                modifiers={[
+                  buttonStyle('plain'),
+                  frame({ height: DRAWER_ROW_HEIGHTS.sessionRow, width: 36 }),
+                  accessibilityIdentifier(
+                    `drawer-session-actions-${sessionId}`,
+                  ),
+                  accessibilityLabel(`Conversation actions for ${title}`),
+                ]}>
+                <Image
+                  color={colors.mutedForeground}
+                  size={16}
+                  systemName={DRAWER_ICONS.ellipsis}
+                />
+              </Button>
+            </ConfirmationDialog.Trigger>
+            <ConfirmationDialog.Actions>
+              <SessionActionItems {...actionProps} variant="menu" />
+            </ConfirmationDialog.Actions>
+          </ConfirmationDialog>
         </HStack>
       </ContextMenu.Trigger>
       <ContextMenu.Items>

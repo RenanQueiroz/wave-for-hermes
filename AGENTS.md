@@ -221,12 +221,18 @@ documentation before implementing UI.
   every React row eagerly and emit no scroll events — do not convert it to a native
   `List`/`LazyColumn`. Rows are single-line fixed-height native Hosts (`session-row.ios.tsx`,
   `rows.android.tsx` — distinct basenames because their contracts differ and `moduleSuffixes`
-  would cross-resolve a shared name) with a reserved leading glyph column: live status
+  would cross-resolve a shared name) whose status glyph sits in the trailing cluster (glyph,
+  pinned bookmark, overflow menu) so idle titles keep the full row width: live status
   (filled accent dot working/starting, hollow waiting) wins over the Other-sources filter's
-  source symbols, idle chats keep the column empty, and the glyph's meaning stays in the
-  row's accessible name. Conversation actions are menu-only by decision — ellipsis menu plus
-  long-press context menu, no swipe actions (iOS `SwipeActions` only works inside a real
-  SwiftUI `List`). The rename and delete dialogs are keyed components mounted fresh per
+  source symbols, idle chats show no glyph, and the glyph's meaning stays in the
+  row's accessible name. Conversation actions are menu-only by decision — ellipsis actions
+  plus long-press context menu, no swipe actions (iOS `SwipeActions` only works inside a
+  real SwiftUI `List`). The iOS ellipsis presents a state-driven `ConfirmationDialog`, not a
+  SwiftUI `Menu`: a `Menu` hosted in a recycled Legend List cell intermittently stops
+  dispatching its item taps after the list reorganizes (device-verified — the "Unpin stops
+  working" bug), while the dialog's actions mount at presentation time from current props.
+  The row's native subtree is also keyed by session id + pinned state so a recycled row
+  never reuses stale native action state. The rename and delete dialogs are keyed components mounted fresh per
   target inside the drawer's sized chrome Host — Compose dialog windows never present from
   a zero-size absolute Host, and this `@expo/ui` version's Compose text field implements no
   `setText`, so the rename draft's seed is the keyed `useNativeState(title)` initial value,
