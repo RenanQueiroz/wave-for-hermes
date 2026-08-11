@@ -19,6 +19,20 @@ export interface SessionSearchResult {
   snippet?: string;
 }
 
+/**
+ * The row's second line: an honest "Message match" for content hits (the
+ * snippet is gateway-authored untrusted text — bounded, inert, never
+ * markdown), the stored preview otherwise.
+ */
+export function sessionSearchRowDescription(
+  result: SessionSearchResult,
+): string {
+  if (result.matchedOn === 'content') {
+    return `Message match: ${result.snippet ?? 'found in this conversation'}`;
+  }
+  return result.session.preview ?? 'Hermes conversation';
+}
+
 export function matchesSessionTitle(
   session: WaveSessionSummary,
   normalizedQuery: string,

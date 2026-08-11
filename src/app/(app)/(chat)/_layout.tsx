@@ -3,7 +3,7 @@ import { Drawer } from 'expo-router/drawer';
 import { Platform } from 'react-native';
 
 import { isChatDrawerRoute } from '@/features/navigation/chat-drawer-route';
-import { WaveDrawerContent } from '@/features/navigation/wave-drawer-content';
+import { WaveDrawerContent } from '@/features/navigation/drawer/content';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function ChatDrawerLayout() {

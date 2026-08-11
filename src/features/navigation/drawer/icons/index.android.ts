@@ -1,0 +1,16 @@
+export const DRAWER_ICONS = {
+  delete: require('@expo/material-symbols/delete.xml'),
+  ellipsis: require('@expo/material-symbols/more_vert.xml'),
+  liveActive: require('@expo/material-symbols/fiber_manual_record.xml'),
+  liveWaiting: require('@expo/material-symbols/radio_button_unchecked.xml'),
+  newConversation: require('@expo/material-symbols/edit_square.xml'),
+  pin: require('@expo/material-symbols/bookmark.xml'),
+  pinned: require('@expo/material-symbols/bookmark.xml'),
+  rename: require('@expo/material-symbols/edit.xml'),
+  search: require('@expo/material-symbols/search.xml'),
+  settings: require('@expo/material-symbols/settings.xml'),
+  sourceAutomation: require('@expo/material-symbols/precision_manufacturing.xml'),
+  sourceExternal: require('@expo/material-symbols/arrow_outward.xml'),
+  sourceOther: require('@expo/material-symbols/pending.xml'),
+  unpin: require('@expo/material-symbols/bookmark_remove.xml'),
+} as const;

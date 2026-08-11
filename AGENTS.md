@@ -185,14 +185,19 @@ documentation before implementing UI.
   header. A React
   Native screen with a large title must expose its inset-adjusting scroll
   view as the route root; in Search, the root is the `LegendList` itself because an RN wrapper
-  prevents the native title from tracking and collapsing with the list. Every tap on a Realtime
+  prevents the native title from tracking and collapsing with the list. Search's field is the
+  native header search bar (`Stack.SearchBar` — `UISearchController` on iOS, the toolbar search
+  view on Android): it renders nothing in the tree, so the list stays the route root. Search
+  behavior (debounce, the local-title + server-content merge, keep-paging-while-searching)
+  lives in `session-search-screen.shared.ts`; result rows are fixed-height native Hosts
+  (`session-search-row.{ios,android}.tsx`, two-line: title + bounded inert snippet). Every tap on a Realtime
   voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the
   user's secure-stored key, caches it by app-owned model and voice, and owns the single
   `expo-audio` player lifecycle; platform-native settings rows only dispatch the selection.
-- Search and transcript surfaces stay PanelUI/RN. The chat composer is the other deliberate
-  direct-Expo-UI surface: shared code owns product state and events only, while `view.android.tsx`
+- Transcript surfaces stay PanelUI/RN. The chat composer is a deliberate direct-Expo-UI
+  surface: shared code owns product state and events only, while `view.android.tsx`
   and `sheets.android.tsx` render direct Jetpack Compose exports and their `.ios.tsx` peers render
   direct SwiftUI exports. Hosts, visible controls, icons, native observable state, and sheet
   presentations must all come from the platform subpackages rather than universal Expo UI
@@ -210,6 +215,23 @@ documentation before implementing UI.
 - The conversation drawer is chat chrome. Enable its edge-swipe gesture only on `/new` and
   top-level `/conversation/[sessionId]` routes; Settings, search, development, voice, and other
   pushed routes must not expose or swipe-open it. Keep Disconnect out of the drawer.
+  The drawer's content is native (`src/features/navigation/drawer/`): behavior lives in
+  `content.shared.ts`, `content.{ios,android}.tsx` own the platform trees, and the session
+  list stays the virtualized `LegendList` (`session-list.tsx`) because `@expo/ui` lists render
+  every React row eagerly and emit no scroll events — do not convert it to a native
+  `List`/`LazyColumn`. Rows are single-line fixed-height native Hosts (`session-row.ios.tsx`,
+  `rows.android.tsx` — distinct basenames because their contracts differ and `moduleSuffixes`
+  would cross-resolve a shared name) with a reserved leading glyph column: live status
+  (filled accent dot working/starting, hollow waiting) wins over the Other-sources filter's
+  source symbols, idle chats keep the column empty, and the glyph's meaning stays in the
+  row's accessible name. Conversation actions are menu-only by decision — ellipsis menu plus
+  long-press context menu, no swipe actions (iOS `SwipeActions` only works inside a real
+  SwiftUI `List`). The rename and delete dialogs are keyed components mounted fresh per
+  target inside the drawer's sized chrome Host — Compose dialog windows never present from
+  a zero-size absolute Host, and this `@expo/ui` version's Compose text field implements no
+  `setText`, so the rename draft's seed is the keyed `useNativeState(title)` initial value,
+  read back with `state.value` at submit. Menu-open state lives in React via
+  `useRecyclingState` so recycled rows never show a stale menu.
 - Keyboard avoidance for the remaining PanelUI/RN surfaces (validated on device): a lone
   field — optionally grouped with its submit button — lifts through
   `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus. The native Connect fields use
