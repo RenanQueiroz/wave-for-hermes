@@ -1,6 +1,7 @@
 /** Native iOS settings, rendered entirely as a SwiftUI Form. */
 import { Host } from '@expo/ui';
 import {
+  Alert,
   Button,
   Form,
   Section,
@@ -20,7 +21,7 @@ import {
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
 import { Redirect } from 'expo-router';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 import type { OpenAiKeyFieldRef } from '@/features/realtime/use-openai-key-settings';
 import { SettingsRow } from '@/features/settings/components/settings-row';
@@ -42,6 +43,7 @@ function SectionHeader({ children, id }: { children: string; id: string }) {
 
 export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
+  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const settings = useSettingsScreen(keyDraftRef);
 
   if (!settings.connected) {
@@ -67,6 +69,49 @@ export function SettingsScreen() {
               {settings.connected.baseUrl}
             </Text>
           </VStack>
+          <Alert
+            isPresented={disconnectOpen}
+            title="Disconnect this device?"
+            onIsPresentedChange={(presented) => {
+              if (!presented && !settings.disconnecting) {
+                setDisconnectOpen(false);
+              }
+            }}>
+            <Alert.Trigger>
+              <Button
+                label="Disconnect"
+                role="destructive"
+                modifiers={[
+                  disabled(settings.disconnecting),
+                  accessibilityIdentifier('settings-disconnect-button'),
+                ]}
+                onPress={() => setDisconnectOpen(true)}
+              />
+            </Alert.Trigger>
+            <Alert.Message>
+              <Text>{SETTINGS_COPY.disconnectAlertMessage}</Text>
+            </Alert.Message>
+            <Alert.Actions>
+              <Button
+                label="Cancel"
+                role="cancel"
+                modifiers={[disabled(settings.disconnecting)]}
+                onPress={() => setDisconnectOpen(false)}
+              />
+              <Button
+                label="Disconnect"
+                role="destructive"
+                modifiers={[
+                  disabled(settings.disconnecting),
+                  accessibilityIdentifier('disconnect-device-confirm'),
+                ]}
+                onPress={() => {
+                  setDisconnectOpen(false);
+                  settings.disconnect();
+                }}
+              />
+            </Alert.Actions>
+          </Alert>
         </Section>
 
         <Section

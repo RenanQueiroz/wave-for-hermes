@@ -1,9 +1,12 @@
+import { usePathname } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 
+import { isChatDrawerRoute } from '@/features/navigation/chat-drawer-route';
 import { WaveDrawerContent } from '@/features/navigation/wave-drawer-content';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function AppLayout() {
+  const pathname = usePathname();
   const theme = useTheme();
 
   return (
@@ -18,6 +21,7 @@ export default function AppLayout() {
         headerShown: false,
         overlayColor: 'rgba(0, 0, 0, 0.36)',
         swipeEdgeWidth: 36,
+        swipeEnabled: isChatDrawerRoute(pathname),
       }}>
       {/* One screen: the native stack owns every app screen, so navigation
           between them gets native headers, push transitions, and swipe-back.

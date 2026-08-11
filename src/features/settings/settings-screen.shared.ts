@@ -1,7 +1,9 @@
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import type { RefObject } from 'react';
 import { ReactNativeLegal } from 'react-native-legal';
 
+import { useWaveConnection } from '@/features/connection/connection-provider';
 import {
   useOpenAiKeySettings,
   type OpenAiKeyFieldRef,
@@ -20,6 +22,9 @@ export const SETTINGS_COPY = {
   captionsDescription:
     'Show what you said during live voice. Adds $0.0045 per minute of transcription billed to your key.',
   connectionFooter: "This phone's sign-in to your Hermes gateway.",
+  disconnectAlertMessage:
+    "Wave will remove this phone's saved sign-in. Active Hermes work will continue, and the gateway can invalidate outstanding tokens only when its token secret rotates.",
+  disconnectDescription: "Remove this phone's saved sign-in.",
   developmentToolsDescription:
     'Local diagnostics are only available in development builds.',
   licensesDescription:
@@ -40,9 +45,16 @@ export function useSettingsScreen(
   keyDraftRef: RefObject<OpenAiKeyFieldRef | null>,
 ) {
   const connected = useConnectedWave();
+  const { disconnect } = useWaveConnection();
   const router = useRouter();
   const key = useOpenAiKeySettings(keyDraftRef);
   const preferences = useSettingsPreferences();
+  const disconnectMutation = useMutation({
+    mutationFn: disconnect,
+    onSuccess: (disconnected) => {
+      if (disconnected) router.replace('/');
+    },
+  });
 
   const keyBusy = key.saveKey.isPending || key.removeKey.isPending;
 
@@ -63,6 +75,8 @@ export function useSettingsScreen(
     captions: key.captions.value,
     captionsHydrated: key.captions.hydrated,
     connected,
+    disconnect: disconnectMutation.mutate,
+    disconnecting: disconnectMutation.isPending,
     keyBusy,
     keyDraft: key.draft,
     keyError: key.error,

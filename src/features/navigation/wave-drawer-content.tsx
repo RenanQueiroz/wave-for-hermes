@@ -32,8 +32,6 @@ import { useRecyclingState } from '@legendapp/list/react-native';
 
 import { LegendList } from '@/components/legend-list';
 import { OfflineNotice } from '@/components/offline-notice';
-import { useWaveConnection } from '@/features/connection/connection-provider';
-import { useConnectedWave } from '@/state/use-connected-wave';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import {
   waveSessionDataQueryKey,
@@ -55,6 +53,7 @@ import type {
   WaveChatClient,
   WaveSessionPage,
 } from '@/services/wave/wave-chat-client';
+import { useConnectedWave } from '@/state/use-connected-wave';
 
 type DrawerSessionListItem =
   | {
@@ -66,7 +65,6 @@ type DrawerSessionListItem =
   | { id: string; kind: 'session'; session: WaveSessionSummary };
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
-  const { disconnect } = useWaveConnection();
   const connected = useConnectedWave();
   if (!connected) {
     return (
@@ -83,8 +81,6 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
       baseUrl={connected.baseUrl}
       client={connected.client}
       connectionId={connected.connectionId}
-      deviceName={connected.label}
-      disconnect={disconnect}
     />
   );
 }
@@ -93,15 +89,11 @@ function ConnectedWaveDrawerContent({
   baseUrl,
   client,
   connectionId,
-  deviceName,
-  disconnect,
   navigation,
 }: DrawerContentComponentProps & {
   baseUrl: string;
   client: WaveChatClient;
   connectionId: string;
-  deviceName: string;
-  disconnect(): Promise<boolean>;
 }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
@@ -143,7 +135,6 @@ function ConnectedWaveDrawerContent({
   const [renameSession, setRenameSession] = useState<WaveSessionSummary>();
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteSession, setDeleteSession] = useState<WaveSessionSummary>();
-  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const sessionsKey = waveSessionQueryKey(connectionId, baseUrl);
 
   const renameMutation = useMutation({
@@ -216,17 +207,6 @@ function ConnectedWaveDrawerContent({
       mutatePin({ pinned: !session.pinned, sessionId: session.id }),
     [mutatePin],
   );
-  const disconnectMutation = useMutation({
-    mutationFn: disconnect,
-    onSuccess: (disconnected) => {
-      if (disconnected) {
-        setDisconnectOpen(false);
-        navigation.closeDrawer();
-        router.replace('/');
-      }
-    },
-  });
-
   const navigate = (pathname: '/new' | '/search' | '/settings') => {
     navigation.closeDrawer();
     // Every app screen lives in the one native stack, so drawer entries push
@@ -399,12 +379,6 @@ function ConnectedWaveDrawerContent({
           testID="drawer-settings"
           onPress={() => navigate('/settings')}
         />
-        <DrawerAction
-          description={deviceName}
-          label="Disconnect"
-          testID="drawer-disconnect"
-          onPress={() => setDisconnectOpen(true)}
-        />
       </View>
 
       <Dialog
@@ -487,38 +461,6 @@ function ConnectedWaveDrawerContent({
                 }
               }}>
               Delete
-            </Button>
-          </Dialog.Footer>
-        </Dialog.Content>
-      </Dialog>
-
-      <Dialog
-        open={disconnectOpen}
-        onOpenChange={(open) => {
-          if (!open && !disconnectMutation.isPending) {
-            setDisconnectOpen(false);
-          }
-        }}>
-        <Dialog.Content blur dismissible={!disconnectMutation.isPending}>
-          <Dialog.Title>Disconnect this device?</Dialog.Title>
-          <Dialog.Description>
-            Wave will revoke this device on the Gateway, end its active work,
-            and remove its credential from this phone.
-          </Dialog.Description>
-          <Dialog.Footer className="mt-4">
-            <Button
-              variant="ghost"
-              disabled={disconnectMutation.isPending}
-              onPress={() => setDisconnectOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={disconnectMutation.isPending}
-              loading={disconnectMutation.isPending}
-              testID="disconnect-device-confirm"
-              onPress={() => disconnectMutation.mutate()}>
-              Disconnect
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

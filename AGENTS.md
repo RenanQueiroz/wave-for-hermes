@@ -149,8 +149,11 @@ documentation before implementing UI.
   rows with the current values. Android selection pages use grouped radio `ListItem` rows, while
   iOS uses native plain button rows with trailing checkmarks. Every option owns its always-visible
   description, applies immediately without a save action, and leaves the user on the page until
-  they navigate back. Do not reintroduce dropdown pickers for these preferences. Connect follows the
-  same split through `connection-screen.ios.tsx`, `connection-screen.android.tsx`, and
+  they navigate back. Do not reintroduce dropdown pickers for these preferences. Settings owns the
+  local Disconnect action below Connection details: confirm with SwiftUI `Alert` on iOS and Compose
+  `AlertDialog` on Android, and describe its local credential deletion honestly because it cannot
+  revoke stateless gateway tokens or stop active Hermes work. Connect follows the same split through
+  `connection-screen.ios.tsx`, `connection-screen.android.tsx`, and
   `connection-screen.shared.ts`; its heading, explanatory copy, fields, errors, and actions all
   belong to the native tree, and the Expo Router route keeps its redundant page header hidden.
   Android Settings uses a shadowless, start-aligned Material app bar; resolve the same semantic
@@ -178,6 +181,9 @@ documentation before implementing UI.
   `ChatComposerDock` is non-visual and is the only keyboard-movement owner; the native hosts ignore
   keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts, or a
   second keyboard-avoidance path inside the composer.
+- The conversation drawer is chat chrome. Enable its edge-swipe gesture only on `/new` and
+  top-level `/conversation/[sessionId]` routes; Settings, search, development, voice, and other
+  pushed routes must not expose or swipe-open it. Keep Disconnect out of the drawer.
 - Keyboard avoidance for the remaining PanelUI/RN surfaces (validated on device): a lone
   field — optionally grouped with its submit button — lifts through
   `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus. The native Connect fields use

@@ -356,7 +356,8 @@ export function WaveConnectionProvider({ children }: PropsWithChildren) {
 
   // A gateway session cannot be revoked server-side: its tokens are stateless
   // and signed, so `/auth/logout` does not invalidate them. Deleting them
-  // locally is the whole sign-out; the tokens expire on their own schedule.
+  // locally is the whole sign-out; outstanding tokens remain valid until the
+  // gateway rotates its token secret.
   const disconnect = useCallback(async () => {
     const operation = ++operationRef.current;
     setState({ phase: 'loading' });

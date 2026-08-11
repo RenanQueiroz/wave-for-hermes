@@ -1,6 +1,7 @@
 /** Native Android settings, rendered as a continuous Material 3 list. */
 import { Host } from '@expo/ui';
 import {
+  AlertDialog,
   Button,
   Column,
   Icon,
@@ -9,6 +10,7 @@ import {
   Row,
   Surface,
   Text,
+  TextButton,
   useMaterialColors,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -19,7 +21,7 @@ import {
   testID as testIDModifier,
 } from '@expo/ui/jetpack-compose/modifiers';
 import { Redirect } from 'expo-router';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useCSSVariable } from 'uniwind';
 
 import type { OpenAiKeyFieldRef } from '@/features/realtime/use-openai-key-settings';
@@ -105,6 +107,7 @@ function SettingsError({
 
 export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
+  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const settings = useSettingsScreen(keyDraftRef);
   const background = useCSSVariable('--color-background');
   const colors = useMaterialColors({
@@ -134,6 +137,14 @@ export function SettingsScreen() {
             <SettingsListItem
               description={settings.connected.baseUrl}
               label={settings.connected.label}
+            />
+            <SettingsListItem
+              destructive
+              description={SETTINGS_COPY.disconnectDescription}
+              enabled={!settings.disconnecting}
+              label="Disconnect"
+              testID="settings-disconnect-button"
+              onPress={() => setDisconnectOpen(true)}
             />
           </SettingsListGroup>
           <SectionFooter>{SETTINGS_COPY.connectionFooter}</SectionFooter>
@@ -280,6 +291,42 @@ export function SettingsScreen() {
           <SectionFooter>{SETTINGS_COPY.aboutFooter}</SectionFooter>
         </LazyColumn>
       </Surface>
+      {disconnectOpen ? (
+        <AlertDialog
+          properties={{
+            dismissOnBackPress: !settings.disconnecting,
+            dismissOnClickOutside: !settings.disconnecting,
+          }}
+          onDismissRequest={() => {
+            if (!settings.disconnecting) setDisconnectOpen(false);
+          }}>
+          <AlertDialog.Title>
+            <Text>Disconnect this device?</Text>
+          </AlertDialog.Title>
+          <AlertDialog.Text>
+            <Text>{SETTINGS_COPY.disconnectAlertMessage}</Text>
+          </AlertDialog.Text>
+          <AlertDialog.DismissButton>
+            <TextButton
+              enabled={!settings.disconnecting}
+              onClick={() => setDisconnectOpen(false)}>
+              <Text>Cancel</Text>
+            </TextButton>
+          </AlertDialog.DismissButton>
+          <AlertDialog.ConfirmButton>
+            <TextButton
+              enabled={!settings.disconnecting}
+              colors={{ contentColor: colors.error }}
+              modifiers={[testIDModifier('disconnect-device-confirm')]}
+              onClick={() => {
+                setDisconnectOpen(false);
+                settings.disconnect();
+              }}>
+              <Text>Disconnect</Text>
+            </TextButton>
+          </AlertDialog.ConfirmButton>
+        </AlertDialog>
+      ) : null}
     </Host>
   );
 }
