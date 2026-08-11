@@ -1,14 +1,6 @@
-import { Host, type UniversalHostProps } from '@expo/ui';
-import type { ComponentType, ReactNode } from 'react';
+import { Host } from '@expo/ui/jetpack-compose';
+import type { ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
-
-type AndroidComposerHostProps = UniversalHostProps & {
-  ignoreSafeAreaKeyboardInsets?: boolean;
-};
-
-// The universal root resolves to the Compose Host at runtime. Its common type
-// does not expose this Android-only prop yet, so keep the narrow cast here.
-const AndroidHost = Host as ComponentType<AndroidComposerHostProps>;
 
 export function ChatComposerHost({
   children,
@@ -18,12 +10,12 @@ export function ChatComposerHost({
   seedColor: ColorValue;
 }) {
   return (
-    <AndroidHost
+    <Host
       ignoreSafeAreaKeyboardInsets
       matchContents={{ vertical: true }}
       seedColor={seedColor}
       style={{ width: '100%' }}>
       {children}
-    </AndroidHost>
+    </Host>
   );
 }

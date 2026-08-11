@@ -50,7 +50,6 @@ import {
   type WaveChatMessage,
   type WaveChatPart,
 } from '@/features/chat/chat-state';
-import { initialConversationAnchor } from '@/features/chat/conversation-anchor';
 import { ChatComposer } from '@/features/chat/composer';
 import {
   deriveToolAction,
@@ -61,6 +60,7 @@ import {
   collectPrunedEntryIds,
   regenerateTarget,
 } from '@/features/chat/turn-action-targets';
+import { TurnActionLayoutEpochProvider } from '@/features/chat/turn-actions/layout-epoch';
 import { TurnActionRow } from '@/features/chat/turn-action-row';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useConnectedWave } from '@/state/use-connected-wave';
@@ -145,7 +145,13 @@ function ConnectedChatScreen({
   const navigation = useNavigation();
   const drawerNavigation = navigation.getParent();
   const [composerBottomOffset, setComposerBottomOffset] = useState(0);
+  const [turnActionLayoutEpoch, setTurnActionLayoutEpoch] = useState(0);
+  const refreshTurnActionLayout = useCallback(
+    () => setTurnActionLayoutEpoch((current) => current + 1),
+    [],
+  );
   const queryClient = useQueryClient();
+
   // Speech affordances appear only when the gateway advertises the
   // capability; a failed probe hides them rather than caching a "no".
   const speech = useQuery({
@@ -675,43 +681,48 @@ function ConnectedChatScreen({
       ) : null}
 
       <View className="flex-1">
-        <ConversationScroller
-          initialAnchor={initialConversationAnchor}
-          // Turns hold disclosure state (open Tasks), which recycled rows
-          // would carry between messages — so no recycling; the draw buffer
-          // covers fast flings instead.
-          recycleItems={false}
-          drawDistance={500}
-          contentContainerClassName="px-4 pt-3"
-          contentContainerStyle={{
-            paddingBottom: Math.max(composerBottomOffset + 12, 12),
-          }}
-          contentInsetAdjustmentBehavior="automatic"
-          data={messages}
-          extraData={rowExtraData}
-          ItemSeparatorComponent={ChatTurnSeparator}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          jumpButtonBottomOffset={composerBottomOffset + 12}
-          keyExtractor={(message) => message.id}
-          ListFooterComponent={
-            chat.state.status === 'submitting' ? (
-              <Thinking label={activityLabel ?? 'Working…'} />
-            ) : null
-          }
-          ListHeaderComponent={
-            timeline.isPending || timeline.isFetchingNextPage ? (
-              <Thinking label="Loading conversation…" />
-            ) : null
-          }
-          onStartReached={() => {
-            if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
-              void timeline.fetchNextPage();
+        <TurnActionLayoutEpochProvider
+          value={`${turnActionLayoutEpoch}:${composerBottomOffset}`}>
+          <ConversationScroller
+            key={sessionId}
+            // Turns hold disclosure state (open Tasks), which recycled rows
+            // would carry between messages — so no recycling; the draw buffer
+            // covers fast flings instead.
+            recycleItems={false}
+            drawDistance={500}
+            contentContainerClassName="px-4 pt-3"
+            contentContainerStyle={{
+              paddingBottom: Math.max(composerBottomOffset + 12, 12),
+            }}
+            contentInsetAdjustmentBehavior="automatic"
+            data={messages}
+            extraData={rowExtraData}
+            ItemSeparatorComponent={ChatTurnSeparator}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            jumpButtonBottomOffset={composerBottomOffset + 12}
+            keyExtractor={(message) => message.id}
+            ListFooterComponent={
+              chat.state.status === 'submitting' ? (
+                <Thinking label={activityLabel ?? 'Working…'} />
+              ) : null
             }
-          }}
-          onStartReachedThreshold={0.25}
-          renderItem={renderItem}
-        />
+            ListHeaderComponent={
+              timeline.isPending || timeline.isFetchingNextPage ? (
+                <Thinking label="Loading conversation…" />
+              ) : null
+            }
+            onMomentumScrollEnd={refreshTurnActionLayout}
+            onScrollEndDrag={refreshTurnActionLayout}
+            onStartReached={() => {
+              if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
+                void timeline.fetchNextPage();
+              }
+            }}
+            onStartReachedThreshold={0.25}
+            renderItem={renderItem}
+          />
+        </TurnActionLayoutEpochProvider>
         {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"

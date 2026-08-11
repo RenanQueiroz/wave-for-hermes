@@ -1,10 +1,11 @@
-import { Icon } from '@expo/ui';
 import {
   CircularProgressIndicator,
   FilledIconButton,
   FilledTonalIconButton,
+  Icon,
   IconButton,
 } from '@expo/ui/jetpack-compose';
+import type { ImageSourcePropType } from 'react-native';
 import {
   size,
   testID as testIDModifier,
@@ -55,10 +56,10 @@ export function NativeIconButton({
         />
       ) : (
         <Icon
-          accessibilityLabel={accessibilityLabel}
-          color={foregroundColor}
-          name={icon}
+          contentDescription={accessibilityLabel}
+          source={icon as ImageSourcePropType}
           size={iconSize}
+          tint={foregroundColor}
         />
       )}
     </Component>

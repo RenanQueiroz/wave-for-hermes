@@ -11,7 +11,7 @@ import type {
   LegendListProps,
   LegendListRef,
 } from '@legendapp/list/react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   View,
   type LayoutChangeEvent,
@@ -41,13 +41,6 @@ export interface ConversationScrollerProps<ItemT> extends Omit<
 > {
   className?: string;
   contentContainerClassName?: string;
-  /**
-   * Decide the opening anchor from the first non-empty data: return an index
-   * to open with that item at the top of the viewport — the reader's own
-   * last message rather than the tail of a long response — or undefined to
-   * open at the end. Decided once; never re-anchors.
-   */
-  initialAnchor?: (items: readonly ItemT[]) => number | undefined;
   /** Distance of the jump-to-newest button from the bottom edge. */
   jumpButtonBottomOffset?: number;
 }
@@ -55,7 +48,6 @@ export interface ConversationScrollerProps<ItemT> extends Omit<
 export function ConversationScroller<ItemT>({
   className,
   data,
-  initialAnchor,
   jumpButtonBottomOffset = 16,
   onContentSizeChange,
   onLayout,
@@ -168,38 +160,6 @@ export function ConversationScroller<ItemT>({
     },
     [onContentSizeChange, updateEdgeFades, updateNearEnd],
   );
-  // The opening position is decided once, from the first non-empty data —
-  // usually a commit after mount — and applied imperatively so the anchored
-  // and at-end cases cannot race each other (the list deliberately does not
-  // get `initialScrollAtEnd`). The programmatic scroll's own events land in
-  // trackNearEnd, which disengages auto-follow and shows the jump button
-  // for an anchored open; no state is written here directly.
-  const anchoredRef = useRef(false);
-  useEffect(() => {
-    if (anchoredRef.current || sawScrollRef.current) return;
-    if (!data || data.length === 0) return;
-    anchoredRef.current = true;
-    const index = initialAnchor?.(data);
-    if (index === undefined) {
-      void listRef.current?.scrollToEnd({ animated: false }).then(() => {
-        const metrics = metricsRef.current;
-        metrics.offsetY = Math.max(
-          metrics.contentHeight - metrics.viewportHeight,
-          0,
-        );
-        updateEdgeFades(metrics);
-      });
-      return;
-    }
-    void listRef.current
-      ?.scrollToIndex({ animated: false, index, viewPosition: 0 })
-      .then(() => {
-        // A non-animated positioning emits no scroll events, so disengage
-        // auto-follow once the anchor has settled unless the reader has
-        // already scrolled themselves.
-        if (!sawScrollRef.current) updateNearEnd(false);
-      });
-  }, [data, initialAnchor, updateEdgeFades, updateNearEnd]);
   const jumpToNewest = useCallback(() => {
     // One deliberate reader-initiated scroll. Legend List's programmatic
     // scrolls do not surface through onScroll, so the landing re-engages
@@ -224,6 +184,7 @@ export function ConversationScroller<ItemT>({
         alignItemsAtEnd
         className={className ? `flex-1 ${className}` : 'flex-1'}
         data={data}
+        initialScrollAtEnd
         maintainScrollAtEnd={nearEnd}
         maintainScrollAtEndThreshold={MAINTAIN_AT_END_VIEWPORT_FRACTION}
         maintainVisibleContentPosition

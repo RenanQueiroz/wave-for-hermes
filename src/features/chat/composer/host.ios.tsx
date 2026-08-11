@@ -1,4 +1,4 @@
-import { Host } from '@expo/ui';
+import { Host } from '@expo/ui/swift-ui';
 import type { ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
 

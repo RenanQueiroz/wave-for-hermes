@@ -1,5 +1,5 @@
-import { Icon } from '@expo/ui';
-import { Button, ProgressView } from '@expo/ui/swift-ui';
+import { Button, Image, ProgressView } from '@expo/ui/swift-ui';
+import type { SFSymbol } from 'sf-symbols-typescript';
 import {
   accessibilityIdentifier,
   accessibilityLabel,
@@ -56,12 +56,10 @@ export function NativeIconButton({
           modifiers={[frame({ height: progressSize, width: progressSize })]}
         />
       ) : (
-        <Icon
-          accessibilityLabel={label}
+        <Image
           color={foregroundColor}
-          name={icon}
           size={iconSize}
-          style={{ height: iconSize, width: iconSize }}
+          systemName={icon as SFSymbol}
         />
       )}
     </Button>

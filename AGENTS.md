@@ -192,9 +192,11 @@ documentation before implementing UI.
   user's secure-stored key, caches it by app-owned model and voice, and owns the single
   `expo-audio` player lifecycle; platform-native settings rows only dispatch the selection.
 - Search and transcript surfaces stay PanelUI/RN. The chat composer is the other deliberate
-  direct-Expo-UI surface: all controls and text use one platform-native `Host`, native observable
-  text/selection state, universal native `Icon.select(...)` mappings, and universal `BottomSheet`
-  presentations. The React Native `ChatComposerDock` is the sole keyboard-movement owner and
+  direct-Expo-UI surface: shared code owns product state and events only, while `view.android.tsx`
+  and `sheets.android.tsx` render direct Jetpack Compose exports and their `.ios.tsx` peers render
+  direct SwiftUI exports. Hosts, visible controls, icons, native observable state, and sheet
+  presentations must all come from the platform subpackages rather than universal Expo UI
+  components. The React Native `ChatComposerDock` is the sole keyboard-movement owner and
   positions the composer as an overlay so the transcript can scroll beneath it; it reports its
   effective resting or keyboard-raised bottom footprint so the transcript keeps reachable content
   above the dock. iOS may render the dock's non-interactive background with Expo `GlassView` when
@@ -211,12 +213,13 @@ documentation before implementing UI.
   Compose `OutlinedTextField` keyboard classes (`uri`, `ascii`, and `password`) with explicit IME
   actions on Android, and SwiftUI keyboard/content-type modifiers on iOS; keep focus progression
   and keyboard submission native rather than adding a React Native avoidance layer.
-- Keep Expo UI modifier ownership explicit. On Android, modifiers supplied to the universal
-  `Switch` size the switch control itself rather than its label row, so do not apply
-  `fillMaxWidth()` there. On iOS, a SwiftUI container accessibility identifier is inherited by its
+- Keep Expo UI modifier ownership explicit. On Android, modifiers supplied to a Compose `Switch`
+  size the switch control itself rather than its label row, so do not apply `fillMaxWidth()` there.
+  On iOS, a SwiftUI container accessibility identifier is inherited by its
   descendants and can overwrite their identifiers, so put identifiers on actionable descendants
-  rather than the composer container. Universal `BottomSheet` owns its presentation host and stays
-  a sibling of the manually owned inline composer `Host`.
+  rather than the composer container. Direct platform sheet components need their own
+  platform-native presentation `Host`, kept as a sibling of the manually owned inline composer
+  `Host`.
 - React Native's Android renderer resolves the CSS logical corner classes `rounded-es-*` and
   `rounded-se-*` to the diagonally opposite corner (validated on RN 0.86:
   `BorderRadiusStyle.resolve` reads the tokens inline-axis-first; iOS is correct, and
@@ -409,21 +412,24 @@ documentation before implementing UI.
   raw tool input/output is not displayed.
 - Every completed assistant turn carries the Wave-owned action row (`turn-action-row.tsx`):
   time-ago timestamp plus icon-only Branch / Copy / Read-aloud / Refresh. The complete visible row
-  is one native Expo UI `Host`/`Row`; do not split its timestamp and controls across React Native
-  and native layout trees. Native icon controls share the composer's platform button and symbol
-  metrics. Keep the Host's explicit first-frame height together with native vertical
-  `matchContents`: the virtualized row needs the former for a stable initial proposal and iOS needs
-  the latter to keep SwiftUI content at the Host's measured origin before interaction. It renders
-  only on sealed turns, receives the copy text through a lazy accessor (never as a prop), and
-  Branch and Refresh are one-shot gateway mutations disabled while a turn runs.
+  is one native Expo UI `Host`: `row.android.tsx` owns a direct Jetpack Compose tree and
+  `row.ios.tsx` owns a direct SwiftUI tree; do not split its timestamp and controls across React
+  Native and native layout trees or replace either tree with universal controls. Native icon
+  controls share the composer's platform button and symbol metrics. Keep the RN Host and native
+  row at the same explicit fixed height without `matchContents`. SwiftUI hosted inside a recycled
+  Legend List cell can retain its old native origin after the cell moves; settled drag, momentum,
+  and composer-inset changes increment the shared action-row layout epoch so iOS remounts the
+  `HStack` at the cell's current origin before interaction. It renders only on sealed turns, receives the copy text through a lazy accessor
+  (never as a prop), and Branch and Refresh are one-shot gateway mutations disabled while a turn
+  runs.
   Refresh ordinals and branch counts come only from server timeline rows — `ordinalExempt` rows and
   Wave-injected correction rows never shift them — and the optimistic timeline prune is always
   reconciled by the authoritative refetch.
 - Conversation surfaces render through the Wave-owned `ConversationScroller`
   (`src/components/conversation-scroller.tsx`), which composes Legend List v3 and owns the
   transcript scroll contract: pin-to-newest only inside the at-end band, no dragging the reader
-  mid-read, a jump-to-newest button while auto-follow is disengaged, stable history prepends,
-  and a one-time anchored opening at the reader's last message when the tail response overflows.
+  mid-read, a jump-to-newest button while auto-follow is disengaged, stable history prepends, and
+  a fresh at-end opening every time the user navigates into a conversation.
   The jump control is a shared native icon button whose visibility is reconciled directly from
   Legend List scroll, drag-end, momentum-end, layout, and content-size metrics. Edge fades are
   passive pointer-free gradient siblings; never wrap the list in PanelUI `ScrollFade` or compose
@@ -432,8 +438,8 @@ documentation before implementing UI.
   it is not virtualized. Keep turn rows memoized with stable `renderItem`/`keyExtractor`, and
   mark only the active turn as streaming: its arriving tail streams through `Response`
   `isStreaming` while sealed segments and completed turns parse once and stay memoized. Never
-  call `scrollToEnd` or run layout animation per token; the scroller's reader-initiated jump and
-  opening anchor are the two deliberate exceptions.
+  call `scrollToEnd` or run layout animation per token; the scroller's reader-initiated jump is the
+  deliberate exception, while Legend List's `initialScrollAtEnd` owns initial positioning.
 - Do not log access tokens, full authorization headers, request URLs, network addresses, opaque
   conversation identifiers, or sensitive conversation payloads. Production request logs keep only
   the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle

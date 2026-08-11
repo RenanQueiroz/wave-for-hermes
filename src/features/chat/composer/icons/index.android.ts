@@ -1,0 +1,16 @@
+export const CHAT_COMPOSER_ICONS = {
+  add: require('@expo/material-symbols/add.xml'),
+  camera: require('@expo/material-symbols/photo_camera.xml'),
+  check: require('@expo/material-symbols/check.xml'),
+  file: require('@expo/material-symbols/description.xml'),
+  image: require('@expo/material-symbols/image.xml'),
+  liveVoice: require('@expo/material-symbols/graphic_eq.xml'),
+  microphone: require('@expo/material-symbols/mic.xml'),
+  paperclip: require('@expo/material-symbols/attach_file.xml'),
+  photos: require('@expo/material-symbols/photo_library.xml'),
+  refresh: require('@expo/material-symbols/refresh.xml'),
+  remove: require('@expo/material-symbols/close.xml'),
+  run: require('@expo/material-symbols/chevron_right.xml'),
+  send: require('@expo/material-symbols/arrow_upward.xml'),
+  stop: require('@expo/material-symbols/stop.xml'),
+} as const;

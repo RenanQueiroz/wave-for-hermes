@@ -39,12 +39,6 @@ export function ChatComposerSurfaceBackground({
   );
 }
 
-export function nativeComposerSurfaceStyle(_backgroundColor: string): {
-  backgroundColor: 'transparent';
-} {
-  return { backgroundColor: 'transparent' };
-}
-
 export function nativeComposerSurfaceModifiers(
   onHeightChange: (height: number) => void,
 ): ModifierConfig[] {

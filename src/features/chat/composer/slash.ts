@@ -9,8 +9,9 @@
  * routes through the registry in `slash-commands.ts`; commands never reach
  * `prompt.submit` or `session.redirect` as raw text.
  *
- * Visible suggestion, recognition, and result surfaces live in
- * `composer/index.tsx`, where they render directly through Expo UI.
+ * Visible suggestion, recognition, and result surfaces live in the
+ * platform-specific composer views, where they render directly through
+ * Jetpack Compose or SwiftUI exports.
  */
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';

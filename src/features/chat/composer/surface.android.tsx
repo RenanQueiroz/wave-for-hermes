@@ -8,12 +8,6 @@ export function ChatComposerSurfaceBackground(
   return null;
 }
 
-export function nativeComposerSurfaceStyle(backgroundColor: string): {
-  backgroundColor: string;
-} {
-  return { backgroundColor };
-}
-
 export function nativeComposerSurfaceModifiers(
   _onHeightChange: (height: number) => void,
 ): ModifierConfig[] {

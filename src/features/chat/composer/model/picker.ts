@@ -3,10 +3,10 @@
  *
  * Presentation lives with ChatComposer so the trigger, model sheet, and
  * expensive-model alert are all direct Expo UI. This hook keeps the existing
- * gateway boundaries: existing conversations read lazily when the picker
- * opens; pending conversations may prefetch the profile default because there
- * is no session to resume. Every write is one non-retrying session-scoped
- * mutation or a pending option for that conversation's eventual create.
+ * gateway boundaries: every conversation reads its current context on entry
+ * so the trigger reflects its real session-scoped model before the picker is
+ * opened. Every write is one non-retrying session-scoped mutation or a pending
+ * option for that conversation's eventual create.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -21,7 +21,6 @@ import {
   type WaveReasoningEffort,
   type WaveReasoningLevel,
 } from '@/services/gateway/gateway-models';
-import { isPendingSessionId } from '@/services/wave/wave-chat-client';
 
 const NOTICE_TIMEOUT_MS = 8_000;
 const CONFIRMATION_PRESENTATION_DELAY_MS = 400;
@@ -127,7 +126,6 @@ export function useSessionModelPicker({
     undefined,
   );
   const lastReasoning = useRef<WaveReasoningLevel>('medium');
-  const prefetchedPendingSession = useRef<string | undefined>(undefined);
 
   const contextKey = useMemo(
     () =>
@@ -141,8 +139,10 @@ export function useSessionModelPicker({
     [baseUrl, connectionId, sessionId],
   );
   const context = useQuery({
-    // Fetching resumes the session server-side; only the open picker pays it.
-    enabled: false,
+    // Existing conversations must resume to reveal their scoped model. Keep
+    // that read in the session-keyed query so navigation loads it once,
+    // shares cached results, and cancels it when the screen leaves.
+    enabled: Boolean(gatewayClient),
     gcTime: 10 * 60_000,
     queryFn: ({ signal }) => {
       if (!gatewayClient) throw new Error('The model catalog is unavailable.');
@@ -154,21 +154,6 @@ export function useSessionModelPicker({
   });
   const refetchContext = context.refetch;
   const [refreshing, setRefreshing] = useState(false);
-
-  useEffect(() => {
-    // A pending conversation has no gateway session to resume, so its profile
-    // model context is safe to read immediately. Existing chats stay lazy:
-    // reading their scoped context deliberately resumes a Hermes session.
-    if (
-      !gatewayClient ||
-      !isPendingSessionId(sessionId) ||
-      prefetchedPendingSession.current === sessionId
-    ) {
-      return;
-    }
-    prefetchedPendingSession.current = sessionId;
-    void refetchContext();
-  }, [gatewayClient, refetchContext, sessionId]);
 
   useEffect(
     () => () => {
