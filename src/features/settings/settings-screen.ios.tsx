@@ -164,6 +164,7 @@ export function SettingsScreen() {
                 description={settings.selectedModelLabel}
                 enabled={settings.modelHydrated}
                 label="Live voice model"
+                showsDisclosureIndicator
                 testID="realtime-model-picker"
                 onPress={settings.openModelSettings}
               />
@@ -171,6 +172,7 @@ export function SettingsScreen() {
                 description={settings.selectedVoiceLabel}
                 enabled={settings.voiceHydrated}
                 label="Live voice sound"
+                showsDisclosureIndicator
                 testID="realtime-voice-picker"
                 onPress={settings.openVoiceSettings}
               />
@@ -234,6 +236,7 @@ export function SettingsScreen() {
             description={settings.selectedAppearanceLabel}
             enabled={settings.appearanceHydrated}
             label="Theme"
+            showsDisclosureIndicator
             testID="theme-appearance-picker"
             onPress={settings.openAppearanceSettings}
           />
@@ -243,6 +246,7 @@ export function SettingsScreen() {
           <SettingsRow
             description={SETTINGS_COPY.licensesDescription}
             label="Open-source licenses"
+            showsDisclosureIndicator
             testID="open-source-licenses"
             onPress={settings.openLicenses}
           />
@@ -250,6 +254,7 @@ export function SettingsScreen() {
             <SettingsRow
               description={SETTINGS_COPY.developmentToolsDescription}
               label="Open development tools"
+              showsDisclosureIndicator
               testID="open-development-tools"
               onPress={settings.openDevelopmentTools}
             />

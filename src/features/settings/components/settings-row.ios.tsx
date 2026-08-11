@@ -18,6 +18,10 @@ const SECONDARY_TEXT = foregroundStyle({
   style: 'secondary',
   type: 'hierarchical',
 });
+const TERTIARY_TEXT = foregroundStyle({
+  style: 'tertiary',
+  type: 'hierarchical',
+});
 const SELECTION_ACCENT = foregroundStyle(Color.ios.systemBlue);
 
 export function SettingsRow({
@@ -26,6 +30,7 @@ export function SettingsRow({
   label,
   onPress,
   selected,
+  showsDisclosureIndicator = false,
   testID,
 }: {
   description: string;
@@ -33,6 +38,7 @@ export function SettingsRow({
   label: string;
   onPress: () => void;
   selected?: boolean;
+  showsDisclosureIndicator?: boolean;
   testID: string;
 }) {
   return (
@@ -61,6 +67,12 @@ export function SettingsRow({
             systemName="checkmark"
             size={17}
             modifiers={[SELECTION_ACCENT]}
+          />
+        ) : showsDisclosureIndicator ? (
+          <Image
+            systemName="chevron.right"
+            size={14}
+            modifiers={[TERTIARY_TEXT]}
           />
         ) : null}
       </HStack>
