@@ -114,56 +114,61 @@ function ConnectedSessionSearchScreen({
 
   return (
     <View className="flex-1 bg-background">
-      <View className="px-4 py-3">
-        <InputGroup>
-          <InputGroup.Prefix>
-            <SearchIcon size={18} />
-          </InputGroup.Prefix>
-          <InputGroup.Input
-            autoFocus
-            accessibilityLabel="Search conversations"
-            placeholder={
-              gatewayClient ? 'Search titles and messages' : 'Search titles'
-            }
-            returnKeyType="search"
-            testID="session-search-input"
-            value={search}
-            onChangeText={setSearch}
-          />
-        </InputGroup>
-      </View>
-
-      {sessionsError &&
-      sessions.length > 0 &&
-      isOfflineLikeWaveError(sessionsError) ? (
-        <OfflineNotice
-          label="Offline — searching cached chats"
-          testID="session-search-offline-notice"
-        />
-      ) : sessionsError ? (
-        // Padding lives on the wrapper: the Alert is w-full, so horizontal
-        // margins on it would push it past the screen edge.
-        <View className="px-4 pb-3">
-          <Alert variant="destructive" testID="session-search-error">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Description>
-                Wave could not load Hermes conversations.
-              </Alert.Description>
-            </Alert.Content>
-          </Alert>
-        </View>
-      ) : null}
-
       <LegendList
         recycleItems
         drawDistance={500}
         className="flex-1"
         contentContainerClassName="px-3 pb-6"
+        contentInsetAdjustmentBehavior="automatic"
         data={matches}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         keyExtractor={(match) => match.session.id}
+        ListHeaderComponent={
+          <>
+            <View className="px-1 py-3">
+              <InputGroup>
+                <InputGroup.Prefix>
+                  <SearchIcon size={18} />
+                </InputGroup.Prefix>
+                <InputGroup.Input
+                  autoFocus
+                  accessibilityLabel="Search conversations"
+                  placeholder={
+                    gatewayClient
+                      ? 'Search titles and messages'
+                      : 'Search titles'
+                  }
+                  returnKeyType="search"
+                  testID="session-search-input"
+                  value={search}
+                  onChangeText={setSearch}
+                />
+              </InputGroup>
+            </View>
+            {sessionsError &&
+            sessions.length > 0 &&
+            isOfflineLikeWaveError(sessionsError) ? (
+              <OfflineNotice
+                label="Offline — searching cached chats"
+                testID="session-search-offline-notice"
+              />
+            ) : sessionsError ? (
+              // Padding lives on the wrapper: the Alert is w-full, so
+              // horizontal margins would push it past the screen edge.
+              <View className="px-1 pb-3">
+                <Alert variant="destructive" testID="session-search-error">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>
+                      Wave could not load Hermes conversations.
+                    </Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              </View>
+            ) : null}
+          </>
+        }
         ListEmptyComponent={
           isPending || isFetchingNextPage ? (
             <View className="items-center py-12">

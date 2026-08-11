@@ -209,8 +209,8 @@ function ConnectedWaveDrawerContent({
   );
   const navigate = (pathname: '/new' | '/search' | '/settings') => {
     navigation.closeDrawer();
-    // Every app screen lives in the one native stack, so drawer entries push
-    // (or return to) stack routes rather than switching drawer siblings.
+    // Utility routes live in the parent native stack; conversation routes
+    // remain in this drawer's nested chat stack. Their public paths stay flat.
     router.navigate(pathname);
   };
   const openSession = useCallback(
