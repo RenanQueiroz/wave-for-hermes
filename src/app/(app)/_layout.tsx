@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { Platform } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
 const IOS_HEADER_STYLE = { shadowColor: 'transparent' } as const;
@@ -30,14 +31,13 @@ export default function AppLayout() {
           typeof foreground === 'string' ? foreground : undefined,
         headerLargeTitleStyle:
           typeof foreground === 'string' ? { color: foreground } : undefined,
-        headerTitleAlign: process.env.EXPO_OS === 'android' ? 'left' : 'center',
-        headerShadowVisible:
-          process.env.EXPO_OS === 'android' ? false : undefined,
+        headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
+        headerShadowVisible: Platform.OS === 'android' ? false : undefined,
       }}>
       <Stack.Screen name="(chat)" options={{ headerShown: false }} />
       <Stack.Screen name="search">
         <Stack.Title large>Search conversations</Stack.Title>
-        {process.env.EXPO_OS === 'ios' ? (
+        {Platform.OS === 'ios' ? (
           <Stack.Header
             largeStyle={IOS_LARGE_HEADER_STYLE}
             style={IOS_HEADER_STYLE}
@@ -46,7 +46,7 @@ export default function AppLayout() {
       </Stack.Screen>
       <Stack.Screen name="settings">
         <Stack.Title large>Settings</Stack.Title>
-        {process.env.EXPO_OS === 'ios' ? (
+        {Platform.OS === 'ios' ? (
           <Stack.Header
             largeStyle={IOS_LARGE_HEADER_STYLE}
             style={IOS_HEADER_STYLE}
@@ -55,7 +55,7 @@ export default function AppLayout() {
       </Stack.Screen>
       <Stack.Screen name="settings/[selection]">
         <Stack.Title large />
-        {process.env.EXPO_OS === 'ios' ? (
+        {Platform.OS === 'ios' ? (
           <Stack.Header
             largeStyle={IOS_LARGE_HEADER_STYLE}
             style={IOS_HEADER_STYLE}
@@ -64,7 +64,7 @@ export default function AppLayout() {
       </Stack.Screen>
       <Stack.Screen name="development">
         <Stack.Title large>Development</Stack.Title>
-        {process.env.EXPO_OS === 'ios' ? (
+        {Platform.OS === 'ios' ? (
           <Stack.Header
             largeStyle={IOS_LARGE_HEADER_STYLE}
             style={IOS_HEADER_STYLE}

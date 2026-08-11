@@ -1,9 +1,8 @@
 import { Stack, useNavigation } from 'expo-router';
 import { DrawerActions } from 'expo-router/react-navigation';
 import { useCallback } from 'react';
+import { Platform } from 'react-native';
 import { useCSSVariable } from 'uniwind';
-
-import { MenuButton } from '@/components/navigation/menu-button';
 
 export const unstable_settings = {
   initialRouteName: 'new',
@@ -25,27 +24,42 @@ export default function ChatStackLayout() {
     <Stack
       screenOptions={{
         headerBackButtonDisplayMode: 'minimal',
+        headerShown: Platform.OS === 'ios',
         headerStyle:
           typeof background === 'string'
             ? { backgroundColor: background }
             : undefined,
         headerTintColor:
           typeof foreground === 'string' ? foreground : undefined,
-        headerTitleAlign: process.env.EXPO_OS === 'android' ? 'left' : 'center',
-        headerShadowVisible:
-          process.env.EXPO_OS === 'android' ? false : undefined,
+        headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
+        headerShadowVisible: Platform.OS === 'android' ? false : undefined,
       }}>
       <Stack.Screen name="new" options={{ headerShown: false }} />
       <Stack.Screen
         name="conversation/[sessionId]"
         options={{
-          headerLeft: () => <MenuButton onPress={openDrawer} />,
           // The chat screen sets the real conversation title once it resolves.
           title: '',
         }}>
-        {process.env.EXPO_OS === 'ios' ? (
-          // Keep chat compact and let UIKit own its standard blurred material.
-          <Stack.Header style={{ shadowColor: 'transparent' }} />
+        {Platform.OS === 'ios' ? (
+          // Keep chat compact while the transcript scrolls beneath UIKit's
+          // system-selected translucent header material.
+          <Stack.Header
+            transparent
+            style={{
+              backgroundColor: 'transparent',
+              shadowColor: 'transparent',
+            }}
+          />
+        ) : null}
+        {Platform.OS === 'ios' && typeof foreground === 'string' ? (
+          <Stack.Toolbar placement="left">
+            <Stack.Toolbar.Button
+              accessibilityLabel="Open navigation menu"
+              icon="line.3.horizontal"
+              onPress={openDrawer}
+            />
+          </Stack.Toolbar>
         ) : null}
       </Stack.Screen>
       <Stack.Screen

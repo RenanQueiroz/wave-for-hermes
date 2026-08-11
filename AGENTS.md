@@ -178,7 +178,15 @@ documentation before implementing UI.
   collapse to the system-selected blur, while Android retains its Material headers. The drawer
   wraps only the inner chat stack (not utility screens), which avoids the iOS 26 native-stack
   large-title margin bug caused by nesting a stack inside a drawer. Chat alone keeps a compact
-  system-blurred header. Every tap on a Realtime voice option, including the
+  system-blurred header: its transcript scrolls beneath a transparent native header, and its
+  drawer action is the native Expo Router `Stack.Toolbar` item on iOS. Android lets the Drawer
+  own its header and default toggle instead of embedding a custom Compose or PanelUI button in
+  the nested Stack; the chat screen projects its resolved conversation title to that parent
+  header. A React
+  Native screen with a large title must expose its inset-adjusting scroll
+  view as the route root; in Search, the root is the `LegendList` itself because an RN wrapper
+  prevents the native title from tracking and collapsing with the list. Every tap on a Realtime
+  voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the
   user's secure-stored key, caches it by app-owned model and voice, and owns the single

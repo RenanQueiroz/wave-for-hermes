@@ -113,109 +113,105 @@ function ConnectedSessionSearchScreen({
   }, [fetchNextPage, hasNextPage, isFetchingNextPage, normalizedSearch]);
 
   return (
-    <View className="flex-1 bg-background">
-      <LegendList
-        recycleItems
-        drawDistance={500}
-        className="flex-1"
-        contentContainerClassName="px-3 pb-6"
-        contentInsetAdjustmentBehavior="automatic"
-        data={matches}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        keyExtractor={(match) => match.session.id}
-        ListHeaderComponent={
-          <>
-            <View className="px-1 py-3">
-              <InputGroup>
-                <InputGroup.Prefix>
-                  <SearchIcon size={18} />
-                </InputGroup.Prefix>
-                <InputGroup.Input
-                  autoFocus
-                  accessibilityLabel="Search conversations"
-                  placeholder={
-                    gatewayClient
-                      ? 'Search titles and messages'
-                      : 'Search titles'
-                  }
-                  returnKeyType="search"
-                  testID="session-search-input"
-                  value={search}
-                  onChangeText={setSearch}
-                />
-              </InputGroup>
-            </View>
-            {sessionsError &&
-            sessions.length > 0 &&
-            isOfflineLikeWaveError(sessionsError) ? (
-              <OfflineNotice
-                label="Offline — searching cached chats"
-                testID="session-search-offline-notice"
+    <LegendList
+      recycleItems
+      drawDistance={500}
+      className="flex-1 bg-background"
+      contentContainerClassName="px-3 pb-6"
+      contentInsetAdjustmentBehavior="automatic"
+      data={matches}
+      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled"
+      keyExtractor={(match) => match.session.id}
+      ListHeaderComponent={
+        <>
+          <View className="px-1 py-3">
+            <InputGroup>
+              <InputGroup.Prefix>
+                <SearchIcon size={18} />
+              </InputGroup.Prefix>
+              <InputGroup.Input
+                autoFocus
+                accessibilityLabel="Search conversations"
+                placeholder={
+                  gatewayClient ? 'Search titles and messages' : 'Search titles'
+                }
+                returnKeyType="search"
+                testID="session-search-input"
+                value={search}
+                onChangeText={setSearch}
               />
-            ) : sessionsError ? (
-              // Padding lives on the wrapper: the Alert is w-full, so
-              // horizontal margins would push it past the screen edge.
-              <View className="px-1 pb-3">
-                <Alert variant="destructive" testID="session-search-error">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Description>
-                      Wave could not load Hermes conversations.
-                    </Alert.Description>
-                  </Alert.Content>
-                </Alert>
-              </View>
-            ) : null}
-          </>
-        }
-        ListEmptyComponent={
-          isPending || isFetchingNextPage ? (
-            <View className="items-center py-12">
-              <Spinner />
+            </InputGroup>
+          </View>
+          {sessionsError &&
+          sessions.length > 0 &&
+          isOfflineLikeWaveError(sessionsError) ? (
+            <OfflineNotice
+              label="Offline — searching cached chats"
+              testID="session-search-offline-notice"
+            />
+          ) : sessionsError ? (
+            // Padding lives on the wrapper: the Alert is w-full, so
+            // horizontal margins would push it past the screen edge.
+            <View className="px-1 pb-3">
+              <Alert variant="destructive" testID="session-search-error">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>
+                    Wave could not load Hermes conversations.
+                  </Alert.Description>
+                </Alert.Content>
+              </Alert>
             </View>
-          ) : (
-            <Typography.Paragraph muted className="px-3 py-10 text-center">
-              {normalizedSearch
-                ? gatewayClient
-                  ? 'No conversation title or message matches your search.'
-                  : 'No conversation title matches your search.'
-                : 'No previous conversations.'}
-            </Typography.Paragraph>
-          )
+          ) : null}
+        </>
+      }
+      ListEmptyComponent={
+        isPending || isFetchingNextPage ? (
+          <View className="items-center py-12">
+            <Spinner />
+          </View>
+        ) : (
+          <Typography.Paragraph muted className="px-3 py-10 text-center">
+            {normalizedSearch
+              ? gatewayClient
+                ? 'No conversation title or message matches your search.'
+                : 'No conversation title matches your search.'
+              : 'No previous conversations.'}
+          </Typography.Paragraph>
+        )
+      }
+      onEndReached={() => {
+        if (hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
         }
-        onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) {
-            void fetchNextPage();
-          }
-        }}
-        renderItem={({ item }) => (
-          <Item
-            accessibilityLabel={`Open conversation ${item.session.title ?? 'Untitled chat'}`}
-            testID={`search-session-${item.session.id}`}
-            onPress={() => {
-              void activeSessionStore
-                .save(connectionId, item.session.id)
-                .then(() =>
-                  router.replace({
-                    pathname: '/conversation/[sessionId]',
-                    params: { sessionId: item.session.id },
-                  }),
-                );
-            }}>
-            <Item.Content>
-              <Item.Title numberOfLines={1}>
-                {item.session.title ?? 'Untitled chat'}
-              </Item.Title>
-              <Item.Description numberOfLines={2}>
-                {item.matchedOn === 'content'
-                  ? `Message match: ${item.snippet ?? 'found in this conversation'}`
-                  : (item.session.preview ?? 'Hermes conversation')}
-              </Item.Description>
-            </Item.Content>
-          </Item>
-        )}
-      />
-    </View>
+      }}
+      renderItem={({ item }) => (
+        <Item
+          accessibilityLabel={`Open conversation ${item.session.title ?? 'Untitled chat'}`}
+          testID={`search-session-${item.session.id}`}
+          onPress={() => {
+            void activeSessionStore
+              .save(connectionId, item.session.id)
+              .then(() =>
+                router.replace({
+                  pathname: '/conversation/[sessionId]',
+                  params: { sessionId: item.session.id },
+                }),
+              );
+          }}>
+          <Item.Content>
+            <Item.Title numberOfLines={1}>
+              {item.session.title ?? 'Untitled chat'}
+            </Item.Title>
+            <Item.Description numberOfLines={2}>
+              {item.matchedOn === 'content'
+                ? `Message match: ${item.snippet ?? 'found in this conversation'}`
+                : (item.session.preview ?? 'Hermes conversation')}
+            </Item.Description>
+          </Item.Content>
+        </Item>
+      )}
+    />
   );
 }

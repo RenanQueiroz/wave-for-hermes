@@ -5,7 +5,13 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import type { WaveTimelineResponse, WaveToolDetail } from '@wave/contracts';
-import { Redirect, Stack, useFocusEffect, useRouter } from 'expo-router';
+import {
+  Redirect,
+  Stack,
+  useFocusEffect,
+  useNavigation,
+  useRouter,
+} from 'expo-router';
 import {
   Alert,
   AlertTriangleIcon,
@@ -136,6 +142,8 @@ function ConnectedChatScreen({
   sessionId: string;
 }) {
   const router = useRouter();
+  const navigation = useNavigation();
+  const drawerNavigation = navigation.getParent();
   const queryClient = useQueryClient();
   // Speech affordances appear only when the gateway advertises the
   // capability; a failed probe hides them rather than caching a "no".
@@ -384,6 +392,13 @@ function ConnectedChatScreen({
     sessions.data,
     timeline.isPending,
   ]);
+  useEffect(() => {
+    drawerNavigation?.setOptions({ title: headerTitle ?? '' });
+
+    return () => {
+      drawerNavigation?.setOptions({ title: '' });
+    };
+  }, [drawerNavigation, headerTitle]);
   const busy =
     chat.state.status === 'submitting' ||
     chat.state.status === 'streaming' ||
@@ -667,6 +682,7 @@ function ConnectedChatScreen({
           recycleItems={false}
           drawDistance={500}
           contentContainerClassName="px-4 py-3"
+          contentInsetAdjustmentBehavior="automatic"
           data={messages}
           extraData={rowExtraData}
           ItemSeparatorComponent={ChatTurnSeparator}
