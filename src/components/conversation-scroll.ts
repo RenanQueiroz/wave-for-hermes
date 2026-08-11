@@ -14,19 +14,41 @@ export const MAINTAIN_AT_END_VIEWPORT_FRACTION = 0.3;
 // cached threshold flag can go stale mid-momentum and yank the list to the
 // newest message when a refetch replaces the data.
 const NEAR_END_VIEWPORT_FRACTION = 0.5;
+const AT_END_THRESHOLD = 24;
 
-/** Whether a scroll event left the viewport within the pin-to-end band. */
-export function isNearConversationEnd({
+type ConversationScrollMetrics = Pick<
+  NativeScrollEvent,
+  'contentOffset' | 'contentSize' | 'layoutMeasurement'
+> & {
+  contentInset?: Pick<NativeScrollEvent['contentInset'], 'bottom'>;
+};
+
+function distanceFromConversationEnd({
+  contentInset,
   contentOffset,
   contentSize,
   layoutMeasurement,
-}: Pick<
-  NativeScrollEvent,
-  'contentOffset' | 'contentSize' | 'layoutMeasurement'
->): boolean {
-  const distanceFromEnd =
-    contentSize.height - contentOffset.y - layoutMeasurement.height;
+}: ConversationScrollMetrics): number {
   return (
-    distanceFromEnd <= layoutMeasurement.height * NEAR_END_VIEWPORT_FRACTION
+    contentSize.height +
+    (contentInset?.bottom ?? 0) -
+    contentOffset.y -
+    layoutMeasurement.height
   );
+}
+
+/** Whether a scroll event left the viewport within the pin-to-end band. */
+export function isNearConversationEnd(
+  metrics: ConversationScrollMetrics,
+): boolean {
+  const distanceFromEnd = distanceFromConversationEnd(metrics);
+  return (
+    distanceFromEnd <=
+    metrics.layoutMeasurement.height * NEAR_END_VIEWPORT_FRACTION
+  );
+}
+
+/** Whether the reader is close enough that a jump control is unnecessary. */
+export function isAtConversationEnd(metrics: ConversationScrollMetrics) {
+  return distanceFromConversationEnd(metrics) <= AT_END_THRESHOLD;
 }

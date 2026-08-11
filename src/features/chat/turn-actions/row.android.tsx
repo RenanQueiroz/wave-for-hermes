@@ -2,12 +2,14 @@ import { Host, Row, Text, TextButton } from '@expo/ui/jetpack-compose';
 import {
   fillMaxWidth,
   height,
-  padding,
   testID as testIDModifier,
 } from '@expo/ui/jetpack-compose/modifiers';
 
 import { NATIVE_ICON_BUTTON_SIZE } from '@/components/native-icon-button';
-import { NativeTurnActionButtons } from '@/features/chat/turn-actions/buttons';
+import {
+  NativeTurnActionButtons,
+  TURN_ACTION_BUTTON_GAP,
+} from '@/features/chat/turn-actions/buttons';
 import type { NativeTurnActionRowProps } from '@/features/chat/turn-actions/row.types';
 
 export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
@@ -20,6 +22,7 @@ export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
       style={{ height: NATIVE_ICON_BUTTON_SIZE, width: '100%' }}>
       <Row
         verticalAlignment="center"
+        horizontalArrangement={{ spacedBy: TURN_ACTION_BUTTON_GAP }}
         modifiers={[
           fillMaxWidth(),
           height(NATIVE_ICON_BUTTON_SIZE),
@@ -37,10 +40,12 @@ export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
             {timestamp}
           </Text>
         </TextButton>
-        <Text color={foregroundColor} modifiers={[padding(4, 0, 4, 0)]}>
-          •
-        </Text>
-        <NativeTurnActionButtons {...props} />
+        <Text color={foregroundColor}>•</Text>
+        <Row
+          verticalAlignment="center"
+          horizontalArrangement={{ spacedBy: TURN_ACTION_BUTTON_GAP }}>
+          <NativeTurnActionButtons {...props} />
+        </Row>
       </Row>
     </Host>
   );

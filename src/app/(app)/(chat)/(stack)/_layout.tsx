@@ -34,8 +34,13 @@ export default function ChatStackLayout() {
         headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
         headerShadowVisible: Platform.OS === 'android' ? false : undefined,
       }}>
-      <Stack.Screen name="new" options={{ headerShown: false }} />
       <Stack.Screen
+        dangerouslySingular
+        name="new"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        dangerouslySingular={() => 'active-conversation'}
         name="conversation/[sessionId]"
         options={{
           // The chat screen sets the real conversation title once it resolves.

@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 
 import {
+  isAtConversationEnd,
   isNearConversationEnd,
   MAINTAIN_AT_END_VIEWPORT_FRACTION,
 } from '@/components/conversation-scroll';
@@ -39,6 +40,8 @@ export interface ConversationScrollerProps<ItemT> extends Omit<
   LegendListProps<ItemT>,
   OwnedListProps
 > {
+  /** Height covered by the overlaid composer at the bottom of the transcript. */
+  bottomObscuredInset?: number;
   className?: string;
   contentContainerClassName?: string;
   /** Distance of the jump-to-newest button from the bottom edge. */
@@ -46,6 +49,7 @@ export interface ConversationScrollerProps<ItemT> extends Omit<
 }
 
 export function ConversationScroller<ItemT>({
+  bottomObscuredInset = 0,
   className,
   data,
   jumpButtonBottomOffset = 16,
@@ -56,19 +60,23 @@ export function ConversationScroller<ItemT>({
   onScrollEndDrag,
   ...listProps
 }: ConversationScrollerProps<ItemT>) {
+  const hasItems = (data?.length ?? 0) > 0;
   const listRef = useRef<LegendListRef>(null);
+  const [atEnd, setAtEnd] = useState(true);
   const [nearEnd, setNearEnd] = useState(true);
   const [edgeFades, setEdgeFades] = useState({ end: false, start: false });
-  const nearEndRef = useRef(true);
   const sawScrollRef = useRef(false);
   const metricsRef = useRef({
     contentHeight: 0,
+    endInset: 0,
     offsetY: 0,
     viewportHeight: 0,
   });
   const updateNearEnd = useCallback((next: boolean) => {
-    nearEndRef.current = next;
     setNearEnd((previous) => (previous === next ? previous : next));
+  }, []);
+  const updateAtEnd = useCallback((next: boolean) => {
+    setAtEnd((previous) => (previous === next ? previous : next));
   }, []);
   const updateEdgeFades = useCallback(
     ({
@@ -81,7 +89,12 @@ export function ConversationScroller<ItemT>({
       viewportHeight: number;
     }) => {
       const next = {
-        end: contentHeight - offsetY - viewportHeight > 1,
+        end:
+          contentHeight +
+            metricsRef.current.endInset -
+            offsetY -
+            viewportHeight >
+          1,
         start: offsetY > 1,
       };
       setEdgeFades((current) =>
@@ -92,17 +105,26 @@ export function ConversationScroller<ItemT>({
     },
     [],
   );
+  const alignToEnd = useCallback((animated: boolean) => {
+    // Native scroll events are the source of truth for whether the final
+    // content is actually visible. Assuming the requested endpoint here can
+    // hide the button too early if an iOS-hosted row finishes laying out
+    // after the request.
+    void listRef.current?.scrollToEnd({ animated });
+  }, []);
   const updateFromNativeEvent = useCallback(
     (nativeEvent: NativeScrollEvent) => {
       metricsRef.current = {
         contentHeight: nativeEvent.contentSize.height,
+        endInset: nativeEvent.contentInset?.bottom ?? 0,
         offsetY: nativeEvent.contentOffset.y,
         viewportHeight: nativeEvent.layoutMeasurement.height,
       };
+      updateAtEnd(isAtConversationEnd(nativeEvent));
       updateNearEnd(isNearConversationEnd(nativeEvent));
       updateEdgeFades(metricsRef.current);
     },
-    [updateEdgeFades, updateNearEnd],
+    [updateAtEnd, updateEdgeFades, updateNearEnd],
   );
   const trackNearEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -135,53 +157,58 @@ export function ConversationScroller<ItemT>({
         sawScrollRef.current ||
         metricsRef.current.contentHeight <= viewportHeight
       ) {
-        updateNearEnd(
-          isNearConversationEnd({
-            contentOffset: { x: 0, y: metricsRef.current.offsetY },
-            contentSize: {
-              height: metricsRef.current.contentHeight,
-              width: 0,
-            },
-            layoutMeasurement: { height: viewportHeight, width: 0 },
-          }),
-        );
+        const metrics = {
+          contentInset: { bottom: metricsRef.current.endInset },
+          contentOffset: { x: 0, y: metricsRef.current.offsetY },
+          contentSize: {
+            height: metricsRef.current.contentHeight,
+            width: 0,
+          },
+          layoutMeasurement: { height: viewportHeight, width: 0 },
+        };
+        updateAtEnd(isAtConversationEnd(metrics));
+        updateNearEnd(isNearConversationEnd(metrics));
       }
       onLayout?.(event);
     },
-    [onLayout, updateEdgeFades, updateNearEnd],
+    [onLayout, updateAtEnd, updateEdgeFades, updateNearEnd],
   );
   const trackContentSizeChange = useCallback(
     (width: number, height: number) => {
       metricsRef.current.contentHeight = height;
       updateEdgeFades(metricsRef.current);
-      if (height <= metricsRef.current.viewportHeight) updateNearEnd(true);
-      else if (!nearEndRef.current) updateNearEnd(false);
+      if (height <= metricsRef.current.viewportHeight) {
+        updateAtEnd(true);
+        updateNearEnd(true);
+      } else if (sawScrollRef.current) {
+        const metrics = {
+          contentInset: { bottom: metricsRef.current.endInset },
+          contentOffset: { x: 0, y: metricsRef.current.offsetY },
+          contentSize: { height, width },
+          layoutMeasurement: {
+            height: metricsRef.current.viewportHeight,
+            width: 0,
+          },
+        };
+        updateAtEnd(isAtConversationEnd(metrics));
+        updateNearEnd(isNearConversationEnd(metrics));
+      }
       onContentSizeChange?.(width, height);
     },
-    [onContentSizeChange, updateEdgeFades, updateNearEnd],
+    [onContentSizeChange, updateAtEnd, updateEdgeFades, updateNearEnd],
   );
   const jumpToNewest = useCallback(() => {
-    // One deliberate reader-initiated scroll. Legend List's programmatic
-    // scrolls do not surface through onScroll, so the landing re-engages
-    // auto-follow explicitly once the animation settles; a reader touch
-    // after that emits real events and immediately corrects the state.
-    void listRef.current?.scrollToEnd({ animated: true }).then(() => {
-      updateNearEnd(true);
-      const metrics = metricsRef.current;
-      metrics.offsetY = Math.max(
-        metrics.contentHeight - metrics.viewportHeight,
-        0,
-      );
-      updateEdgeFades(metrics);
-    });
-  }, [updateEdgeFades, updateNearEnd]);
+    // One deliberate reader-initiated scroll. Legend List targets the final
+    // measured item and includes its footer, padding, and native content inset.
+    alignToEnd(true);
+  }, [alignToEnd]);
 
   return (
     <View className="flex-1">
       <LegendList
         {...listProps}
         ref={listRef}
-        alignItemsAtEnd
+        alignItemsAtEnd={hasItems}
         className={className ? `flex-1 ${className}` : 'flex-1'}
         data={data}
         initialScrollAtEnd
@@ -196,8 +223,13 @@ export function ConversationScroller<ItemT>({
         onScrollEndDrag={trackScrollEndDrag}
       />
       <ConversationEdgeFade edge="start" visible={edgeFades.start} />
-      <ConversationEdgeFade edge="end" visible={edgeFades.end} />
-      {!nearEnd ? (
+      <ConversationEdgeFade
+        edge="end"
+        obscuredInset={bottomObscuredInset}
+        size={64}
+        visible={edgeFades.end}
+      />
+      {hasItems && !atEnd ? (
         <View
           pointerEvents="box-none"
           className="absolute inset-x-0 items-center"

@@ -217,7 +217,7 @@ export function ChatComposer({
       onPrefill: (text: string) => void writeDraft(text, undefined, true),
       onSendExpanded: (message: string, display: string) =>
         void onSend(message, display),
-      onStartNewChat: () => router.navigate('/new'),
+      onStartNewChat: () => router.replace('/new'),
       onStopTurn: () => void onStop(),
     }),
     [onSend, onStop, openModelPicker, router, writeDraft],

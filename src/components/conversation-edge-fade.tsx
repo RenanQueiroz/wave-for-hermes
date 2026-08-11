@@ -13,10 +13,13 @@ const FADE_DURATION_MS = 120;
 
 export function ConversationEdgeFade({
   edge,
+  obscuredInset = 0,
   size = 40,
   visible,
 }: {
   edge: 'end' | 'start';
+  /** Area beyond the gradient that remains strongly obscured. */
+  obscuredInset?: number;
   size?: number;
   visible: boolean;
 }) {
@@ -33,16 +36,26 @@ export function ConversationEdgeFade({
     opacity: opacity.value,
   }));
   const start = edge === 'start';
-  const colors: [string, string] = start
+  const inset = start ? 0 : Math.max(0, obscuredInset);
+  const extent = size + inset;
+  const endOpacity = inset > 0 ? 0.78 : 1;
+  const colors: [string, string] | [string, string, string] = start
     ? [withAlpha(theme.background, 1), withAlpha(theme.background, 0)]
-    : [withAlpha(theme.background, 0), withAlpha(theme.background, 1)];
+    : [
+        withAlpha(theme.background, 0),
+        withAlpha(theme.background, endOpacity),
+        withAlpha(theme.background, endOpacity),
+      ];
+  const locations: [number, number, number] | undefined = start
+    ? undefined
+    : [0, size / extent, 1];
 
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         {
-          height: size,
+          height: extent,
           left: 0,
           position: 'absolute',
           right: 0,
@@ -53,6 +66,7 @@ export function ConversationEdgeFade({
       <LinearGradient
         colors={colors}
         end={{ x: 0, y: 1 }}
+        locations={locations}
         start={{ x: 0, y: 0 }}
         style={StyleSheet.absoluteFill}
       />

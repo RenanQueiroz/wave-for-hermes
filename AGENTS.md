@@ -430,16 +430,32 @@ documentation before implementing UI.
   transcript scroll contract: pin-to-newest only inside the at-end band, no dragging the reader
   mid-read, a jump-to-newest button while auto-follow is disengaged, stable history prepends, and
   a fresh at-end opening every time the user navigates into a conversation.
-  The jump control is a shared native icon button whose visibility is reconciled directly from
-  Legend List scroll, drag-end, momentum-end, layout, and content-size metrics. Edge fades are
-  passive pointer-free gradient siblings; never wrap the list in PanelUI `ScrollFade` or compose
-  its Reanimated event handler with the scroller's ordinary JavaScript callback.
+  The auto-follow band and jump-control threshold are deliberately separate: streaming may remain
+  pinned throughout the wider near-end band, while the shared native jump button hides only within
+  a small fixed distance of the actual end. Its visibility is reconciled directly from Legend List
+  scroll, drag-end, momentum-end, layout, and content-size metrics. Edge fades are
+  passive pointer-free gradient siblings; the bottom fade includes the measured composer inset so
+  content is strongly obscured as it scrolls behind either platform's composer. The measured dock
+  footprint already includes the bottom safe area and remains the transcript's full tail padding;
+  native scroll events' `contentInset.bottom` are the source of truth for distance-to-end checks.
+  Legend List owns opening and reader-requested final-item positioning — do not duplicate it with a
+  content-height offset, issue a second opening scroll while its virtualized tail is still being
+  measured, or optimistically declare a requested jump complete. Reconcile later native content-size
+  changes against the last real offset, because a hosted native row can finish layout after a scroll
+  request. An empty timeline has no tail padding, bottom alignment, or scrolling;
+  its separately positioned empty-state overlay accounts for the composer instead. Keep each iOS
+  action-row native subtree stable across scroll completion; remounting its `Host` visibly changes
+  the virtualized row's layout and invalidates the scroll endpoint.
+  Never wrap the list in PanelUI `ScrollFade` or compose its Reanimated event handler with the
+  scroller's ordinary JavaScript callback.
   Do not reintroduce FlatList there or adopt PanelUI `MessageScroller` for unbounded histories —
   it is not virtualized. Keep turn rows memoized with stable `renderItem`/`keyExtractor`, and
   mark only the active turn as streaming: its arriving tail streams through `Response`
   `isStreaming` while sealed segments and completed turns parse once and stay memoized. Never
   call `scrollToEnd` or run layout animation per token; the scroller's reader-initiated jump is the
   deliberate exception, while Legend List's `initialScrollAtEnd` owns initial positioning.
+- Conversation switches replace the active chat route; they never push another conversation onto
+  the chat stack. Keep the new-chat and conversation screens singular as a navigation backstop.
 - Do not log access tokens, full authorization headers, request URLs, network addresses, opaque
   conversation identifiers, or sensitive conversation payloads. Production request logs keep only
   the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle

@@ -2,6 +2,8 @@ import { NativeIconButton } from '@/components/native-icon-button';
 import { TURN_ACTION_ICONS } from '@/features/chat/turn-actions/icons';
 import type { NativeTurnActionButtonsProps } from '@/features/chat/turn-actions/row.types';
 
+export const TURN_ACTION_BUTTON_GAP = 8;
+
 /** Shared action semantics; each button resolves to its platform-native tree. */
 export function NativeTurnActionButtons({
   busy,

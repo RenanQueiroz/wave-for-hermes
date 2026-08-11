@@ -60,7 +60,6 @@ import {
   collectPrunedEntryIds,
   regenerateTarget,
 } from '@/features/chat/turn-action-targets';
-import { TurnActionLayoutEpochProvider } from '@/features/chat/turn-actions/layout-epoch';
 import { TurnActionRow } from '@/features/chat/turn-action-row';
 import { useWaveChat } from '@/features/chat/use-wave-chat';
 import { useConnectedWave } from '@/state/use-connected-wave';
@@ -145,12 +144,8 @@ function ConnectedChatScreen({
   const navigation = useNavigation();
   const drawerNavigation = navigation.getParent();
   const [composerBottomOffset, setComposerBottomOffset] = useState(0);
-  const [turnActionLayoutEpoch, setTurnActionLayoutEpoch] = useState(0);
-  const refreshTurnActionLayout = useCallback(
-    () => setTurnActionLayoutEpoch((current) => current + 1),
-    [],
-  );
   const queryClient = useQueryClient();
+  const transcriptBottomPadding = Math.max(composerBottomOffset + 12, 12);
 
   // Speech affordances appear only when the gateway advertises the
   // capability; a failed probe hides them rather than caching a "no".
@@ -513,7 +508,7 @@ function ConnectedChatScreen({
           await activeSessionStore
             .save(connectionId, branched.sessionId)
             .catch(() => undefined);
-          router.push({
+          router.replace({
             pathname: '/conversation/[sessionId]',
             params: { sessionId: branched.sessionId },
           });
@@ -681,48 +676,45 @@ function ConnectedChatScreen({
       ) : null}
 
       <View className="flex-1">
-        <TurnActionLayoutEpochProvider
-          value={`${turnActionLayoutEpoch}:${composerBottomOffset}`}>
-          <ConversationScroller
-            key={sessionId}
-            // Turns hold disclosure state (open Tasks), which recycled rows
-            // would carry between messages — so no recycling; the draw buffer
-            // covers fast flings instead.
-            recycleItems={false}
-            drawDistance={500}
-            contentContainerClassName="px-4 pt-3"
-            contentContainerStyle={{
-              paddingBottom: Math.max(composerBottomOffset + 12, 12),
-            }}
-            contentInsetAdjustmentBehavior="automatic"
-            data={messages}
-            extraData={rowExtraData}
-            ItemSeparatorComponent={ChatTurnSeparator}
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            jumpButtonBottomOffset={composerBottomOffset + 12}
-            keyExtractor={(message) => message.id}
-            ListFooterComponent={
-              chat.state.status === 'submitting' ? (
-                <Thinking label={activityLabel ?? 'Working…'} />
-              ) : null
+        <ConversationScroller
+          key={`conversation-scroller-${sessionId}`}
+          // Turns hold disclosure state (open Tasks), which recycled rows
+          // would carry between messages — so no recycling; the draw buffer
+          // covers fast flings instead.
+          recycleItems={false}
+          drawDistance={500}
+          bottomObscuredInset={composerBottomOffset}
+          contentContainerClassName={messages.length > 0 ? 'px-4 pt-3' : 'px-4'}
+          contentContainerStyle={{
+            paddingBottom: messages.length > 0 ? transcriptBottomPadding : 0,
+          }}
+          contentInsetAdjustmentBehavior="automatic"
+          data={messages}
+          extraData={rowExtraData}
+          ItemSeparatorComponent={ChatTurnSeparator}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          jumpButtonBottomOffset={composerBottomOffset + 12}
+          keyExtractor={(message) => message.id}
+          ListFooterComponent={
+            chat.state.status === 'submitting' ? (
+              <Thinking label={activityLabel ?? 'Working…'} />
+            ) : null
+          }
+          ListHeaderComponent={
+            timeline.isPending || timeline.isFetchingNextPage ? (
+              <Thinking label="Loading conversation…" />
+            ) : null
+          }
+          onStartReached={() => {
+            if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
+              void timeline.fetchNextPage();
             }
-            ListHeaderComponent={
-              timeline.isPending || timeline.isFetchingNextPage ? (
-                <Thinking label="Loading conversation…" />
-              ) : null
-            }
-            onMomentumScrollEnd={refreshTurnActionLayout}
-            onScrollEndDrag={refreshTurnActionLayout}
-            onStartReached={() => {
-              if (timeline.hasNextPage && !timeline.isFetchingNextPage) {
-                void timeline.fetchNextPage();
-              }
-            }}
-            onStartReachedThreshold={0.25}
-            renderItem={renderItem}
-          />
-        </TurnActionLayoutEpochProvider>
+          }}
+          onStartReachedThreshold={0.25}
+          renderItem={renderItem}
+          scrollEnabled={messages.length > 0}
+        />
         {!timeline.isPending && messages.length === 0 ? (
           <View
             pointerEvents="none"
@@ -749,7 +741,7 @@ function ConnectedChatScreen({
           </View>
         ) : null}
         <ChatComposer
-          key={sessionId}
+          key={`chat-composer-${sessionId}`}
           activePrompt={Boolean(chat.state.activePrompt)}
           activityLabel={activityLabel}
           baseUrl={baseUrl}

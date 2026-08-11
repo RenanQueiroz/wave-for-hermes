@@ -211,7 +211,8 @@ function ConnectedWaveDrawerContent({
     navigation.closeDrawer();
     // Utility routes live in the parent native stack; conversation routes
     // remain in this drawer's nested chat stack. Their public paths stay flat.
-    router.navigate(pathname);
+    if (pathname === '/new') router.replace(pathname);
+    else router.navigate(pathname);
   };
   const openSession = useCallback(
     async (sessionId: string) => {
@@ -219,7 +220,7 @@ function ConnectedWaveDrawerContent({
         setLocalError(undefined);
         await activeSessionStore.save(connectionId, sessionId);
         navigation.closeDrawer();
-        router.push({
+        router.replace({
           pathname: '/conversation/[sessionId]',
           params: { sessionId },
         });

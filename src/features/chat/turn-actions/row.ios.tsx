@@ -9,12 +9,13 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 
 import { NATIVE_ICON_BUTTON_SIZE } from '@/components/native-icon-button';
-import { NativeTurnActionButtons } from '@/features/chat/turn-actions/buttons';
-import { useTurnActionLayoutEpoch } from '@/features/chat/turn-actions/layout-epoch';
+import {
+  NativeTurnActionButtons,
+  TURN_ACTION_BUTTON_GAP,
+} from '@/features/chat/turn-actions/buttons';
 import type { NativeTurnActionRowProps } from '@/features/chat/turn-actions/row.types';
 
 export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
-  const layoutEpoch = useTurnActionLayoutEpoch();
   const { foregroundColor, messageId, onTimestampPress, seedColor, timestamp } =
     props;
 
@@ -23,9 +24,8 @@ export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
       seedColor={seedColor}
       style={{ height: NATIVE_ICON_BUTTON_SIZE, width: '100%' }}>
       <HStack
-        key={layoutEpoch}
         alignment="center"
-        spacing={0}
+        spacing={TURN_ACTION_BUTTON_GAP}
         modifiers={[
           frame({
             alignment: 'leading',
@@ -49,14 +49,10 @@ export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
             {timestamp}
           </Text>
         </Button>
-        <Text
-          modifiers={[
-            foregroundStyle(foregroundColor),
-            padding({ leading: 4, trailing: 4 }),
-          ]}>
-          •
-        </Text>
-        <NativeTurnActionButtons {...props} />
+        <Text modifiers={[foregroundStyle(foregroundColor)]}>•</Text>
+        <HStack alignment="center" spacing={TURN_ACTION_BUTTON_GAP}>
+          <NativeTurnActionButtons {...props} />
+        </HStack>
         <Spacer />
       </HStack>
     </Host>
