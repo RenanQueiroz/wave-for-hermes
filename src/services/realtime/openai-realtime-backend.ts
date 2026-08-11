@@ -27,6 +27,7 @@ import {
   WAVE_REALTIME_DEFAULT_MODEL,
   type WaveRealtimeModelId,
 } from './realtime-model-preference-record.ts';
+import { WAVE_REALTIME_DEFAULT_VOICE } from './realtime-voice-preference-record.ts';
 import { createRealtimeToolSurfaceSessionUpdate } from './realtime-prompt.ts';
 import { OpenAiRealtimeSideband } from './openai-realtime-sideband.ts';
 
@@ -131,7 +132,7 @@ export class OpenAiRealtimeBackend implements RealtimeBackend {
       JSON.stringify(
         createOpenAiRealtimeSessionConfig(
           this.model,
-          voiceId ?? 'marin',
+          voiceId ?? WAVE_REALTIME_DEFAULT_VOICE,
           this.transcribeInput,
         ),
       ),

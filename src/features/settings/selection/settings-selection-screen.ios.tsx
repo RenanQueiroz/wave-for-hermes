@@ -48,6 +48,15 @@ export function SettingsSelectionScreen({
               {settings.definition.errorMessage}
             </Text>
           ) : null}
+          {settings.previewError ? (
+            <Text
+              modifiers={[
+                foregroundStyle('red'),
+                accessibilityIdentifier('settings-voice-preview-error'),
+              ]}>
+              {settings.previewError}
+            </Text>
+          ) : null}
         </Section>
       </Form>
     </Host>

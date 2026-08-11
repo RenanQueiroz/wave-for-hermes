@@ -9,7 +9,10 @@ import {
   WAVE_REALTIME_MODEL_OPTIONS,
 } from '../../src/services/realtime/realtime-model-preference-record.ts';
 import { parseRealtimeCaptionPreference } from '../../src/services/realtime/realtime-caption-preference-record.ts';
-import { parseRealtimeVoicePreference } from '../../src/services/realtime/realtime-voice-preference-record.ts';
+import {
+  parseRealtimeVoicePreference,
+  resolveRealtimeVoicePreference,
+} from '../../src/services/realtime/realtime-voice-preference-record.ts';
 import { openAiKeyStore } from '../../src/services/realtime/openai-key-store.ts';
 import {
   createDevicePreferenceStores,
@@ -47,6 +50,10 @@ test('allowlist contains only the two supported Realtime model ids', () => {
     ),
     true,
   );
+  assert.deepEqual(
+    WAVE_REALTIME_MODEL_OPTIONS.map((option) => option.label),
+    ['GPT-Realtime-2.1 mini', 'GPT-Realtime-2.1'],
+  );
 });
 
 test('records reject malformed, retired, and unknown-field payloads', () => {
@@ -73,6 +80,11 @@ test('records reject malformed, retired, and unknown-field payloads', () => {
       JSON.stringify({ preference: 'robotic', version: 1 }),
     ),
   );
+});
+
+test('the default Realtime voice preference resolves to the call default', () => {
+  assert.equal(resolveRealtimeVoicePreference('default'), 'marin');
+  assert.equal(resolveRealtimeVoicePreference('cedar'), 'cedar');
 });
 
 test('theme appearance keeps v1 appearances and rejects unknown shapes', () => {

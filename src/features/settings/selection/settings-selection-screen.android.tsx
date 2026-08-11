@@ -74,6 +74,17 @@ export function SettingsSelectionScreen({
               {settings.definition.errorMessage}
             </Text>
           ) : null}
+          {settings.previewError ? (
+            <Text
+              color={colors.error}
+              style={{ typography: 'bodyMedium' }}
+              modifiers={[
+                padding(24, 16, 24, 0),
+                testIDModifier('settings-voice-preview-error'),
+              ]}>
+              {settings.previewError}
+            </Text>
+          ) : null}
         </LazyColumn>
       </Surface>
     </Host>

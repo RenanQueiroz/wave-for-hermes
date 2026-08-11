@@ -4,6 +4,7 @@ import {
 } from '@wave/contracts';
 import { useState } from 'react';
 
+import { useVoicePreview } from '@/features/realtime/use-voice-preview';
 import {
   isWaveRealtimeModelId,
   WAVE_REALTIME_MODEL_OPTIONS,
@@ -11,6 +12,8 @@ import {
 } from '@/services/realtime/realtime-model-preference-record';
 import {
   REALTIME_DEFAULT_VOICE_PREFERENCE,
+  resolveRealtimeVoicePreference,
+  WAVE_REALTIME_DEFAULT_VOICE,
   type RealtimeVoicePreference,
 } from '@/services/realtime/realtime-voice-preference-record';
 import {
@@ -38,34 +41,34 @@ export interface SettingsSelectionDefinition {
 }
 
 const VOICE_DESCRIPTIONS: Record<WaveRealtimeVoiceId, string> = {
-  alloy: 'Balanced and clear.',
-  ash: 'Warm and steady.',
-  ballad: 'Soft and expressive.',
-  cedar: 'Grounded and natural.',
-  coral: 'Bright and friendly.',
-  echo: 'Calm and direct.',
-  marin: 'Crisp and articulate.',
-  sage: 'Gentle and thoughtful.',
-  shimmer: 'Light and upbeat.',
-  verse: 'Animated and quick.',
+  alloy: 'Balanced and clear',
+  ash: 'Warm and steady',
+  ballad: 'Soft and expressive',
+  cedar: 'Grounded and natural',
+  coral: 'Bright and friendly',
+  echo: 'Calm and direct',
+  marin: 'Crisp and articulate',
+  sage: 'Gentle and thoughtful',
+  shimmer: 'Light and upbeat',
+  verse: 'Animated and quick',
 };
 
 const APPEARANCE_OPTIONS: readonly SettingsSelectionOption<WaveThemeAppearance>[] =
   [
     {
-      description: "Match this phone's appearance.",
+      description: "Match this phone's appearance",
       label: 'System',
       testID: 'theme-appearance-system',
       value: 'system',
     },
     {
-      description: 'Always use the light appearance.',
+      description: 'Always use the light appearance',
       label: 'Light',
       testID: 'theme-appearance-light',
       value: 'light',
     },
     {
-      description: 'Always use the dark appearance.',
+      description: 'Always use the dark appearance',
       label: 'Dark',
       testID: 'theme-appearance-dark',
       value: 'dark',
@@ -75,26 +78,34 @@ const APPEARANCE_OPTIONS: readonly SettingsSelectionOption<WaveThemeAppearance>[
 const MODEL_OPTIONS: readonly SettingsSelectionOption<WaveRealtimeModelId>[] =
   WAVE_REALTIME_MODEL_OPTIONS.map((option) => ({
     description: option.description,
-    label: option.id,
+    label: option.label,
     testID: option.testID,
     value: option.id,
   }));
 
+const DEFAULT_VOICE_LABEL = `Default (${formatVoiceLabel(
+  WAVE_REALTIME_DEFAULT_VOICE,
+)})`;
+
 const VOICE_OPTIONS: readonly SettingsSelectionOption<RealtimeVoicePreference>[] =
   [
     {
-      description: 'Let Wave choose the voice.',
-      label: 'Default',
+      description: 'Let Wave choose the voice',
+      label: DEFAULT_VOICE_LABEL,
       testID: 'realtime-voice-default',
       value: REALTIME_DEFAULT_VOICE_PREFERENCE,
     },
     ...WAVE_REALTIME_VOICE_IDS.map((value) => ({
       description: VOICE_DESCRIPTIONS[value],
-      label: value.charAt(0).toUpperCase() + value.slice(1),
+      label: formatVoiceLabel(value),
       testID: `realtime-voice-${value}`,
       value,
     })),
   ];
+
+function formatVoiceLabel(value: WaveRealtimeVoiceId) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 export const SETTINGS_SELECTION_DEFINITIONS = {
   appearance: {
@@ -151,7 +162,7 @@ export function useSettingsPreferences() {
     modelHydrated: model.hydrated,
     selectedAppearanceLabel: selectedAppearance?.label ?? 'System',
     selectedModelLabel: selectedModel?.label ?? model.value,
-    selectedVoiceLabel: selectedVoice?.label ?? 'Default',
+    selectedVoiceLabel: selectedVoice?.label ?? DEFAULT_VOICE_LABEL,
     voice: voice.value,
     voiceHydrated: voice.hydrated,
   };
@@ -182,6 +193,7 @@ export function useSettingsSelection(selection: SettingsSelection) {
   const connected = useConnectedWave();
   const preferences = useSettingsPreferences();
   const [saveError, setSaveError] = useState(false);
+  const preview = useVoicePreview({ model: preferences.model });
   const definition = SETTINGS_SELECTION_DEFINITIONS[selection];
   const current =
     selection === 'appearance'
@@ -200,7 +212,15 @@ export function useSettingsSelection(selection: SettingsSelection) {
           };
 
   const select = (value: string) => {
-    if (!current.hydrated || value === current.value) return;
+    if (!current.hydrated) return;
+    if (selection === 'voice') {
+      const preference = VOICE_OPTIONS.find(
+        (option) => option.value === value,
+      )?.value;
+      if (!preference) return;
+      void preview.play(resolveRealtimeVoicePreference(preference));
+    }
+    if (value === current.value) return;
     const write = setSelectionPreference(selection, value);
     if (!write) return;
     setSaveError(false);
@@ -212,6 +232,7 @@ export function useSettingsSelection(selection: SettingsSelection) {
     connected,
     definition,
     hydrated: current.hydrated,
+    previewError: selection === 'voice' ? preview.state.error : undefined,
     saveError,
     selectedValue: current.value,
     select,

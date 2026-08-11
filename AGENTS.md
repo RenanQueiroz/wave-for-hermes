@@ -173,7 +173,11 @@ documentation before implementing UI.
   wrappers, universal `FieldGroup`, or `RNHostView` inside either native screen. Each
   platform-native scroll container owns its keyboard insets. Native text fields use
   `useNativeState` and read `state.value` at submit; blur before programmatic writes in a focused
-  iOS field (expo/expo #47434).
+  iOS field (expo/expo #47434). Every tap on a Realtime voice option, including the
+  already-selected option, stops any existing preview and starts that voice from the beginning.
+  The shared preview owner generates a bounded sample directly through OpenAI Realtime with the
+  user's secure-stored key, caches it by app-owned model and voice, and owns the single
+  `expo-audio` player lifecycle; platform-native settings rows only dispatch the selection.
 - Search and transcript surfaces stay PanelUI/RN. The chat composer is the other deliberate
   direct-Expo-UI surface: all visible composer content uses
   one platform-native `Host`, native observable text/selection state, universal native

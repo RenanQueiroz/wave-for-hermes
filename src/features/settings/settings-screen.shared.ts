@@ -18,19 +18,19 @@ import {
 
 export const SETTINGS_COPY = {
   captionsDescription:
-    'Show what you said during live voice. Adds $0.0045 per minute of transcription billed to your key.',
+    'Show what you said during live voice. Adds $0.0045 per minute of transcription billed to your key',
   connectionFooter: 'Your Hermes sign-in is stored securely on this phone.',
   disconnectAlertMessage:
     "Wave will remove this phone's saved sign-in. Active Hermes work will continue, and the gateway can invalidate outstanding tokens only when its token secret rotates.",
-  disconnectDescription: "Remove this phone's saved sign-in.",
+  disconnectDescription: "Remove this phone's saved sign-in",
   developmentToolsDescription:
-    'Local diagnostics are only available in development builds.',
+    'Local diagnostics are only available in development builds',
   licensesDescription:
-    'Review the open-source software and licenses included in this build.',
+    'Review the open-source software and licenses included in this build',
   realtimeFooter:
     'Your OpenAI key is stored securely on this phone and sent only to OpenAI.',
   realtimePreferenceDescription:
-    'Use Realtime for voice mode. Off means the keyless server-side voice.',
+    'Use Realtime for voice mode. Off means the keyless server-side voice',
 } as const;
 
 /**

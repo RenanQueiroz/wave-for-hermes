@@ -4,8 +4,17 @@ import {
 } from '@wave/contracts';
 
 export const REALTIME_DEFAULT_VOICE_PREFERENCE = 'default' as const;
+export const WAVE_REALTIME_DEFAULT_VOICE: WaveRealtimeVoiceId = 'marin';
 export type RealtimeVoicePreference =
   typeof REALTIME_DEFAULT_VOICE_PREFERENCE | WaveRealtimeVoiceId;
+
+export function resolveRealtimeVoicePreference(
+  preference: RealtimeVoicePreference,
+): WaveRealtimeVoiceId {
+  return preference === REALTIME_DEFAULT_VOICE_PREFERENCE
+    ? WAVE_REALTIME_DEFAULT_VOICE
+    : WaveRealtimeVoiceIdSchema.parse(preference);
+}
 
 export function parseRealtimeVoicePreference(
   serialized: string,
