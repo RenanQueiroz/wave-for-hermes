@@ -143,7 +143,13 @@ documentation before implementing UI.
   shared behavior modules. Settings has `settings-screen.ios.tsx`,
   `settings-screen.android.tsx`, and `settings-screen.shared.ts`: iOS uses a SwiftUI
   `Form`/`Section` tree, while Android uses a continuous Material 3 `LazyColumn` with Compose
-  `ListItem`, `Switch`, `OutlinedTextField`, and exposed-dropdown controls. Connect follows the
+  `ListItem`, `Switch`, and `OutlinedTextField` controls. Model, voice, and appearance choices use
+  the validated `/settings/[selection]` subroute backed by the shared definitions and mutation
+  logic under `src/features/settings/selection/`; the main settings screen only shows navigation
+  rows with the current values. Android selection pages use grouped radio `ListItem` rows, while
+  iOS uses native plain button rows with trailing checkmarks. Every option owns its always-visible
+  description, applies immediately without a save action, and leaves the user on the page until
+  they navigate back. Do not reintroduce dropdown pickers for these preferences. Connect follows the
   same split through `connection-screen.ios.tsx`, `connection-screen.android.tsx`, and
   `connection-screen.shared.ts`; its heading, explanatory copy, fields, errors, and actions all
   belong to the native tree, and the Expo Router route keeps its redundant page header hidden.

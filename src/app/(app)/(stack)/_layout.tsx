@@ -56,6 +56,12 @@ export default function AppStackLayout() {
         }}
       />
       <Stack.Screen
+        name="settings/[selection]"
+        options={{
+          title: '',
+        }}
+      />
+      <Stack.Screen
         name="development"
         options={{
           title: 'Development',

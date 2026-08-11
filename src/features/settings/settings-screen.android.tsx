@@ -3,9 +3,6 @@ import { Host } from '@expo/ui';
 import {
   Button,
   Column,
-  DropdownMenuItem,
-  ExposedDropdownMenu,
-  ExposedDropdownMenuBox,
   Icon,
   LazyColumn,
   OutlinedTextField,
@@ -13,18 +10,16 @@ import {
   Surface,
   Text,
   useMaterialColors,
-  useNativeState,
 } from '@expo/ui/jetpack-compose';
 import {
   fillMaxSize,
   fillMaxWidth,
   imePadding,
-  menuAnchor,
   padding,
   testID as testIDModifier,
 } from '@expo/ui/jetpack-compose/modifiers';
 import { Redirect } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useCSSVariable } from 'uniwind';
 
 import type { OpenAiKeyFieldRef } from '@/features/realtime/use-openai-key-settings';
@@ -33,18 +28,9 @@ import {
   SettingsListItem,
 } from '@/features/settings/settings-list-item';
 import {
-  SETTINGS_APPEARANCE_OPTIONS,
   SETTINGS_COPY,
-  SETTINGS_REALTIME_MODEL_OPTIONS,
-  SETTINGS_REALTIME_VOICE_OPTIONS,
   useSettingsScreen,
 } from '@/features/settings/settings-screen.shared';
-
-interface SettingsOption {
-  label: string;
-  testID: string;
-  value: string;
-}
 
 type NativeColor = NonNullable<Parameters<typeof Surface>[0]['color']>;
 
@@ -117,93 +103,6 @@ function SettingsError({
   );
 }
 
-function SettingsDropdown({
-  enabled,
-  label,
-  onSelect,
-  options,
-  selectedLabel,
-  selectedValue,
-  testID,
-}: {
-  enabled: boolean;
-  label: string;
-  onSelect: (value: string) => void;
-  options: readonly SettingsOption[];
-  selectedLabel: string;
-  selectedValue: string;
-  testID: string;
-}) {
-  const colors = useMaterialColors();
-  const selectedText = useNativeState(selectedLabel);
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    selectedText.set(selectedLabel);
-  }, [selectedLabel, selectedText]);
-
-  return (
-    <Column modifiers={[fillMaxWidth(), padding(16, 0, 16, 0)]}>
-      <ExposedDropdownMenuBox
-        expanded={expanded}
-        modifiers={[fillMaxWidth()]}
-        onExpandedChange={(nextExpanded) => {
-          if (enabled) setExpanded(nextExpanded);
-        }}>
-        <OutlinedTextField
-          enabled={enabled}
-          readOnly
-          singleLine
-          value={selectedText}
-          modifiers={[
-            fillMaxWidth(),
-            menuAnchor('primaryNotEditable', enabled),
-            testIDModifier(testID),
-          ]}>
-          <OutlinedTextField.Label>
-            <Text>{label}</Text>
-          </OutlinedTextField.Label>
-          <OutlinedTextField.TrailingIcon>
-            <Icon
-              size={24}
-              source={require('@expo/material-symbols/arrow_drop_down.xml')}
-              tint={colors.onSurfaceVariant}
-            />
-          </OutlinedTextField.TrailingIcon>
-        </OutlinedTextField>
-        <ExposedDropdownMenu
-          containerColor={colors.surfaceContainer}
-          expanded={expanded}
-          onDismissRequest={() => setExpanded(false)}>
-          {options.map((option) => (
-            <DropdownMenuItem
-              key={option.value}
-              modifiers={[testIDModifier(option.testID)]}
-              onClick={() => {
-                selectedText.set(option.label);
-                setExpanded(false);
-                onSelect(option.value);
-              }}>
-              <DropdownMenuItem.Text>
-                <Text>{option.label}</Text>
-              </DropdownMenuItem.Text>
-              {option.value === selectedValue ? (
-                <DropdownMenuItem.TrailingIcon>
-                  <Icon
-                    size={24}
-                    source={require('@expo/material-symbols/check.xml')}
-                    tint={colors.primary}
-                  />
-                </DropdownMenuItem.TrailingIcon>
-              ) : null}
-            </DropdownMenuItem>
-          ))}
-        </ExposedDropdownMenu>
-      </ExposedDropdownMenuBox>
-    </Column>
-  );
-}
-
 export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
   const settings = useSettingsScreen(keyDraftRef);
@@ -273,6 +172,20 @@ export function SettingsScreen() {
                   onValueChange={settings.setCaptions}
                 />
                 <SettingsListItem
+                  description={settings.selectedModelLabel}
+                  enabled={settings.modelHydrated}
+                  label="Live voice model"
+                  testID="realtime-model-picker"
+                  onPress={settings.openModelSettings}
+                />
+                <SettingsListItem
+                  description={settings.selectedVoiceLabel}
+                  enabled={settings.voiceHydrated}
+                  label="Live voice sound"
+                  testID="realtime-voice-picker"
+                  onPress={settings.openVoiceSettings}
+                />
+                <SettingsListItem
                   destructive
                   enabled={!settings.keyBusy}
                   label={settings.removeKeyPending ? 'Removing…' : 'Remove key'}
@@ -335,62 +248,16 @@ export function SettingsScreen() {
           )}
           <SectionFooter>{SETTINGS_COPY.realtimeFooter}</SectionFooter>
 
-          {settings.showRealtimeOptions ? (
-            <>
-              <SectionHeader testID="realtime-model-card">
-                Live voice model
-              </SectionHeader>
-              <SettingsDropdown
-                enabled={settings.modelHydrated}
-                label="Model"
-                options={SETTINGS_REALTIME_MODEL_OPTIONS.map((option) => ({
-                  label: option.id,
-                  testID: option.testID,
-                  value: option.id,
-                }))}
-                selectedLabel={settings.selectedModelLabel}
-                selectedValue={settings.model}
-                testID="realtime-model-picker"
-                onSelect={settings.selectModel}
-              />
-              {settings.modelSaveError ? (
-                <SettingsError testID="realtime-model-error">
-                  Wave could not save the Realtime model preference.
-                </SettingsError>
-              ) : null}
-              <SectionFooter>{settings.modelDescription}</SectionFooter>
-
-              <SectionHeader testID="realtime-voice-card">
-                Live voice sound
-              </SectionHeader>
-              <SettingsDropdown
-                enabled={settings.voiceHydrated}
-                label="Voice"
-                options={SETTINGS_REALTIME_VOICE_OPTIONS}
-                selectedLabel={settings.selectedVoiceLabel}
-                selectedValue={settings.voice}
-                testID="realtime-voice-picker"
-                onSelect={settings.selectVoice}
-              />
-              {settings.voiceSaveError ? (
-                <SettingsError testID="realtime-voice-error">
-                  Wave could not save the voice preference.
-                </SettingsError>
-              ) : null}
-              <SectionFooter>{settings.voiceDescription}</SectionFooter>
-            </>
-          ) : null}
-
           <SectionHeader testID="appearance-card">Appearance</SectionHeader>
-          <SettingsDropdown
-            enabled={settings.appearanceHydrated}
-            label="Theme"
-            options={SETTINGS_APPEARANCE_OPTIONS}
-            selectedLabel={settings.selectedAppearanceLabel}
-            selectedValue={settings.appearance}
-            testID="theme-appearance-picker"
-            onSelect={settings.selectAppearance}
-          />
+          <SettingsListGroup>
+            <SettingsListItem
+              description={settings.selectedAppearanceLabel}
+              enabled={settings.appearanceHydrated}
+              label="Theme"
+              testID="theme-appearance-picker"
+              onPress={settings.openAppearanceSettings}
+            />
+          </SettingsListGroup>
           <SectionFooter>{SETTINGS_COPY.themeFooter}</SectionFooter>
 
           <SectionHeader testID="legal-card">About</SectionHeader>

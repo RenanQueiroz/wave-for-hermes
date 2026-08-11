@@ -3,7 +3,6 @@ import { Host } from '@expo/ui';
 import {
   Button,
   Form,
-  Picker,
   Section,
   SecureField,
   Text,
@@ -17,20 +16,16 @@ import {
   foregroundStyle,
   keyboardType,
   onSubmit,
-  pickerStyle,
   submitLabel,
-  tag,
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
 import { Redirect } from 'expo-router';
 import { useRef } from 'react';
 
 import type { OpenAiKeyFieldRef } from '@/features/realtime/use-openai-key-settings';
+import { SettingsRow } from '@/features/settings/components/settings-row';
 import {
-  SETTINGS_APPEARANCE_OPTIONS,
   SETTINGS_COPY,
-  SETTINGS_REALTIME_MODEL_OPTIONS,
-  SETTINGS_REALTIME_VOICE_OPTIONS,
   useSettingsScreen,
 } from '@/features/settings/settings-screen.shared';
 
@@ -43,27 +38,6 @@ function SectionHeader({ children, id }: { children: string; id: string }) {
   // Put the identifier on the leaf header. SwiftUI propagates identifiers
   // from containers to descendants, which would hide the controls' own IDs.
   return <Text modifiers={[accessibilityIdentifier(id)]}>{children}</Text>;
-}
-
-function SupportingButton({
-  description,
-  label,
-  onPress,
-  testID,
-}: {
-  description: string;
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  return (
-    <Button modifiers={[accessibilityIdentifier(testID)]} onPress={onPress}>
-      <VStack alignment="leading" spacing={3}>
-        <Text>{label}</Text>
-        <Text modifiers={[SECONDARY_TEXT]}>{description}</Text>
-      </VStack>
-    </Button>
-  );
 }
 
 export function SettingsScreen() {
@@ -141,6 +115,20 @@ export function SettingsScreen() {
                   {SETTINGS_COPY.captionsDescription}
                 </Text>
               </Toggle>
+              <SettingsRow
+                description={settings.selectedModelLabel}
+                enabled={settings.modelHydrated}
+                label="Live voice model"
+                testID="realtime-model-picker"
+                onPress={settings.openModelSettings}
+              />
+              <SettingsRow
+                description={settings.selectedVoiceLabel}
+                enabled={settings.voiceHydrated}
+                label="Live voice sound"
+                testID="realtime-voice-picker"
+                onPress={settings.openVoiceSettings}
+              />
               <Button
                 label={settings.removeKeyPending ? 'Removing…' : 'Remove key'}
                 role="destructive"
@@ -193,124 +181,31 @@ export function SettingsScreen() {
           )}
         </Section>
 
-        {settings.showRealtimeOptions ? (
-          <>
-            <Section
-              header={
-                <SectionHeader id="realtime-model-card">
-                  Live voice model
-                </SectionHeader>
-              }
-              footer={<Text>{settings.modelDescription}</Text>}>
-              <Picker
-                label="Model"
-                selection={settings.model}
-                modifiers={[
-                  pickerStyle('menu'),
-                  disabled(!settings.modelHydrated),
-                  accessibilityIdentifier('realtime-model-picker'),
-                ]}
-                onSelectionChange={settings.selectModel}>
-                {SETTINGS_REALTIME_MODEL_OPTIONS.map((option) => (
-                  <Text
-                    key={option.id}
-                    modifiers={[
-                      tag(option.id),
-                      accessibilityIdentifier(option.testID),
-                    ]}>
-                    {option.id}
-                  </Text>
-                ))}
-              </Picker>
-              {settings.modelSaveError ? (
-                <Text
-                  modifiers={[
-                    foregroundStyle('red'),
-                    accessibilityIdentifier('realtime-model-error'),
-                  ]}>
-                  Wave could not save the Realtime model preference.
-                </Text>
-              ) : null}
-            </Section>
-
-            <Section
-              header={
-                <SectionHeader id="realtime-voice-card">
-                  Live voice sound
-                </SectionHeader>
-              }
-              footer={<Text>{settings.voiceDescription}</Text>}>
-              <Picker
-                label="Voice"
-                selection={settings.voice}
-                modifiers={[
-                  pickerStyle('menu'),
-                  disabled(!settings.voiceHydrated),
-                  accessibilityIdentifier('realtime-voice-picker'),
-                ]}
-                onSelectionChange={settings.selectVoice}>
-                {SETTINGS_REALTIME_VOICE_OPTIONS.map((option) => (
-                  <Text
-                    key={option.value}
-                    modifiers={[
-                      tag(option.value),
-                      accessibilityIdentifier(option.testID),
-                    ]}>
-                    {option.label}
-                  </Text>
-                ))}
-              </Picker>
-              {settings.voiceSaveError ? (
-                <Text
-                  modifiers={[
-                    foregroundStyle('red'),
-                    accessibilityIdentifier('realtime-voice-error'),
-                  ]}>
-                  Wave could not save the voice preference.
-                </Text>
-              ) : null}
-            </Section>
-          </>
-        ) : null}
-
         <Section
           header={
             <SectionHeader id="appearance-card">Appearance</SectionHeader>
           }
           footer={<Text>{SETTINGS_COPY.themeFooter}</Text>}>
-          <Picker
+          <SettingsRow
+            description={settings.selectedAppearanceLabel}
+            enabled={settings.appearanceHydrated}
             label="Theme"
-            selection={settings.appearance}
-            modifiers={[
-              pickerStyle('menu'),
-              disabled(!settings.appearanceHydrated),
-              accessibilityIdentifier('theme-appearance-picker'),
-            ]}
-            onSelectionChange={settings.selectAppearance}>
-            {SETTINGS_APPEARANCE_OPTIONS.map((option) => (
-              <Text
-                key={option.value}
-                modifiers={[
-                  tag(option.value),
-                  accessibilityIdentifier(option.testID),
-                ]}>
-                {option.label}
-              </Text>
-            ))}
-          </Picker>
+            testID="theme-appearance-picker"
+            onPress={settings.openAppearanceSettings}
+          />
         </Section>
 
         <Section
           header={<SectionHeader id="legal-card">About</SectionHeader>}
           footer={<Text>{SETTINGS_COPY.aboutFooter}</Text>}>
-          <SupportingButton
+          <SettingsRow
             description={SETTINGS_COPY.licensesDescription}
             label="Open-source licenses"
             testID="open-source-licenses"
             onPress={settings.openLicenses}
           />
           {settings.showDevelopmentTools ? (
-            <SupportingButton
+            <SettingsRow
               description={SETTINGS_COPY.developmentToolsDescription}
               label="Open development tools"
               testID="open-development-tools"
