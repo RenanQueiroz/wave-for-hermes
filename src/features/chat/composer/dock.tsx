@@ -14,6 +14,16 @@ const KEYBOARD_GAP = 12;
 const HORIZONTAL_INSET = 16;
 
 /**
+ * The part of the raw keyboard height the dock's translation does not travel:
+ * its resting bottom padding minus the gap it keeps above the keyboard.
+ * Exported so the chat screen's empty-state shift mirrors the dock's actual
+ * keyboard travel instead of the full keyboard height.
+ */
+export function composerKeyboardBottomInset(safeAreaBottom: number) {
+  return Math.max(safeAreaBottom, 12) - KEYBOARD_GAP;
+}
+
+/**
  * The one keyboard-avoidance owner for the native composer island. The
  * hosted SwiftUI/Compose trees explicitly opt out of their own keyboard inset
  * handling, so only this translation can move the composer.
@@ -22,12 +32,14 @@ export function ChatComposerDock({
   children,
   colorScheme,
   onBottomOffsetChange,
+  onRestingOffsetChange,
   surfaceBackgroundColor,
   surfaceHeight,
 }: {
   children: ReactNode;
   colorScheme: 'dark' | 'light';
   onBottomOffsetChange(offset: number): void;
+  onRestingOffsetChange(offset: number): void;
   surfaceBackgroundColor: string;
   surfaceHeight: number;
 }) {
@@ -38,7 +50,7 @@ export function ChatComposerDock({
   );
   const [dockHeight, setDockHeight] = useState(0);
   const bottomPadding = Math.max(insets.bottom, 12);
-  const bottomInset = bottomPadding - KEYBOARD_GAP;
+  const bottomInset = composerKeyboardBottomInset(insets.bottom);
   const baseStyle = useMemo(
     () => ({
       gap: 8,
@@ -64,6 +76,11 @@ export function ChatComposerDock({
     const keyboardTravel = Math.max(keyboardHeight - bottomInset, 0);
     onBottomOffsetChange(dockHeight + keyboardTravel);
   }, [bottomInset, dockHeight, keyboardHeight, onBottomOffsetChange]);
+  // The keyboard-independent footprint, reported separately so the empty
+  // state can anchor to a stable bottom and animate its own keyboard shift.
+  useEffect(() => {
+    onRestingOffsetChange(dockHeight);
+  }, [dockHeight, onRestingOffsetChange]);
 
   return (
     <Animated.View

@@ -63,6 +63,7 @@ export interface ChatComposerProps {
   onCorrect(text: string): Promise<WaveCorrectionResult>;
   onDismissTurnActionError(): void;
   onBottomOffsetChange(offset: number): void;
+  onRestingOffsetChange(offset: number): void;
   onSend(input: WaveTurnInput, optimisticText?: string): Promise<void>;
   onStop(): Promise<void>;
   prompt?: ReactNode;
@@ -86,6 +87,7 @@ export function ChatComposer({
   onCorrect,
   onDismissTurnActionError,
   onBottomOffsetChange,
+  onRestingOffsetChange,
   onSend,
   onStop,
   prompt,
@@ -481,6 +483,7 @@ export function ChatComposer({
       <ChatComposerDock
         colorScheme={theme.mode}
         onBottomOffsetChange={onBottomOffsetChange}
+        onRestingOffsetChange={onRestingOffsetChange}
         surfaceBackgroundColor={colors.opaqueMuted}
         surfaceHeight={surfaceHeight}>
         {prompt}

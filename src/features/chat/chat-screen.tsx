@@ -33,9 +33,21 @@ import {
   SparklesIcon,
   Typography,
 } from 'panelui-native';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, View } from 'react-native';
+// Deep import: Expo Router 57 vendors React Navigation, so the header-height
+// context the native stack actually provides has no public package to import
+// from; an expo-router upgrade that moves it fails loudly at typecheck.
+import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements';
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { Animated, Platform, View } from 'react-native';
 import { useKeyboardAnimation } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 
 import { ConversationScroller } from '@/components/conversation-scroller';
@@ -51,6 +63,7 @@ import {
   type WaveChatPart,
 } from '@/features/chat/chat-state';
 import { ChatComposer } from '@/features/chat/composer';
+import { composerKeyboardBottomInset } from '@/features/chat/composer/dock';
 import {
   deriveToolAction,
   toolActionLabel,
@@ -143,7 +156,9 @@ function ConnectedChatScreen({
   const router = useRouter();
   const navigation = useNavigation();
   const drawerNavigation = navigation.getParent();
+  const insets = useSafeAreaInsets();
   const [composerBottomOffset, setComposerBottomOffset] = useState(0);
+  const [composerRestingOffset, setComposerRestingOffset] = useState(0);
   const queryClient = useQueryClient();
   const transcriptBottomPadding = Math.max(composerBottomOffset + 12, 12);
 
@@ -358,14 +373,29 @@ function ConnectedChatScreen({
     () => [...timelineMessages, ...chat.state.messages],
     [chat.state.messages, timelineMessages],
   );
-  // The empty state centers on the area the keyboard leaves visible: the
-  // docked composer translates up by the keyboard height, so shifting the
-  // centered overlay by half of it keeps it centered in what remains
-  // (`height` animates 0 → -keyboardHeight, so half of it moves up).
+  // The empty state centers on the area the keyboard leaves visible: its
+  // overlay is anchored to the composer's resting footprint, and the docked
+  // composer travels up by the keyboard height minus the dock's bottom inset,
+  // so shifting the centered copy by half of that travel keeps it centered
+  // between the header and the raised composer. `height` animates
+  // 0 → -keyboardHeight; the -0.5 slope past the inset is that half-travel.
   const { height: animatedKeyboardHeight } = useKeyboardAnimation();
+  const keyboardBottomInset = composerKeyboardBottomInset(insets.bottom);
+  // iOS chat content underlaps the transparent native header, so the
+  // overlay's centering space starts at the header's bottom edge. Android's
+  // Material header is opaque and the chat area already begins below it —
+  // and its context value would be the drawer header's height, not an
+  // overlap — so the overlay keeps the area's own top edge there.
+  const headerHeight = useContext(HeaderHeightContext) ?? 0;
+  const emptyStateTopInset = Platform.OS === 'ios' ? headerHeight : 0;
   const emptyStateShift = useMemo(
-    () => Animated.multiply(animatedKeyboardHeight, 0.5),
-    [animatedKeyboardHeight],
+    () =>
+      animatedKeyboardHeight.interpolate({
+        inputRange: [-keyboardBottomInset - 1, -keyboardBottomInset],
+        outputRange: [-0.5, 0],
+        extrapolateRight: 'clamp',
+      }),
+    [animatedKeyboardHeight, keyboardBottomInset],
   );
   const emptyStateTitle = useMemo(
     () => emptyStateTitleForSession(sessionId),
@@ -719,7 +749,7 @@ function ConnectedChatScreen({
           <View
             pointerEvents="none"
             className="absolute inset-0 px-6"
-            style={{ bottom: composerBottomOffset }}
+            style={{ bottom: composerRestingOffset, top: emptyStateTopInset }}
             testID={pendingSession ? 'chat-empty-new' : 'chat-empty-existing'}>
             <Animated.View
               style={{
@@ -757,6 +787,7 @@ function ConnectedChatScreen({
           onCorrect={chat.correct}
           onDismissTurnActionError={() => setTurnActionError(undefined)}
           onBottomOffsetChange={setComposerBottomOffset}
+          onRestingOffsetChange={setComposerRestingOffset}
           onSend={chat.send}
           onStop={chat.stop}
           prompt={

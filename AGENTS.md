@@ -199,8 +199,11 @@ documentation before implementing UI.
   components. The React Native `ChatComposerDock` is the sole keyboard-movement owner and
   positions the composer as an overlay so the transcript can scroll beneath it; it reports its
   effective resting or keyboard-raised bottom footprint so the transcript keeps reachable content
-  above the dock. iOS may render the dock's non-interactive background with Expo `GlassView` when
-  Liquid Glass is available, with a solid semantic fallback; Android always composites the
+  above the dock, and its keyboard-independent resting footprint separately so the empty-state
+  overlay anchors to a stable bottom and animates half the dock's keyboard travel to stay
+  centered between the header and the raised composer. iOS may render the dock's non-interactive
+  background with Expo `GlassView` when Liquid Glass is available, with a solid semantic
+  fallback; Android always composites the
   translucent PanelUI muted token over the page into an opaque native surface. The native hosts
   ignore keyboard safe-area/inset handling. Do not put PanelUI, `RNHostView`, nested manual hosts,
   or a second keyboard-avoidance path inside the composer.
