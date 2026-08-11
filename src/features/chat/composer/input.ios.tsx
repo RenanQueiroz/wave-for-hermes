@@ -58,8 +58,8 @@ export function ChatComposerInput({
       text={text as Parameters<typeof TextField>[0]['text']}
       testID={testID}
       modifiers={[
-        frame({ alignment: 'topLeading', maxWidth: Infinity, minHeight: 48 }),
         padding({ bottom: 6, leading: 20, top: 14, trailing: 20 }),
+        frame({ alignment: 'topLeading', maxWidth: Infinity, minHeight: 48 }),
         lineLimit({ max: 5, min: 1 }),
         font({ size: 16 }),
         foregroundStyle(foregroundColor),
