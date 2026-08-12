@@ -1,8 +1,8 @@
 import {
   Box,
   Column,
+  Icon,
   ListItem,
-  RadioButton,
   Switch,
   Text,
 } from '@expo/ui/jetpack-compose';
@@ -14,6 +14,7 @@ import {
   padding,
   selectable,
   selectableGroup,
+  size,
   testID as testIDModifier,
   toggleable,
 } from '@expo/ui/jetpack-compose/modifiers';
@@ -235,6 +236,7 @@ export function SettingsListGroup({
 }
 
 export function SettingsListItem(props: SettingsListItemProps) {
+  const theme = useTheme();
   const enabled = props.enabled ?? true;
   const contentInsets = resolveContentInsets(props.contentInsets);
   const palette = useSettingsListItemPalette(Boolean(props.destructive));
@@ -308,6 +310,24 @@ export function SettingsListItem(props: SettingsListItemProps) {
         <ListItem.TrailingContent>
           <Box modifiers={[padding(0, 0, contentInsets.end, 0)]}>
             <Switch
+              colors={{
+                checkedBorderColor: theme.primary,
+                checkedIconColor: theme.primary,
+                checkedThumbColor: theme.primaryForeground,
+                checkedTrackColor: theme.primary,
+                disabledCheckedBorderColor: theme.border,
+                disabledCheckedIconColor: theme.backgroundElement,
+                disabledCheckedThumbColor: theme.textSecondary,
+                disabledCheckedTrackColor: theme.backgroundElement,
+                disabledUncheckedBorderColor: theme.border,
+                disabledUncheckedIconColor: theme.backgroundElement,
+                disabledUncheckedThumbColor: theme.textSecondary,
+                disabledUncheckedTrackColor: theme.backgroundElement,
+                uncheckedBorderColor: theme.border,
+                uncheckedIconColor: theme.backgroundElement,
+                uncheckedThumbColor: theme.textSecondary,
+                uncheckedTrackColor: theme.backgroundElement,
+              }}
               enabled={enabled}
               onCheckedChange={props.onValueChange}
               value={props.value}
@@ -318,10 +338,21 @@ export function SettingsListItem(props: SettingsListItemProps) {
       ) : props.type === 'radio' ? (
         <ListItem.TrailingContent>
           <Box modifiers={[padding(0, 0, contentInsets.end, 0)]}>
-            <RadioButton
-              selected={props.selected}
-              onClick={enabled ? props.onSelect : undefined}
-              modifiers={props.testID ? [testIDModifier(props.testID)] : []}
+            <Icon
+              contentDescription={
+                props.selected ? 'Selected option' : 'Unselected option'
+              }
+              size={24}
+              source={
+                props.selected
+                  ? require('@expo/material-symbols/radio_button_checked.xml')
+                  : require('@expo/material-symbols/radio_button_unchecked.xml')
+              }
+              tint={props.selected ? theme.primary : theme.textSecondary}
+              modifiers={[
+                size(24, 24),
+                ...(props.testID ? [testIDModifier(props.testID)] : []),
+              ]}
             />
           </Box>
         </ListItem.TrailingContent>

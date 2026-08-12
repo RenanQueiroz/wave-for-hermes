@@ -1,10 +1,5 @@
 import { Host } from '@expo/ui';
-import {
-  LazyColumn,
-  Surface,
-  Text,
-  useMaterialColors,
-} from '@expo/ui/jetpack-compose';
+import { LazyColumn, Surface, Text } from '@expo/ui/jetpack-compose';
 import {
   fillMaxSize,
   padding,
@@ -21,6 +16,8 @@ import {
   useSettingsSelection,
   type SettingsSelection,
 } from '@/features/settings/selection/settings-selection.shared';
+import { useTheme } from '@/hooks/use-theme';
+import { useWaveMaterialColors } from '@/hooks/use-wave-material-colors';
 
 type NativeColor = NonNullable<Parameters<typeof Surface>[0]['color']>;
 
@@ -30,8 +27,9 @@ export function SettingsSelectionScreen({
   selection: SettingsSelection;
 }) {
   const settings = useSettingsSelection(selection);
+  const theme = useTheme();
   const background = useCSSVariable('--color-background');
-  const colors = useMaterialColors({
+  const colors = useWaveMaterialColors({
     colorScheme:
       settings.appearance === 'system' ? undefined : settings.appearance,
   });
@@ -44,7 +42,10 @@ export function SettingsSelectionScreen({
     typeof background === 'string' ? background : colors.background;
 
   return (
-    <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
+    <Host
+      colorScheme={forcedColorScheme}
+      seedColor={theme.primary}
+      style={{ flex: 1 }}>
       <Surface color={pageBackground} modifiers={[fillMaxSize()]}>
         <LazyColumn
           contentPadding={{ top: 24, bottom: 32 }}
@@ -65,7 +66,7 @@ export function SettingsSelectionScreen({
           </SettingsListGroup>
           {settings.saveError ? (
             <Text
-              color={colors.error}
+              color={theme.destructive}
               style={{ typography: 'bodyMedium' }}
               modifiers={[
                 padding(24, 16, 24, 0),
@@ -76,7 +77,7 @@ export function SettingsSelectionScreen({
           ) : null}
           {settings.previewError ? (
             <Text
-              color={colors.error}
+              color={theme.destructive}
               style={{ typography: 'bodyMedium' }}
               modifiers={[
                 padding(24, 16, 24, 0),

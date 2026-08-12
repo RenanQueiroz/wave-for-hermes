@@ -20,6 +20,7 @@ const EDGE_EPSILON = 4;
  * `ScrollFade` (which cannot infer orientation from a virtualized list).
  */
 export function DrawerSessionList({
+  extraData,
   isRefetching,
   items,
   listEmpty,
@@ -28,6 +29,7 @@ export function DrawerSessionList({
   onRefresh,
   renderItem,
 }: {
+  extraData: unknown;
   isRefetching: boolean;
   items: DrawerSessionListItem[];
   listEmpty: ReactNode;
@@ -83,6 +85,7 @@ export function DrawerSessionList({
         contentContainerClassName="px-2 pb-3"
         contentInsetAdjustmentBehavior="automatic"
         data={items}
+        extraData={extraData}
         getItemType={(item) => item.kind}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={<>{listEmpty}</>}

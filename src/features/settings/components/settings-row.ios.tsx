@@ -4,11 +4,15 @@ import {
   accessibilityIdentifier,
   accessibilityValue,
   buttonStyle,
+  contentShape,
   disabled,
   foregroundStyle,
   frame,
+  shapes,
+  tint,
 } from '@expo/ui/swift-ui/modifiers';
-import { Color } from 'expo-router';
+
+import { useTheme } from '@/hooks/use-theme';
 
 const PRIMARY_TEXT = foregroundStyle({
   style: 'primary',
@@ -22,8 +26,6 @@ const TERTIARY_TEXT = foregroundStyle({
   style: 'tertiary',
   type: 'hierarchical',
 });
-const SELECTION_ACCENT = foregroundStyle(Color.ios.systemBlue);
-
 export function SettingsRow({
   description,
   enabled = true,
@@ -41,10 +43,14 @@ export function SettingsRow({
   showsDisclosureIndicator?: boolean;
   testID: string;
 }) {
+  const theme = useTheme();
+
   return (
     <Button
       modifiers={[
         buttonStyle('plain'),
+        frame({ maxWidth: Infinity, alignment: 'leading' }),
+        tint(theme.primary),
         disabled(!enabled),
         accessibilityIdentifier(testID),
         ...(selected === undefined
@@ -56,7 +62,10 @@ export function SettingsRow({
       <HStack
         alignment="center"
         spacing={12}
-        modifiers={[frame({ maxWidth: Infinity, alignment: 'leading' })]}>
+        modifiers={[
+          frame({ maxWidth: Infinity, alignment: 'leading' }),
+          contentShape(shapes.rectangle()),
+        ]}>
         <VStack alignment="leading" spacing={3}>
           <Text modifiers={[PRIMARY_TEXT]}>{label}</Text>
           <Text modifiers={[SECONDARY_TEXT]}>{description}</Text>
@@ -66,7 +75,7 @@ export function SettingsRow({
           <Image
             systemName="checkmark"
             size={17}
-            modifiers={[SELECTION_ACCENT]}
+            modifiers={[foregroundStyle(theme.primary)]}
           />
         ) : showsDisclosureIndicator ? (
           <Image

@@ -159,6 +159,13 @@ documentation before implementing UI.
   `connection-screen.ios.tsx`, `connection-screen.android.tsx`, and
   `connection-screen.shared.ts`; its heading, explanatory copy, fields, errors, and actions all
   belong to the native tree, and the Expo Router route keeps its redundant page header hidden.
+  Seed every Settings and Connect native `Host` from PanelUI's semantic primary token and pass the
+  selected app color scheme explicitly. On iOS that owns SwiftUI tint; prominent labels use the
+  semantic primary-foreground token explicitly so the near-white dark primary keeps readable
+  contrast. On Android a seed alone is not enough: Material 3 `SchemeTonalSpot` adds chroma even to
+  black, white, and gray seeds. Resolve page roles through `useWaveMaterialColors` and pass its
+  explicit control-color maps so Wave stays monochromatic instead of inheriting either that added
+  hue or the device wallpaper palette.
   Android Settings uses a shadowless, start-aligned Material app bar; resolve the same semantic
   background token into its Compose page surface so the app bar and page stay continuous. Keep
   grouped `ListItem` rows inset, separated, rounded at the section edges, and on their shared
@@ -196,9 +203,9 @@ documentation before implementing UI.
   (`session-search-row.{ios,android}.tsx`, two-line: title + bounded inert snippet). The
   offline landing's two actions are platform-native buttons
   (`src/features/sessions/offline-actions.{ios,android}.tsx`, intrinsic-height Hosts behind a
-  shared props contract); the iOS pair deliberately takes no `seedColor` because PanelUI's
-  near-white dark-theme primary would leave SwiftUI's `borderedProminent` label without
-  contrast, while Android's Material seed derives readable on-primary colors. Every tap on a Realtime
+  shared props contract); both platform Hosts take the semantic primary seed, the iOS
+  `borderedProminent` label explicitly uses primary-foreground for dark-theme contrast, and the
+  Android buttons receive explicit Wave Material colors rather than relying on the tonal seed. Every tap on a Realtime
   voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the
@@ -255,7 +262,10 @@ documentation before implementing UI.
   a zero-size absolute Host, and this `@expo/ui` version's Compose text field implements no
   `setText`, so the rename draft's seed is the keyed `useNativeState(title)` initial value,
   read back with `state.value` at submit. Menu-open state lives in React via
-  `useRecyclingState` so recycled rows never show a stale menu.
+  `useRecyclingState` so recycled rows never show a stale menu. Pass the resolved drawer color
+  object through `LegendList.extraData`: changing filters already replaces list data, but a live
+  theme change must also invalidate visible recycled rows so their native text colors update
+  immediately.
 - Keyboard avoidance for the remaining PanelUI/RN surfaces (validated on device): a lone
   field — optionally grouped with its submit button — lifts through
   `KeyboardAvoider`/`avoidKeyboard` gated on that field's focus. The native Connect fields use

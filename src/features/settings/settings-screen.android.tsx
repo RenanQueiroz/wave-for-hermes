@@ -12,7 +12,6 @@ import {
   Surface,
   Text,
   TextButton,
-  useMaterialColors,
 } from '@expo/ui/jetpack-compose';
 import {
   fillMaxSize,
@@ -34,6 +33,15 @@ import {
   SETTINGS_COPY,
   useSettingsScreen,
 } from '@/features/settings/settings-screen.shared';
+import { useTheme } from '@/hooks/use-theme';
+import {
+  useWaveMaterialColors,
+  waveAlertDialogColors,
+  wavePrimaryButtonColors,
+  waveTextButtonColors,
+  waveTextFieldColors,
+  waveTonalButtonColors,
+} from '@/hooks/use-wave-material-colors';
 
 type NativeColor = NonNullable<Parameters<typeof Surface>[0]['color']>;
 
@@ -44,10 +52,10 @@ function SectionHeader({
   children: string;
   testID: string;
 }) {
-  const colors = useMaterialColors();
+  const theme = useTheme();
   return (
     <Text
-      color={colors.primary}
+      color={theme.primary}
       style={{ typography: 'titleSmall' }}
       modifiers={[
         fillMaxWidth(),
@@ -60,7 +68,7 @@ function SectionHeader({
 }
 
 function SectionFooter({ children }: { children: string }) {
-  const colors = useMaterialColors();
+  const theme = useTheme();
   return (
     <Column
       verticalArrangement={{ spacedBy: 8 }}
@@ -70,12 +78,12 @@ function SectionFooter({ children }: { children: string }) {
           contentDescription="Connection information"
           size={20}
           source={require('@expo/material-symbols/info.xml')}
-          tint={colors.onSurfaceVariant}
+          tint={theme.textSecondary}
           modifiers={[testIDModifier('connection-info-icon')]}
         />
       </Row>
       <Text
-        color={colors.onSurfaceVariant}
+        color={theme.textSecondary}
         style={{ typography: 'bodyMedium' }}
         modifiers={[fillMaxWidth(), padding(4, 0, 0, 0)]}>
         {children}
@@ -91,10 +99,10 @@ function SettingsError({
   children: string;
   testID: string;
 }) {
-  const colors = useMaterialColors();
+  const theme = useTheme();
   return (
     <Text
-      color={colors.error}
+      color={theme.destructive}
       style={{ typography: 'bodyMedium' }}
       modifiers={[
         fillMaxWidth(),
@@ -110,11 +118,13 @@ export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const settings = useSettingsScreen(keyDraftRef);
+  const theme = useTheme();
   const background = useCSSVariable('--color-background');
-  const colors = useMaterialColors({
+  const colors = useWaveMaterialColors({
     colorScheme:
       settings.appearance === 'system' ? undefined : settings.appearance,
   });
+  const textFieldColors = waveTextFieldColors(colors);
 
   if (!settings.connected) {
     return <Redirect href="/" />;
@@ -126,7 +136,10 @@ export function SettingsScreen() {
     typeof background === 'string' ? background : colors.background;
 
   return (
-    <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
+    <Host
+      colorScheme={forcedColorScheme}
+      seedColor={theme.primary}
+      style={{ flex: 1 }}>
       <Surface color={pageBackground} modifiers={[fillMaxSize()]}>
         <LazyColumn
           contentPadding={{ bottom: 32 }}
@@ -211,6 +224,7 @@ export function SettingsScreen() {
               verticalArrangement={{ spacedBy: 12 }}
               modifiers={[fillMaxWidth(), padding(16, 0, 16, 0)]}>
               <OutlinedTextField
+                colors={textFieldColors}
                 ref={keyDraftRef}
                 enabled={!settings.keyBusy}
                 isError={Boolean(settings.keyError)}
@@ -247,6 +261,7 @@ export function SettingsScreen() {
                 ) : null}
               </OutlinedTextField>
               <Button
+                colors={wavePrimaryButtonColors(colors)}
                 enabled={settings.canSaveKey}
                 modifiers={[testIDModifier('openai-key-save')]}
                 onClick={settings.saveKey}>
@@ -292,6 +307,7 @@ export function SettingsScreen() {
       </Surface>
       {disconnectOpen ? (
         <AlertDialog
+          colors={waveAlertDialogColors(colors)}
           properties={{
             dismissOnBackPress: !settings.disconnecting,
             dismissOnClickOutside: !settings.disconnecting,
@@ -311,6 +327,7 @@ export function SettingsScreen() {
           </AlertDialog.Text>
           <AlertDialog.DismissButton>
             <TextButton
+              colors={waveTextButtonColors(colors)}
               enabled={!settings.disconnecting}
               onClick={() => setDisconnectOpen(false)}>
               <Text>Cancel</Text>
@@ -319,7 +336,10 @@ export function SettingsScreen() {
           <AlertDialog.ConfirmButton>
             <FilledTonalButton
               enabled={!settings.disconnecting}
-              colors={{ contentColor: colors.error }}
+              colors={{
+                ...waveTonalButtonColors(colors),
+                contentColor: theme.destructive,
+              }}
               modifiers={[testIDModifier('disconnect-device-confirm')]}
               onClick={() => {
                 setDisconnectOpen(false);

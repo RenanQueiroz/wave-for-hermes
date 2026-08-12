@@ -37,6 +37,7 @@ import {
   CONNECTION_COPY,
   useConnectionScreen,
 } from '@/features/connection/connection-screen.shared';
+import { useTheme } from '@/hooks/use-theme';
 
 const SECONDARY_TEXT = foregroundStyle({
   style: 'secondary',
@@ -44,8 +45,13 @@ const SECONDARY_TEXT = foregroundStyle({
 });
 
 function ErrorText({ children, testID }: { children: string; testID: string }) {
+  const theme = useTheme();
   return (
-    <Text modifiers={[foregroundStyle('red'), accessibilityIdentifier(testID)]}>
+    <Text
+      modifiers={[
+        foregroundStyle(theme.destructive),
+        accessibilityIdentifier(testID),
+      ]}>
       {children}
     </Text>
   );
@@ -53,6 +59,7 @@ function ErrorText({ children, testID }: { children: string; testID: string }) {
 
 export function ConnectionScreen() {
   const connection = useConnectionScreen();
+  const theme = useTheme();
   const usernameRef = useRef<TextFieldRef>(null);
   const passwordRef = useRef<SecureFieldRef>(null);
   const focusUsername = useCallback(() => {
@@ -70,7 +77,10 @@ export function ConnectionScreen() {
     connection.appearance === 'system' ? undefined : connection.appearance;
 
   return (
-    <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
+    <Host
+      colorScheme={forcedColorScheme}
+      seedColor={theme.primary}
+      style={{ flex: 1 }}>
       <Form modifiers={[listSectionSpacing('compact')]}>
         <VStack
           alignment="leading"
@@ -125,6 +135,7 @@ export function ConnectionScreen() {
               label="Sign out on this device"
               role="destructive"
               modifiers={[
+                foregroundStyle(theme.destructive),
                 accessibilityIdentifier('connection-disconnect-button'),
               ]}
               onPress={connection.forgetConnection}
@@ -241,7 +252,11 @@ export function ConnectionScreen() {
                 accessibilityIdentifier('gateway-sign-in-button'),
               ]}
               onPress={connection.submitSignIn}>
-              <Text modifiers={[frame({ maxWidth: Infinity })]}>
+              <Text
+                modifiers={[
+                  frame({ maxWidth: Infinity }),
+                  foregroundStyle(theme.primaryForeground),
+                ]}>
                 {connection.signingIn ? 'Signing in…' : 'Sign in'}
               </Text>
             </Button>

@@ -20,12 +20,23 @@ export function useDrawerColors(): DrawerColors {
     () => ({
       background: theme.background,
       card: resolveColor(card, theme.backgroundElement),
-      destructive: resolveColor(destructive, theme.text),
+      destructive: resolveColor(destructive, theme.destructive),
       foreground: theme.text,
       muted: resolveColor(muted, theme.backgroundSelected),
       mutedForeground: theme.textSecondary,
       primary: theme.primary,
     }),
-    [card, destructive, muted, theme],
+    [
+      card,
+      destructive,
+      muted,
+      theme.background,
+      theme.backgroundElement,
+      theme.backgroundSelected,
+      theme.destructive,
+      theme.primary,
+      theme.text,
+      theme.textSecondary,
+    ],
   );
 }

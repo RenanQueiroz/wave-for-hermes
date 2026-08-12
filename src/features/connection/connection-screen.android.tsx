@@ -11,7 +11,6 @@ import {
   Surface,
   Text,
   TextButton,
-  useMaterialColors,
   type TextFieldRef,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -28,12 +27,19 @@ import {
   CONNECTION_COPY,
   useConnectionScreen,
 } from '@/features/connection/connection-screen.shared';
+import { useTheme } from '@/hooks/use-theme';
+import {
+  useWaveMaterialColors,
+  wavePrimaryButtonColors,
+  waveTextButtonColors,
+  waveTextFieldColors,
+} from '@/hooks/use-wave-material-colors';
 
 function ErrorText({ children, testID }: { children: string; testID: string }) {
-  const colors = useMaterialColors();
+  const theme = useTheme();
   return (
     <Text
-      color={colors.error}
+      color={theme.destructive}
       style={{ typography: 'bodyMedium' }}
       modifiers={[fillMaxWidth(), testIDModifier(testID)]}>
       {children}
@@ -48,10 +54,10 @@ function FieldError({
   children: string;
   testID: string;
 }) {
-  const colors = useMaterialColors();
+  const theme = useTheme();
   return (
     <OutlinedTextField.SupportingText>
-      <Text color={colors.error} modifiers={[testIDModifier(testID)]}>
+      <Text color={theme.destructive} modifiers={[testIDModifier(testID)]}>
         {children}
       </Text>
     </OutlinedTextField.SupportingText>
@@ -60,18 +66,25 @@ function FieldError({
 
 export function ConnectionScreen() {
   const connection = useConnectionScreen();
+  const theme = useTheme();
   const usernameRef = useRef<TextFieldRef>(null);
   const passwordRef = useRef<TextFieldRef>(null);
   const forcedColorScheme =
     connection.appearance === 'system' ? undefined : connection.appearance;
-  const colors = useMaterialColors({ colorScheme: forcedColorScheme });
+  const colors = useWaveMaterialColors({
+    colorScheme: forcedColorScheme,
+  });
+  const textFieldColors = waveTextFieldColors(colors);
 
   if (connection.connected) {
     return <Redirect href="/new" />;
   }
 
   return (
-    <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
+    <Host
+      colorScheme={forcedColorScheme}
+      seedColor={theme.primary}
+      style={{ flex: 1 }}>
       <Surface color={colors.background} modifiers={[fillMaxSize()]}>
         <LazyColumn
           contentPadding={{ top: 32, bottom: 32 }}
@@ -119,6 +132,7 @@ export function ConnectionScreen() {
               </ErrorText>
               {connection.savedConnection.retryable ? (
                 <Button
+                  colors={wavePrimaryButtonColors(colors)}
                   modifiers={[
                     fillMaxWidth(),
                     testIDModifier('connection-retry-button'),
@@ -128,7 +142,10 @@ export function ConnectionScreen() {
                 </Button>
               ) : null}
               <TextButton
-                colors={{ contentColor: colors.error }}
+                colors={{
+                  ...waveTextButtonColors(colors),
+                  contentColor: colors.error,
+                }}
                 modifiers={[
                   fillMaxWidth(),
                   testIDModifier('connection-disconnect-button'),
@@ -156,6 +173,7 @@ export function ConnectionScreen() {
               ) : null}
 
               <OutlinedTextField
+                colors={textFieldColors}
                 enabled={!connection.signingIn}
                 isError={Boolean(connection.fieldErrors.baseUrl)}
                 singleLine
@@ -196,6 +214,7 @@ export function ConnectionScreen() {
               </OutlinedTextField>
 
               <OutlinedTextField
+                colors={textFieldColors}
                 ref={usernameRef}
                 enabled={!connection.signingIn}
                 isError={Boolean(connection.fieldErrors.username)}
@@ -234,6 +253,7 @@ export function ConnectionScreen() {
               </OutlinedTextField>
 
               <OutlinedTextField
+                colors={textFieldColors}
                 ref={passwordRef}
                 enabled={!connection.signingIn}
                 isError={Boolean(connection.fieldErrors.password)}
@@ -271,6 +291,7 @@ export function ConnectionScreen() {
               </OutlinedTextField>
               <Spacer modifiers={[fillMaxWidth(), padding(0, 0, 8, 0)]} />
               <Button
+                colors={wavePrimaryButtonColors(colors)}
                 enabled={!connection.signingIn}
                 modifiers={[
                   fillMaxWidth(),

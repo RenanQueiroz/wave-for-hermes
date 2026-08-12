@@ -14,13 +14,16 @@ import {
   TURN_ACTION_BUTTON_GAP,
 } from '@/features/chat/turn-actions/buttons';
 import type { NativeTurnActionRowProps } from '@/features/chat/turn-actions/row.types';
+import { useTheme } from '@/hooks/use-theme';
 
 export function NativeTurnActionRow(props: NativeTurnActionRowProps) {
+  const theme = useTheme();
   const { foregroundColor, messageId, onTimestampPress, seedColor, timestamp } =
     props;
 
   return (
     <Host
+      colorScheme={theme.mode}
       seedColor={seedColor}
       style={{ height: NATIVE_ICON_BUTTON_SIZE, width: '100%' }}>
       <HStack

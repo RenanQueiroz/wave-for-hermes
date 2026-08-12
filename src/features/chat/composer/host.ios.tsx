@@ -2,6 +2,8 @@ import { Host } from '@expo/ui/swift-ui';
 import type { ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
 
+import { useTheme } from '@/hooks/use-theme';
+
 // SwiftUI host for the iOS composer island.
 
 export function ChatComposerHost({
@@ -11,8 +13,10 @@ export function ChatComposerHost({
   children: ReactNode;
   seedColor: ColorValue;
 }) {
+  const theme = useTheme();
   return (
     <Host
+      colorScheme={theme.mode}
       ignoreSafeArea="keyboard"
       matchContents={{ vertical: true }}
       seedColor={seedColor}

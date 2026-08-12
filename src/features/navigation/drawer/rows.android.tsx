@@ -224,6 +224,10 @@ export function DrawerSessionRow({
             onDismissRequest={() => onMenuOpenChange(false)}>
             <DropdownMenu.Trigger>
               <IconButton
+                colors={{
+                  containerColor: 'transparent',
+                  contentColor: colors.mutedForeground,
+                }}
                 modifiers={[
                   size(40, 40),
                   testIDModifier(`drawer-session-actions-${sessionId}`),

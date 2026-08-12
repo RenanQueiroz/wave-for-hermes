@@ -11,6 +11,7 @@ import {
   useSettingsSelection,
   type SettingsSelection,
 } from '@/features/settings/selection/settings-selection.shared';
+import { useTheme } from '@/hooks/use-theme';
 
 export function SettingsSelectionScreen({
   selection,
@@ -18,6 +19,7 @@ export function SettingsSelectionScreen({
   selection: SettingsSelection;
 }) {
   const settings = useSettingsSelection(selection);
+  const theme = useTheme();
 
   if (!settings.connected) return <Redirect href="/" />;
 
@@ -25,7 +27,10 @@ export function SettingsSelectionScreen({
     settings.appearance === 'system' ? undefined : settings.appearance;
 
   return (
-    <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
+    <Host
+      colorScheme={forcedColorScheme}
+      seedColor={theme.primary}
+      style={{ flex: 1 }}>
       <Form>
         <Section>
           {settings.definition.options.map((option) => (
@@ -42,7 +47,7 @@ export function SettingsSelectionScreen({
           {settings.saveError ? (
             <Text
               modifiers={[
-                foregroundStyle('red'),
+                foregroundStyle(theme.destructive),
                 accessibilityIdentifier(`settings-${selection}-error`),
               ]}>
               {settings.definition.errorMessage}
@@ -51,7 +56,7 @@ export function SettingsSelectionScreen({
           {settings.previewError ? (
             <Text
               modifiers={[
-                foregroundStyle('red'),
+                foregroundStyle(theme.destructive),
                 accessibilityIdentifier('settings-voice-preview-error'),
               ]}>
               {settings.previewError}

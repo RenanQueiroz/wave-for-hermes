@@ -22,8 +22,13 @@ export function SearchListEmpty({
   message: string;
   pending: boolean;
 }) {
+  const theme = useTheme();
   return (
-    <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+    <Host
+      colorScheme={theme.mode}
+      matchContents={{ vertical: true }}
+      seedColor={theme.primary}
+      style={{ width: '100%' }}>
       {pending ? (
         <VStack modifiers={[padding({ vertical: 40 })]}>
           <ProgressView />
@@ -42,7 +47,11 @@ export function SearchListEmpty({
 export function SearchLoadError({ message }: { message: string }) {
   const theme = useTheme();
   return (
-    <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+    <Host
+      colorScheme={theme.mode}
+      matchContents={{ vertical: true }}
+      seedColor={theme.primary}
+      style={{ width: '100%' }}>
       <VStack
         alignment="leading"
         modifiers={[frame({ alignment: 'leading', maxWidth: Infinity })]}>

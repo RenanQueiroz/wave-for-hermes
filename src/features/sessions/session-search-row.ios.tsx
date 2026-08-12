@@ -11,6 +11,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { memo } from 'react';
 
+import { useTheme } from '@/hooks/use-theme';
+
 /**
  * Fixed Host height for a two-line result row (title + snippet). Hosted rows
  * inside recycled Legend List cells keep the RN Host and the native row at
@@ -33,8 +35,12 @@ export const SessionSearchRow = memo(function SessionSearchRow({
   testID: string;
   title: string;
 }) {
+  const theme = useTheme();
   return (
-    <Host style={{ height: SEARCH_ROW_HEIGHT, width: '100%' }}>
+    <Host
+      colorScheme={theme.mode}
+      seedColor={theme.primary}
+      style={{ height: SEARCH_ROW_HEIGHT, width: '100%' }}>
       <Button
         onPress={onPress}
         modifiers={[

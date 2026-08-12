@@ -48,6 +48,14 @@ import { DrawerSessionList } from '@/features/navigation/drawer/session-list';
 import { useDrawerColors } from '@/features/navigation/drawer/use-drawer-colors';
 import type { DrawerColors } from '@/features/navigation/drawer/view.types';
 import { useTheme } from '@/hooks/use-theme';
+import {
+  useWaveMaterialColors,
+  waveAlertDialogColors,
+  waveSegmentedButtonColors,
+  waveTextButtonColors,
+  waveTextFieldColors,
+  waveTonalButtonColors,
+} from '@/hooks/use-wave-material-colors';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 import { useConnectedWave } from '@/state/use-connected-wave';
 
@@ -60,7 +68,7 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
       <View
         className="flex-1 items-center justify-center bg-background"
         accessibilityLabel="Loading Wave menu">
-        <Host colorScheme={theme.mode} matchContents>
+        <Host colorScheme={theme.mode} matchContents seedColor={colors.primary}>
           <LoadingIndicator color={colors.primary} />
         </Host>
       </View>
@@ -91,6 +99,7 @@ function ConnectedWaveDrawerContent({
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
+  const nativeColors = useWaveMaterialColors({ colorScheme: theme.mode });
   const closeDrawer = useCallback(() => navigation.closeDrawer(), [navigation]);
   const drawer = useWaveDrawerContent({
     baseUrl,
@@ -156,6 +165,7 @@ function ConnectedWaveDrawerContent({
         <Host
           colorScheme={theme.mode}
           matchContents={{ vertical: true }}
+          seedColor={colors.primary}
           style={{ width: '100%' }}>
           <Column
             horizontalAlignment="start"
@@ -203,6 +213,7 @@ function ConnectedWaveDrawerContent({
               modifiers={[fillMaxWidth(), padding(12, 0, 12, 6)]}>
               {SESSION_FILTERS.map((filter) => (
                 <SegmentedButton
+                  colors={waveSegmentedButtonColors(nativeColors)}
                   key={filter.value}
                   selected={drawer.sessionFilter === filter.value}
                   modifiers={[testIDModifier(`drawer-filter-${filter.value}`)]}
@@ -221,6 +232,7 @@ function ConnectedWaveDrawerContent({
           {drawer.renameSession ? (
             <RenameDialog
               key={drawer.renameSession.id}
+              nativeColors={nativeColors}
               pending={drawer.renamePending}
               session={drawer.renameSession}
               onCancel={drawer.cancelRename}
@@ -229,6 +241,7 @@ function ConnectedWaveDrawerContent({
           ) : null}
           {drawer.deleteSession ? (
             <AlertDialog
+              colors={waveAlertDialogColors(nativeColors)}
               properties={{
                 dismissOnBackPress: !drawer.deletePending,
                 dismissOnClickOutside: !drawer.deletePending,
@@ -246,6 +259,7 @@ function ConnectedWaveDrawerContent({
               </AlertDialog.Text>
               <AlertDialog.DismissButton>
                 <TextButton
+                  colors={waveTextButtonColors(nativeColors)}
                   enabled={!drawer.deletePending}
                   onClick={drawer.cancelDelete}>
                   <Text>Cancel</Text>
@@ -254,7 +268,10 @@ function ConnectedWaveDrawerContent({
               <AlertDialog.ConfirmButton>
                 <FilledTonalButton
                   enabled={!drawer.deletePending}
-                  colors={{ contentColor: colors.destructive }}
+                  colors={{
+                    ...waveTonalButtonColors(nativeColors),
+                    contentColor: colors.destructive,
+                  }}
                   modifiers={[testIDModifier('delete-session-confirm')]}
                   onClick={drawer.confirmDelete}>
                   <Text>{drawer.deletePending ? 'Deleting…' : 'Delete'}</Text>
@@ -266,12 +283,14 @@ function ConnectedWaveDrawerContent({
       </View>
 
       <DrawerSessionList
+        extraData={colors}
         isRefetching={drawer.isRefetching}
         items={drawer.sessionListItems}
         listEmpty={
           <Host
             colorScheme={theme.mode}
             matchContents={{ vertical: true }}
+            seedColor={colors.primary}
             style={{ width: '100%' }}>
             {drawer.isPending ? (
               <Box
@@ -306,6 +325,7 @@ function ConnectedWaveDrawerContent({
         <Host
           colorScheme={theme.mode}
           matchContents={{ vertical: true }}
+          seedColor={colors.primary}
           style={{ width: '100%' }}>
           <Column horizontalAlignment="start" modifiers={[fillMaxWidth()]}>
             <DrawerNavRow
@@ -328,11 +348,13 @@ function ConnectedWaveDrawerContent({
  * this version's Compose text field does not implement.
  */
 function RenameDialog({
+  nativeColors,
   onCancel,
   onSubmit,
   pending,
   session,
 }: {
+  nativeColors: ReturnType<typeof useWaveMaterialColors>;
   onCancel(): void;
   onSubmit(title: string): void;
   pending: boolean;
@@ -343,6 +365,7 @@ function RenameDialog({
   const submit = () => onSubmit(draft.value);
   return (
     <AlertDialog
+      colors={waveAlertDialogColors(nativeColors)}
       properties={{
         dismissOnBackPress: !pending,
         dismissOnClickOutside: !pending,
@@ -361,6 +384,7 @@ function RenameDialog({
             {DRAWER_COPY.renameMessage}
           </Text>
           <OutlinedTextField
+            colors={waveTextFieldColors(nativeColors)}
             enabled={!pending}
             singleLine
             value={draft as Parameters<typeof OutlinedTextField>[0]['value']}
@@ -380,12 +404,16 @@ function RenameDialog({
         </Column>
       </AlertDialog.Text>
       <AlertDialog.DismissButton>
-        <TextButton enabled={!pending} onClick={onCancel}>
+        <TextButton
+          colors={waveTextButtonColors(nativeColors)}
+          enabled={!pending}
+          onClick={onCancel}>
           <Text>Cancel</Text>
         </TextButton>
       </AlertDialog.DismissButton>
       <AlertDialog.ConfirmButton>
         <FilledTonalButton
+          colors={waveTonalButtonColors(nativeColors)}
           enabled={!pending}
           modifiers={[testIDModifier('rename-session-confirm')]}
           onClick={submit}>
@@ -410,6 +438,7 @@ const SectionHeaderHost = memo(function SectionHeaderHost({
   return (
     <Host
       colorScheme={mode}
+      seedColor={colors.primary}
       style={{ height: DRAWER_ROW_HEIGHTS.sectionHeader, width: '100%' }}>
       <DrawerSectionHeader
         colors={colors}
@@ -452,6 +481,7 @@ const SessionRowHost = memo(function SessionRowHost({
   return (
     <Host
       colorScheme={mode}
+      seedColor={colors.primary}
       style={{ height: DRAWER_ROW_HEIGHTS.sessionRow, width: '100%' }}>
       <DrawerSessionRow
         colors={colors}

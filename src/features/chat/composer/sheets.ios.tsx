@@ -54,6 +54,7 @@ export function ModelPickerSheet({
     <Host
       colorScheme={colorScheme}
       pointerEvents="none"
+      seedColor={colors.primary}
       style={{ position: 'absolute' }}>
       <BottomSheet
         isPresented={model.open}

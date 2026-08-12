@@ -7,6 +7,11 @@ import {
 } from '@expo/ui/jetpack-compose/modifiers';
 
 import type { OfflineActionsProps } from './offline-actions.types';
+import {
+  useWaveMaterialColors,
+  wavePrimaryButtonColors,
+  waveTextButtonColors,
+} from '@/hooks/use-wave-material-colors';
 
 export function OfflineActions({
   colorScheme,
@@ -15,6 +20,8 @@ export function OfflineActions({
   retrying,
   seedColor,
 }: OfflineActionsProps) {
+  const colors = useWaveMaterialColors({ colorScheme });
+
   return (
     <Host
       colorScheme={colorScheme}
@@ -25,6 +32,7 @@ export function OfflineActions({
         verticalArrangement={{ spacedBy: 8 }}
         modifiers={[fillMaxWidth()]}>
         <Button
+          colors={wavePrimaryButtonColors(colors)}
           modifiers={[
             fillMaxWidth(),
             testIDModifier('offline-browse-cached-button'),
@@ -33,6 +41,7 @@ export function OfflineActions({
           <Text>Browse cached conversations</Text>
         </Button>
         <OutlinedButton
+          colors={waveTextButtonColors(colors)}
           enabled={!retrying}
           modifiers={[
             fillMaxWidth(),

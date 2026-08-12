@@ -29,6 +29,7 @@ import {
   SETTINGS_COPY,
   useSettingsScreen,
 } from '@/features/settings/settings-screen.shared';
+import { useTheme } from '@/hooks/use-theme';
 
 const SECONDARY_TEXT = foregroundStyle({
   style: 'secondary',
@@ -45,6 +46,7 @@ export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const settings = useSettingsScreen(keyDraftRef);
+  const theme = useTheme();
 
   if (!settings.connected) {
     return <Redirect href="/" />;
@@ -54,7 +56,10 @@ export function SettingsScreen() {
     settings.appearance === 'system' ? undefined : settings.appearance;
 
   return (
-    <Host colorScheme={forcedColorScheme} style={{ flex: 1 }}>
+    <Host
+      colorScheme={forcedColorScheme}
+      seedColor={theme.primary}
+      style={{ flex: 1 }}>
       <Form>
         <Section
           header={
@@ -83,6 +88,7 @@ export function SettingsScreen() {
                 role="destructive"
                 modifiers={[
                   disabled(settings.disconnecting),
+                  foregroundStyle(theme.destructive),
                   accessibilityIdentifier('settings-disconnect-button'),
                 ]}
                 onPress={() => setDisconnectOpen(true)}
@@ -124,7 +130,7 @@ export function SettingsScreen() {
           {settings.keyError && settings.keyPresent ? (
             <Text
               modifiers={[
-                foregroundStyle('red'),
+                foregroundStyle(theme.destructive),
                 accessibilityIdentifier('openai-key-error'),
               ]}>
               {settings.keyError}
@@ -181,6 +187,7 @@ export function SettingsScreen() {
                 role="destructive"
                 modifiers={[
                   disabled(settings.keyBusy),
+                  foregroundStyle(theme.destructive),
                   accessibilityIdentifier('openai-key-remove'),
                 ]}
                 onPress={settings.removeKey}
@@ -191,7 +198,7 @@ export function SettingsScreen() {
               {settings.keyError ? (
                 <Text
                   modifiers={[
-                    foregroundStyle('red'),
+                    foregroundStyle(theme.destructive),
                     accessibilityIdentifier('openai-key-error'),
                   ]}>
                   {settings.keyError}

@@ -53,18 +53,21 @@ import {
 import { DrawerSessionList } from '@/features/navigation/drawer/session-list';
 import { useDrawerColors } from '@/features/navigation/drawer/use-drawer-colors';
 import type { DrawerColors } from '@/features/navigation/drawer/view.types';
+import { useTheme } from '@/hooks/use-theme';
 import type { WaveSessionFilter } from '@/features/sessions/session-organization';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 import { useConnectedWave } from '@/state/use-connected-wave';
 
 export function WaveDrawerContent(props: DrawerContentComponentProps) {
   const connected = useConnectedWave();
+  const colors = useDrawerColors();
+  const theme = useTheme();
   if (!connected) {
     return (
       <View
         className="flex-1 items-center justify-center bg-background"
         accessibilityLabel="Loading Wave menu">
-        <Host matchContents>
+        <Host colorScheme={theme.mode} matchContents seedColor={colors.primary}>
           <ProgressView />
         </Host>
       </View>
@@ -75,6 +78,7 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
       {...props}
       baseUrl={connected.baseUrl}
       client={connected.client}
+      colors={colors}
       connectionId={connected.connectionId}
     />
   );
@@ -83,15 +87,17 @@ export function WaveDrawerContent(props: DrawerContentComponentProps) {
 function ConnectedWaveDrawerContent({
   baseUrl,
   client,
+  colors,
   connectionId,
   navigation,
 }: DrawerContentComponentProps & {
   baseUrl: string;
   client: WaveChatClient;
+  colors: DrawerColors;
   connectionId: string;
 }) {
   const insets = useSafeAreaInsets();
-  const colors = useDrawerColors();
+  const theme = useTheme();
   const closeDrawer = useCallback(() => navigation.closeDrawer(), [navigation]);
   const drawer = useWaveDrawerContent({
     baseUrl,
@@ -116,12 +122,14 @@ function ConnectedWaveDrawerContent({
         <SectionHeaderHost
           colors={colors}
           label={item.label}
+          mode={theme.mode}
           sectionId={item.sectionId}
         />
       ) : (
         <SessionRowHost
           colors={colors}
           glyph={drawerRowGlyph(item.session, sessionFilter)}
+          mode={theme.mode}
           pinning={pinningSessionId === item.session.id}
           selected={pathname.includes(item.session.id)}
           session={item.session}
@@ -139,6 +147,7 @@ function ConnectedWaveDrawerContent({
       sessionFilter,
       startDelete,
       startRename,
+      theme.mode,
       toggleSessionPin,
     ],
   );
@@ -151,7 +160,11 @@ function ConnectedWaveDrawerContent({
         paddingTop: Math.max(insets.top, 12),
       }}>
       <View className="border-b border-border px-2 pb-2">
-        <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+        <Host
+          colorScheme={theme.mode}
+          matchContents={{ vertical: true }}
+          seedColor={colors.primary}
+          style={{ width: '100%' }}>
           <VStack
             alignment="leading"
             spacing={2}
@@ -226,10 +239,15 @@ function ConnectedWaveDrawerContent({
       </View>
 
       <DrawerSessionList
+        extraData={colors}
         isRefetching={drawer.isRefetching}
         items={drawer.sessionListItems}
         listEmpty={
-          <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+          <Host
+            colorScheme={theme.mode}
+            matchContents={{ vertical: true }}
+            seedColor={colors.primary}
+            style={{ width: '100%' }}>
             {drawer.isPending ? (
               <VStack modifiers={[padding({ vertical: 32 })]}>
                 <ProgressView />
@@ -257,7 +275,11 @@ function ConnectedWaveDrawerContent({
       />
 
       <View className="border-t border-border px-2 pt-2">
-        <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+        <Host
+          colorScheme={theme.mode}
+          matchContents={{ vertical: true }}
+          seedColor={colors.primary}
+          style={{ width: '100%' }}>
           <VStack
             alignment="leading"
             modifiers={[frame({ alignment: 'leading', maxWidth: Infinity })]}>
@@ -473,14 +495,19 @@ function AlertButton({
 const SectionHeaderHost = memo(function SectionHeaderHost({
   colors,
   label,
+  mode,
   sectionId,
 }: {
   colors: DrawerColors;
   label: string;
+  mode: 'dark' | 'light';
   sectionId: string;
 }) {
   return (
-    <Host style={{ height: DRAWER_ROW_HEIGHTS.sectionHeader, width: '100%' }}>
+    <Host
+      colorScheme={mode}
+      seedColor={colors.primary}
+      style={{ height: DRAWER_ROW_HEIGHTS.sectionHeader, width: '100%' }}>
       <DrawerSectionHeader
         colors={colors}
         label={label}
@@ -495,6 +522,7 @@ const SectionHeaderHost = memo(function SectionHeaderHost({
 const SessionRowHost = memo(function SessionRowHost({
   colors,
   glyph,
+  mode,
   pinning,
   selected,
   session,
@@ -505,6 +533,7 @@ const SessionRowHost = memo(function SessionRowHost({
 }: {
   colors: DrawerColors;
   glyph: DrawerRowGlyph;
+  mode: 'dark' | 'light';
   pinning: boolean;
   selected: boolean;
   session: WaveSessionSummary;
@@ -517,7 +546,10 @@ const SessionRowHost = memo(function SessionRowHost({
   // action sheet never carries over.
   const [menuOpen, setMenuOpen] = useRecyclingState(false);
   return (
-    <Host style={{ height: DRAWER_ROW_HEIGHTS.sessionRow, width: '100%' }}>
+    <Host
+      colorScheme={mode}
+      seedColor={colors.primary}
+      style={{ height: DRAWER_ROW_HEIGHTS.sessionRow, width: '100%' }}>
       {/* Keyed by session and pinned state: a mounted SwiftUI menu keeps a
           stale action snapshot when its props change in place (labels update
           but taps go dead — the "Unpin stops working" bug), and a recycled

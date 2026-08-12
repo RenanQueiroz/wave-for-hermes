@@ -8,11 +8,11 @@ import {
   IconButton,
   ListItem,
   ModalBottomSheet,
-  RadioButton,
   Row,
   Spacer,
   Switch,
   Text,
+  type SwitchColors,
 } from '@expo/ui/jetpack-compose';
 import {
   Shapes,
@@ -33,6 +33,10 @@ import type { ImageSourcePropType } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
 import { useTheme } from '@/hooks/use-theme';
+import {
+  useWaveMaterialColors,
+  waveSwitchColors,
+} from '@/hooks/use-wave-material-colors';
 
 import { CHAT_COMPOSER_ICONS } from '@/features/chat/composer/icons';
 import {
@@ -44,15 +48,24 @@ import { displayModelName } from '@/features/chat/composer/state';
 import type { ComposerColors } from '@/features/chat/composer/view.types';
 import { modelFamilies } from '@/services/gateway/gateway-models';
 
-export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
+export function ModelPickerSheet({
+  colorScheme,
+  colors,
+  model,
+}: ModelPickerSheetProps) {
   const [effortMenuOpen, setEffortMenuOpen] = useState(false);
   const rowSurface = useSheetRowSurface();
+  const nativeColors = useWaveMaterialColors({ colorScheme });
   if (!model.open) return null;
 
   const rowPalette = sheetRowPalette(colors, rowSurface);
 
   return (
-    <Host pointerEvents="none" style={{ position: 'absolute' }}>
+    <Host
+      colorScheme={colorScheme}
+      pointerEvents="none"
+      seedColor={colors.primary}
+      style={{ position: 'absolute' }}>
       <ModalBottomSheet
         contentColor={colors.foreground}
         containerColor={colors.background}
@@ -140,6 +153,7 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
                   {[
                     model.showReasoning ? (
                       <SheetSwitchRow
+                        controlColors={waveSwitchColors(nativeColors)}
                         key="thinking"
                         disabled={model.busyControl !== undefined}
                         label="Thinking"
@@ -152,6 +166,7 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
                     ) : null,
                     model.showFast ? (
                       <SheetSwitchRow
+                        controlColors={waveSwitchColors(nativeColors)}
                         key="fast"
                         disabled={model.busyControl !== undefined}
                         label="Fast mode"
@@ -327,21 +342,22 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
                                 ) : option.unavailable ? (
                                   <Row modifiers={[size(20, 20)]} />
                                 ) : (
-                                  <RadioButton
-                                    selected={selected}
-                                    onClick={
-                                      interactive
-                                        ? () => {
-                                            if (selected) {
-                                              model.closePicker();
-                                              return;
-                                            }
-                                            void model.select({
-                                              model: option.id,
-                                              provider: provider.slug,
-                                            });
-                                          }
-                                        : undefined
+                                  <Icon
+                                    contentDescription={
+                                      selected
+                                        ? 'Selected model'
+                                        : 'Unselected model'
+                                    }
+                                    size={24}
+                                    source={
+                                      selected
+                                        ? (require('@expo/material-symbols/radio_button_checked.xml') as ImageSourcePropType)
+                                        : (require('@expo/material-symbols/radio_button_unchecked.xml') as ImageSourcePropType)
+                                    }
+                                    tint={
+                                      selected
+                                        ? colors.primary
+                                        : colors.mutedForeground
                                     }
                                   />
                                 )}
@@ -445,6 +461,7 @@ function positionSheetRow(
 }
 
 function SheetSwitchRow({
+  controlColors,
   disabled,
   label,
   labelColor,
@@ -453,6 +470,7 @@ function SheetSwitchRow({
   value,
   onValueChange,
 }: {
+  controlColors: SwitchColors;
   disabled: boolean;
   label: string;
   labelColor: string;
@@ -485,6 +503,7 @@ function SheetSwitchRow({
       <ListItem.TrailingContent>
         <Row modifiers={[padding(0, 0, 4, 0)]}>
           <Switch
+            colors={controlColors}
             enabled={!disabled}
             value={value}
             modifiers={[testIDModifier(testID)]}

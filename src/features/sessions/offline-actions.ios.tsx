@@ -6,25 +6,28 @@ import {
   buttonStyle,
   controlSize,
   disabled,
+  foregroundStyle,
   frame,
 } from '@expo/ui/swift-ui/modifiers';
 
+import { useTheme } from '@/hooks/use-theme';
+
 import type { OfflineActionsProps } from './offline-actions.types';
 
-// No seedColor here: PanelUI's dark-theme primary is near-white, and seeding
-// SwiftUI's accent with it leaves `borderedProminent` white-on-white. The
-// system accent keeps its automatic label contrast (Settings/Connect do the
-// same); Android's Material seed derives readable on-primary colors instead.
 export function OfflineActions({
   colorScheme,
   onBrowseCached,
   onRetry,
   retrying,
+  seedColor,
 }: OfflineActionsProps) {
+  const theme = useTheme();
+
   return (
     <Host
       colorScheme={colorScheme}
       matchContents={{ vertical: true }}
+      seedColor={seedColor}
       style={{ width: '100%' }}>
       <VStack spacing={10}>
         <Button
@@ -34,7 +37,11 @@ export function OfflineActions({
             accessibilityIdentifier('offline-browse-cached-button'),
           ]}
           onPress={onBrowseCached}>
-          <Text modifiers={[frame({ maxWidth: Infinity })]}>
+          <Text
+            modifiers={[
+              frame({ maxWidth: Infinity }),
+              foregroundStyle(theme.primaryForeground),
+            ]}>
             Browse cached conversations
           </Text>
         </Button>

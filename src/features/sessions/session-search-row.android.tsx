@@ -37,6 +37,7 @@ export const SessionSearchRow = memo(function SessionSearchRow({
   return (
     <Host
       colorScheme={theme.mode}
+      seedColor={theme.primary}
       style={{ height: SEARCH_ROW_HEIGHT, width: '100%' }}>
       <ListItem
         colors={{

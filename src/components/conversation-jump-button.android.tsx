@@ -12,7 +12,7 @@ export function ConversationJumpButton({ onPress }: { onPress(): void }) {
   );
 
   return (
-    <Host matchContents seedColor={theme.primary}>
+    <Host colorScheme={theme.mode} matchContents seedColor={theme.primary}>
       <NativeIconButton
         accessibilityLabel="Jump to the newest message"
         backgroundColor={backgroundColor}

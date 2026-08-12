@@ -19,6 +19,7 @@ export function SearchListEmpty({
     <Host
       colorScheme={theme.mode}
       matchContents={{ vertical: true }}
+      seedColor={theme.primary}
       style={{ width: '100%' }}>
       {pending ? (
         <Box
@@ -44,6 +45,7 @@ export function SearchLoadError({ message }: { message: string }) {
     <Host
       colorScheme={theme.mode}
       matchContents={{ vertical: true }}
+      seedColor={theme.primary}
       style={{ width: '100%' }}>
       <Text
         color={theme.text}

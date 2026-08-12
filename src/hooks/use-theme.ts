@@ -13,6 +13,12 @@ export function useTheme() {
     backgroundSelected,
     textSecondary,
     primary,
+    primaryForeground,
+    destructive,
+    destructiveForeground,
+    border,
+    card,
+    muted,
   ] = useCSSVariable([
     '--color-foreground',
     '--color-background',
@@ -20,6 +26,12 @@ export function useTheme() {
     '--color-accent',
     '--color-muted-foreground',
     '--color-primary',
+    '--color-primary-foreground',
+    '--color-destructive',
+    '--color-destructive-foreground',
+    '--color-border',
+    '--color-card',
+    '--color-muted',
   ]);
 
   return {
@@ -36,6 +48,18 @@ export function useTheme() {
     ),
     textSecondary: resolveColor(textSecondary, fallback.textSecondary),
     primary: resolveColor(primary, fallback.text),
+    primaryForeground: resolveColor(primaryForeground, fallback.background),
+    destructive: resolveColor(
+      destructive,
+      mode === 'dark' ? '#f15757' : '#ef4444',
+    ),
+    destructiveForeground: resolveColor(
+      destructiveForeground,
+      fallback.background,
+    ),
+    border: resolveColor(border, fallback.backgroundSelected),
+    card: resolveColor(card, fallback.backgroundElement),
+    muted: resolveColor(muted, fallback.backgroundElement),
   };
 }
 
