@@ -1,51 +1,42 @@
 # Dependency security review
 
-This is the current point-in-time review for Wave's Expo application, developer tooling, and
-shared contracts. Re-run it before the first signed release and whenever the Expo SDK or
+This is the current point-in-time review for Wave's Expo application, repository-local developer
+tools, and shared contracts. Re-run it before the first signed release and whenever the Expo SDK or
 production dependencies change.
 
-Reviewed: 2026-08-06.
+Reviewed: 2026-08-12.
 
-## JavaScript dependency graph
+## Application dependency graph
 
-`npm audit` reports 12 repository-wide moderate findings and no high or critical findings. Those
-aggregate counts do not describe one runtime, so the dependency paths and reachability were
-reviewed separately.
+`npm audit --omit=dev` reports 25 aggregate findings: 17 high, 8 moderate, and no critical
+findings. The aggregate count expands dependency effects into separate rows; the installed graph
+contains three underlying advisories, reviewed below.
 
-This review updated the seven packages reported by Expo Doctor to their SDK 57-compatible patch
-versions: `expo@57.0.11`, `expo-asset@57.0.9`, `expo-build-properties@57.0.9`,
-`expo-file-system@57.0.2`, `expo-image-picker@57.0.8`, `expo-router@57.0.11`, and
-`expo-symbols@57.0.2`. The Expo patch includes `expo/fetch` stream-ordering, cancellation, and
-teardown fixes used by Wave's gateway reads. Expo Doctor and `npx expo install --check` pass with
-the two deliberate exclusions below.
+Two high-severity advisories affect `image-size@1.2.1`, which Metro uses while processing local
+image assets:
 
-The same review found the high-severity
-[`js-yaml` advisory](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj) in the shared Node tooling
-copy used by ESLint and Expo's `xcpretty`. Every installed consumer accepts the patched 4.x line,
-so the lockfile now resolves `js-yaml@4.3.1` without a manifest override. The high finding is gone;
-`js-yaml` is build/development tooling and is not imported into the native production bundle.
+- [ICNS parser infinite loop](https://github.com/advisories/GHSA-w3rx-r6r6-pgpr)
+- [JXL and HEIF parser infinite loops](https://github.com/advisories/GHSA-5p2g-fcmc-qvqq)
 
-The moderate production-labeled findings roll up through Expo's CLI/config packages and
-`@expo/config-plugins -> xcode@3.0.1 -> uuid@7.0.3`. The
-[uuid advisory](https://github.com/advisories/GHSA-w5hq-g745-h8pq) affects caller-supplied output
-buffers in `v3()`, `v5()`, and `v6()`; it explicitly excludes `v4()`. The pinned `xcode` package
-calls only `uuid.v4()` without a caller buffer, and this build-time graph is absent from native
-production bundles. Forcing `uuid@11.1.1` would cross the major range
-supported by Expo's pinned `xcode` package, so Wave will take Expo's supported transitive update
-instead of adding an unvalidated override.
+There is no patched `image-size` release as of this review. The package is build tooling under
+Metro: it is not imported by Wave application code or included as a native runtime dependency, and
+the build processes only version-controlled, maintainer-reviewed assets rather than remote or
+user-supplied images. The 17 high audit rows are rollups from these two advisories through Metro,
+React Native, Uniwind, and PanelUI. Do not replace Expo's Metro graph with an unsupported override;
+take the SDK-supported patch as soon as one is available.
 
-`react-native-legal@1.6.3` adds one additional moderate audit rollup because its Expo config plugin
-also uses `xcode@3.0.1`; it does not add another underlying advisory. Its license scanner also
-depends on deprecated `glob@7.2.3`, but the installed graph resolves the affected matching helpers
-to `minimatch@3.1.5` and the bounded `brace-expansion@1.1.18`. These Node packages run while
-generating acknowledgements during Prebuild and are not imported into the React Native production
-bundle. The generated native acknowledgement data includes runtime transitive and optional
-dependencies while excluding root development dependencies.
+The eight moderate rows roll up from
+[`uuid`](https://github.com/advisories/GHSA-w5hq-g745-h8pq) through Expo config plugins and
+`react-native-legal -> xcode@3.0.1`. The advisory affects caller-supplied output buffers in `v3()`,
+`v5()`, and `v6()` and explicitly excludes `v4()`. The installed `xcode` package calls only
+`uuid.v4()` without a caller buffer. This graph runs during Prebuild to generate native projects
+and open-source acknowledgements; it is not part of the native application runtime. Forcing
+`uuid@11.1.1` would cross the major range supported by the pinned `xcode` package, so Wave will take
+the supported upstream update instead.
 
-Addendum (2026-08-11): the native composer added `@expo/material-symbols@0.1.x`, the Android half
-of Wave's shared icon mapping. It is a pure icon-data/component package with zero runtime and peer
-dependencies, no native module of its own, no network or filesystem access, and no audit findings;
-it changes none of the conclusions above.
+This review refreshed the lockfile from vulnerable `nanoid@3.3.16` to `3.3.18`, which is accepted by
+Expo Router and PostCSS's existing ranges and fixes the zero-size custom-generator denial of
+service. No application manifest range or native dependency changed.
 
 The production audit scoped to `@wave/contracts` reports zero findings:
 
@@ -53,18 +44,39 @@ The production audit scoped to `@wave/contracts` reports zero findings:
 npm audit --omit=dev --workspace @wave/contracts
 ```
 
-`npx expo install --check`, both native production export scans, and the normal repository gates
-remain required. Do not use `npm audit fix --force`: its proposed Expo 46 and splash-screen 55
-changes are incompatible with the SDK 57 source-of-truth graph.
+## Repository-local tools
 
-Two native packages deliberately sit ahead of Expo SDK 57's bundled dependency map:
-`react-native-gesture-handler` 3.1.0 and `react-native-keyboard-controller` 1.22.2. Both are explicit
-`expo.install.exclude` entries rather than silent check failures. Keep their focused iOS and
-Android gesture, drawer, swipe-back, composer, and keyboard validation gates; remove each
-exclusion when Expo's supported map catches up.
+`tools/voice-harness` reports zero production audit findings.
+
+The mobile-agent lockfile was refreshed within its existing direct dependency ranges. That update
+removed the fixable Hono, fast-uri, brace-expansion, and related rollups. Its standard `npm audit`
+now reports six high rows, all from one underlying
+[`extract-zip` symlink traversal advisory](https://github.com/advisories/GHSA-jmr9-qjv8-65gv)
+through `appium-mcp -> webdriver -> @wdio/utils -> @puppeteer/browsers`. This repository-local
+automation tool is never bundled into Wave or installed on a user's device. The affected browser
+archive path is not used by Wave's native Appium smoke workflows, and the current upstream graph
+offers no compatible patched version. Do not accept npm's proposed breaking downgrade of
+`appium-mcp`; update the validated toolchain when its upstream dependency moves to a fixed archive
+extractor.
+
+## Validation and upgrade policy
+
+- `npx expo install --check` and Expo Doctor must pass after dependency changes.
+- Production exports for both platforms must pass the bundle boundary and credential-literal
+  scanner.
+- Native dependency changes require clean Prebuild, both native builds, and affected device flows.
+- Do not run `npm audit fix --force`. Its proposed Expo, React Native, and local-tool downgrades are
+  outside the SDK 57 compatibility graph.
+- Keep the deliberate `react-native-gesture-handler` and
+  `react-native-keyboard-controller` Expo-install exclusions until Expo's supported map catches up.
+- Keep `react-native-audio-api` exact until an upgrade passes clean native builds and repeated
+  physical listening on both platforms.
 
 ## Accepted residual work
 
-- Take Expo's supported `xcode`/`uuid` update when it enters the SDK 57 line or during a deliberate
-  SDK upgrade.
-- Repeat the scoped production audit immediately before signed store builds.
+- Take Expo's supported Metro/`image-size` and `xcode`/`uuid` updates when they enter SDK 57 or
+  during a deliberate SDK upgrade.
+- Take the upstream Appium/Webdriver archive-extraction fix when it is available without a toolchain
+  downgrade.
+- Repeat application, contracts, voice-harness, and mobile-agent audits immediately before signed
+  store builds.
