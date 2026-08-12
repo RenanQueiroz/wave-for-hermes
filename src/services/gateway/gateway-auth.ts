@@ -15,12 +15,6 @@ import {
 } from './gateway-tokens.ts';
 import { WaveBackendError } from '../wave/wave-backend-error.ts';
 
-export interface GatewayAuthProvider {
-  displayName: string;
-  name: string;
-  supportsPassword: boolean;
-}
-
 const AUTH_REQUEST_TIMEOUT_MS = 20_000;
 
 function readSetCookies(response: Response): string[] {
@@ -47,51 +41,6 @@ async function withTimeout<T>(
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);
   }
-}
-
-/** Discover which sign-in methods a gateway offers (public endpoint). */
-export async function fetchGatewayAuthProviders(
-  baseUrl: string,
-  fetchImpl: typeof globalThis.fetch,
-  signal?: AbortSignal,
-): Promise<GatewayAuthProvider[]> {
-  const response = await withTimeout(
-    (timeoutSignal) =>
-      fetchImpl(`${baseUrl}/api/auth/providers`, {
-        headers: { accept: 'application/json' },
-        signal: timeoutSignal,
-      }),
-    signal,
-  ).catch(() => {
-    throw new WaveBackendError('Wave could not reach that Hermes gateway.', {
-      kind: 'network',
-      retryable: true,
-    });
-  });
-  if (!response.ok) {
-    throw new WaveBackendError(
-      'That address did not answer as a Hermes gateway.',
-      { kind: 'upstream_incompatible', statusCode: response.status },
-    );
-  }
-  const body = (await response.json().catch(() => null)) as {
-    providers?: unknown;
-  } | null;
-  const providers = Array.isArray(body?.providers) ? body.providers : [];
-  return providers.flatMap((entry) => {
-    if (typeof entry !== 'object' || entry === null) return [];
-    const record = entry as Record<string, unknown>;
-    const name = typeof record.name === 'string' ? record.name : '';
-    if (!name) return [];
-    return [
-      {
-        displayName:
-          typeof record.display_name === 'string' ? record.display_name : name,
-        name,
-        supportsPassword: record.supports_password === true,
-      },
-    ];
-  });
 }
 
 /** Exchange credentials for the gateway session tokens. */

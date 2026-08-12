@@ -18,13 +18,6 @@ export interface GatewayConnectionRecord {
   version: typeof GATEWAY_RECORD_VERSION;
 }
 
-/** Non-secret projection safe for UI and development state providers. */
-export interface GatewayConnectionSummary {
-  baseUrl: string;
-  provider: string;
-  userId: string;
-}
-
 export class GatewayStoreError extends Error {
   constructor(message: string) {
     super(message);
@@ -111,14 +104,4 @@ export function serializeGatewayConnectionRecord(
   record: GatewayConnectionRecord,
 ): string {
   return JSON.stringify(record);
-}
-
-export function toGatewayConnectionSummary(
-  record: GatewayConnectionRecord,
-): GatewayConnectionSummary {
-  return {
-    baseUrl: record.baseUrl,
-    provider: record.provider,
-    userId: record.userId,
-  };
 }

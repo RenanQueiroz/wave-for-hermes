@@ -47,9 +47,6 @@ example
 # local implementation plans
 /plans/
 
-# local companion data
-/companion/data/
-
 # local mobile-agent artifacts
 /.mobile-agent/
 
