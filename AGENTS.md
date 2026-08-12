@@ -223,7 +223,8 @@ documentation before implementing UI.
   and the menu floats above the keyboard rather than dismissing it. The model picker remains
   the composer's only sheet, styled in each platform's list idiom — an iOS inset-grouped
   `List` with sections on a solid `presentationBackground` (the translucent sheet material
-  let the composer bleed through), and Android grouped `ListItem` rows mirroring the
+  let the composer bleed through), whose rows use the semantic surface-tertiary token because
+  PanelUI's light card and page-background tokens are both white, and Android grouped `ListItem` rows mirroring the
   Settings segmented-row language. Keep the Android model sheet's content on a plain
   scrollable `Column`: a `LazyColumn` inside `ModalBottomSheet` swallows every pointer event
   before it reaches JS (device-verified on the Pixel 8 Pro). The React Native `ChatComposerDock` is the sole keyboard-movement owner and

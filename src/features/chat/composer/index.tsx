@@ -99,6 +99,7 @@ export function ChatComposer({
     primaryForegroundToken,
     secondaryToken,
     secondaryForegroundToken,
+    surfaceTertiaryToken,
   ] = useCSSVariable([
     '--color-border',
     '--color-card',
@@ -107,6 +108,7 @@ export function ChatComposer({
     '--color-primary-foreground',
     '--color-secondary',
     '--color-secondary-foreground',
+    '--color-surface-tertiary',
   ]);
   const colors = useMemo<ComposerColors>(() => {
     const muted = resolveColor(mutedToken, theme.backgroundElement);
@@ -123,6 +125,10 @@ export function ChatComposer({
       primaryForeground: resolveColor(primaryForegroundToken, theme.background),
       secondary: resolveColor(secondaryToken, theme.backgroundElement),
       secondaryForeground: resolveColor(secondaryForegroundToken, theme.text),
+      surfaceTertiary: resolveColor(
+        surfaceTertiaryToken,
+        theme.backgroundElement,
+      ),
     };
   }, [
     borderToken,
@@ -132,6 +138,7 @@ export function ChatComposer({
     primaryForegroundToken,
     secondaryForegroundToken,
     secondaryToken,
+    surfaceTertiaryToken,
     theme,
   ]);
 

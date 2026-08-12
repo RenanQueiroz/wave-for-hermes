@@ -21,6 +21,7 @@ export interface ComposerColors {
   primaryForeground: string;
   secondary: string;
   secondaryForeground: string;
+  surfaceTertiary: string;
 }
 
 export interface ChatComposerNativeViewProps {

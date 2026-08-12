@@ -30,9 +30,7 @@ import {
 } from '@expo/ui/jetpack-compose/modifiers';
 import { useState, type ReactElement, type ReactNode } from 'react';
 import type { ImageSourcePropType } from 'react-native';
-import { useCSSVariable } from 'uniwind';
 
-import { useTheme } from '@/hooks/use-theme';
 import {
   useWaveMaterialColors,
   waveSwitchColors,
@@ -54,11 +52,10 @@ export function ModelPickerSheet({
   model,
 }: ModelPickerSheetProps) {
   const [effortMenuOpen, setEffortMenuOpen] = useState(false);
-  const rowSurface = useSheetRowSurface();
   const nativeColors = useWaveMaterialColors({ colorScheme });
   if (!model.open) return null;
 
-  const rowPalette = sheetRowPalette(colors, rowSurface);
+  const rowPalette = sheetRowPalette(colors, colors.surfaceTertiary);
 
   return (
     <Host
@@ -395,13 +392,6 @@ type SheetRowPalette = NonNullable<Parameters<typeof ListItem>[0]['colors']>;
 const SHEET_ROW_INNER_CORNER_RADIUS = 4;
 const SHEET_ROW_OUTER_CORNER_RADIUS = 16;
 const SHEET_ROW_SEGMENT_GAP = 2;
-const SHEET_ROW_SURFACE_TOKEN = '--color-surface-tertiary';
-
-function useSheetRowSurface(): string {
-  const theme = useTheme();
-  const [surface] = useCSSVariable([SHEET_ROW_SURFACE_TOKEN]);
-  return typeof surface === 'string' ? surface : theme.backgroundElement;
-}
 
 function sheetRowPalette(
   colors: ComposerColors,

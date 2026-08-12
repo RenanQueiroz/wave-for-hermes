@@ -121,7 +121,7 @@ export function ModelPickerSheet({
                   <HStack
                     alignment="center"
                     spacing={8}
-                    modifiers={[listRowBackground(colors.card)]}>
+                    modifiers={[listRowBackground(colors.surfaceTertiary)]}>
                     <ProgressView
                       modifiers={[frame({ height: 16, width: 16 })]}
                     />
@@ -151,7 +151,7 @@ export function ModelPickerSheet({
                           isOn={model.thinkingEnabled}
                           label="Thinking"
                           modifiers={[
-                            listRowBackground(colors.card),
+                            listRowBackground(colors.surfaceTertiary),
                             accessibilityIdentifier('chat-model-thinking'),
                             disabled(model.busyControl !== undefined),
                           ]}
@@ -163,7 +163,7 @@ export function ModelPickerSheet({
                           isOn={model.fastEnabled}
                           label="Fast mode"
                           modifiers={[
-                            listRowBackground(colors.card),
+                            listRowBackground(colors.surfaceTertiary),
                             accessibilityIdentifier('chat-model-fast'),
                             disabled(model.busyControl !== undefined),
                           ]}
@@ -176,7 +176,7 @@ export function ModelPickerSheet({
                           selection={model.selectedReasoning}
                           modifiers={[
                             pickerStyle('menu'),
-                            listRowBackground(colors.card),
+                            listRowBackground(colors.surfaceTertiary),
                             accessibilityIdentifier('chat-model-reasoning'),
                             disabled(model.busyControl !== undefined),
                           ]}
@@ -227,7 +227,10 @@ export function ModelPickerSheet({
                                   alignment: 'leading',
                                   maxWidth: Infinity,
                                 }),
-                                listRowBackground(colors.card),
+                                // `card` equals the page background in PanelUI's
+                                // light theme. The tertiary surface preserves
+                                // inset-grouped row separation in both modes.
+                                listRowBackground(colors.surfaceTertiary),
                                 opacity(option.unavailable ? 0.45 : 1),
                                 accessibilityLabel(`Use model ${option.id}`),
                                 accessibilityIdentifier(testID),
@@ -316,7 +319,7 @@ function SheetMessage({
       <Text
         modifiers={[
           frame({ alignment: 'leading', maxWidth: Infinity }),
-          listRowBackground(colors.card),
+          listRowBackground(colors.surfaceTertiary),
           foregroundStyle(
             destructive ? colors.destructive : colors.mutedForeground,
           ),
