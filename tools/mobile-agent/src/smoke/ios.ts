@@ -2,16 +2,21 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { capabilitiesFor } from '../capabilities.js';
-import { IOS_BUNDLE_ID, type MobileAgentConfig } from '../config.js';
+import type { MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
-import {
-  callToolText,
-  connectMobileAgentClient,
-  type ToolTextResult,
-} from '../mcp/client.js';
+import { callToolText, connectMobileAgentClient } from '../mcp/client.js';
 import { ensureSimulatorWda } from '../wda.js';
-
-const SAFE_CONTROL_ID = 'gateway-sign-in-button';
+import {
+  SAFE_CONTROL_ID,
+  assertActionEnvelope,
+  assertStaleSnapshotRejected,
+  assertToolSucceeded,
+  parseJsonObject,
+  readSessionId,
+  readString,
+  sessionArgs,
+  type SmokeReportStep,
+} from './shared.js';
 
 export interface IosSmokeReport {
   ok: boolean;
@@ -22,11 +27,7 @@ export interface IosSmokeReport {
   screenshotResult?: string;
   traceDirectory?: string;
   tappedElement?: string;
-  steps: Array<{
-    name: string;
-    ok: boolean;
-    detail: string;
-  }>;
+  steps: SmokeReportStep[];
 }
 
 export async function runIosSmoke(
@@ -119,6 +120,7 @@ export async function runIosSmoke(
     assertActionEnvelope(
       parseJsonObject(activated.text, 'activate action result'),
       'activate',
+      'ios',
       sessionId,
     );
     report.steps.push({
@@ -221,7 +223,7 @@ export async function runIosSmoke(
     });
     assertToolSucceeded('safe-tap', tapped);
     const tapResult = parseJsonObject(tapped.text, 'normalized tap result');
-    assertActionEnvelope(tapResult, 'tap', sessionId);
+    assertActionEnvelope(tapResult, 'tap', 'ios', sessionId);
     const afterSnapshotId = readString(tapResult, 'afterSnapshotId');
     const trace = tapResult.trace;
     if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
@@ -255,6 +257,7 @@ export async function runIosSmoke(
     assertActionEnvelope(
       parseJsonObject(scrolled.text, 'scroll action result'),
       'scroll',
+      'ios',
       sessionId,
     );
     report.steps.push({
@@ -270,7 +273,7 @@ export async function runIosSmoke(
       captureTrace: false,
       ...sessionArgs(sessionId),
     });
-    assertStaleSnapshotRejected(staleTap, sessionId, afterSnapshotId);
+    assertStaleSnapshotRejected(staleTap, 'ios', sessionId, afterSnapshotId);
     report.steps.push({
       name: 'stale-snapshot-guard',
       ok: true,
@@ -306,80 +309,6 @@ export async function runIosSmoke(
   }
 }
 
-function assertStaleSnapshotRejected(
-  result: ToolTextResult,
-  sessionId: string | undefined,
-  snapshotId: string,
-): void {
-  if (!result.isError) {
-    throw new Error(
-      'Expected the previous hierarchy snapshot to be rejected as stale.',
-    );
-  }
-  const envelope = parseJsonObject(result.text, 'stale snapshot error');
-  const error = envelope.error;
-  const target = envelope.target;
-  if (
-    envelope.ok !== false ||
-    envelope.action !== 'tap' ||
-    envelope.platform !== 'ios' ||
-    typeof envelope.deviceId !== 'string' ||
-    envelope.applicationId !== IOS_BUNDLE_ID ||
-    (sessionId && envelope.sessionId !== sessionId) ||
-    typeof envelope.durationMs !== 'number' ||
-    !target ||
-    typeof target !== 'object' ||
-    Array.isArray(target) ||
-    (target as Record<string, unknown>).snapshotId !== snapshotId ||
-    !error ||
-    typeof error !== 'object' ||
-    Array.isArray(error) ||
-    (error as Record<string, unknown>).code !== 'STALE_SNAPSHOT'
-  ) {
-    throw new Error(
-      'Expected the stale action error code to be STALE_SNAPSHOT.',
-    );
-  }
-}
-
-function assertActionEnvelope(
-  value: Record<string, unknown>,
-  action: string,
-  sessionId: string | undefined,
-): void {
-  if (value.ok !== true || value.action !== action) {
-    throw new Error(
-      `Expected a successful "${action}" unified action envelope.`,
-    );
-  }
-  if (value.platform !== 'ios') {
-    throw new Error(
-      `Expected the "${action}" action to identify platform ios.`,
-    );
-  }
-  if (
-    typeof value.deviceId !== 'string' ||
-    value.applicationId !== IOS_BUNDLE_ID ||
-    typeof value.durationMs !== 'number' ||
-    !value.target ||
-    typeof value.target !== 'object' ||
-    Array.isArray(value.target) ||
-    !value.result ||
-    typeof value.result !== 'object' ||
-    Array.isArray(value.result) ||
-    !Array.isArray(value.warnings)
-  ) {
-    throw new Error(
-      `The "${action}" result is missing unified action envelope fields.`,
-    );
-  }
-  if (sessionId && value.sessionId !== sessionId) {
-    throw new Error(
-      `The "${action}" action returned an unexpected session ID.`,
-    );
-  }
-}
-
 async function findSafeElement(
   client: Awaited<ReturnType<typeof connectMobileAgentClient>>['client'],
   sessionId: string | undefined,
@@ -403,44 +332,10 @@ async function findSafeElement(
   );
 }
 
-function assertToolSucceeded(step: string, result: ToolTextResult): void {
-  if (result.isError) {
-    throw new Error(`${step} failed: ${result.text}`);
-  }
-}
-
-function readSessionId(text: string): string {
-  const sessionId = text.match(/ID:\s*([^\s]+)/)?.[1];
-  if (!sessionId) {
-    throw new Error(`Could not parse Appium session ID from: ${text}`);
-  }
-  return sessionId;
-}
-
 function readElementId(text: string): string {
   const elementId = text.match(/^elementId '([^']+)'/m)?.[1];
   if (!elementId) {
     throw new Error(`Could not parse element ID from: ${text}`);
   }
   return elementId;
-}
-
-function sessionArgs(sessionId: string | undefined): { sessionId?: string } {
-  return sessionId ? { sessionId } : {};
-}
-
-function parseJsonObject(text: string, label: string): Record<string, unknown> {
-  const parsed = JSON.parse(text) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`The ${label} response was not a JSON object.`);
-  }
-  return parsed as Record<string, unknown>;
-}
-
-function readString(value: Record<string, unknown>, key: string): string {
-  const result = value[key];
-  if (typeof result !== 'string' || !result) {
-    throw new Error(`Expected ${key} to be a non-empty string.`);
-  }
-  return result;
 }

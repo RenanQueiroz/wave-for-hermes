@@ -4,13 +4,18 @@ import { join } from 'node:path';
 import { capabilitiesFor } from '../capabilities.js';
 import { ANDROID_PACKAGE, type MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
+import { callToolText, connectMobileAgentClient } from '../mcp/client.js';
 import {
-  callToolText,
-  connectMobileAgentClient,
-  type ToolTextResult,
-} from '../mcp/client.js';
-
-const SAFE_CONTROL_ID = 'gateway-sign-in-button';
+  SAFE_CONTROL_ID,
+  assertActionEnvelope,
+  assertStaleSnapshotRejected,
+  assertToolSucceeded,
+  parseJsonObject,
+  readSessionId,
+  readString,
+  sessionArgs,
+  type SmokeReportStep,
+} from './shared.js';
 
 export interface AndroidSmokeReport {
   ok: boolean;
@@ -22,11 +27,7 @@ export interface AndroidSmokeReport {
   traceDirectory?: string;
   dismissedOnboarding: boolean;
   tappedElement?: string;
-  steps: Array<{
-    name: string;
-    ok: boolean;
-    detail: string;
-  }>;
+  steps: SmokeReportStep[];
 }
 
 export async function runAndroidSmoke(
@@ -138,6 +139,7 @@ export async function runAndroidSmoke(
       assertActionEnvelope(
         parseJsonObject(foregrounded.text, 'deep-link action result'),
         'deep_link',
+        'android',
         sessionId,
       );
       report.steps.push({
@@ -159,6 +161,7 @@ export async function runAndroidSmoke(
     assertActionEnvelope(
       parseJsonObject(activated.text, 'activate action result'),
       'activate',
+      'android',
       sessionId,
     );
     report.steps.push({
@@ -267,7 +270,7 @@ export async function runAndroidSmoke(
     });
     assertToolSucceeded('safe-tap', tapped);
     const tapResult = parseJsonObject(tapped.text, 'normalized tap result');
-    assertActionEnvelope(tapResult, 'tap', sessionId);
+    assertActionEnvelope(tapResult, 'tap', 'android', sessionId);
     const afterSnapshotId = readString(tapResult, 'afterSnapshotId');
     const trace = tapResult.trace;
     if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
@@ -301,6 +304,7 @@ export async function runAndroidSmoke(
     assertActionEnvelope(
       parseJsonObject(scrolled.text, 'scroll action result'),
       'scroll',
+      'android',
       sessionId,
     );
     report.steps.push({
@@ -316,7 +320,12 @@ export async function runAndroidSmoke(
       captureTrace: false,
       ...sessionArgs(sessionId),
     });
-    assertStaleSnapshotRejected(staleTap, sessionId, afterSnapshotId);
+    assertStaleSnapshotRejected(
+      staleTap,
+      'android',
+      sessionId,
+      afterSnapshotId,
+    );
     report.steps.push({
       name: 'stale-snapshot-guard',
       ok: true,
@@ -349,80 +358,6 @@ export async function runAndroidSmoke(
       });
     }
     await connection.close();
-  }
-}
-
-function assertStaleSnapshotRejected(
-  result: ToolTextResult,
-  sessionId: string | undefined,
-  snapshotId: string,
-): void {
-  if (!result.isError) {
-    throw new Error(
-      'Expected the previous hierarchy snapshot to be rejected as stale.',
-    );
-  }
-  const envelope = parseJsonObject(result.text, 'stale snapshot error');
-  const error = envelope.error;
-  const target = envelope.target;
-  if (
-    envelope.ok !== false ||
-    envelope.action !== 'tap' ||
-    envelope.platform !== 'android' ||
-    typeof envelope.deviceId !== 'string' ||
-    envelope.applicationId !== ANDROID_PACKAGE ||
-    (sessionId && envelope.sessionId !== sessionId) ||
-    typeof envelope.durationMs !== 'number' ||
-    !target ||
-    typeof target !== 'object' ||
-    Array.isArray(target) ||
-    (target as Record<string, unknown>).snapshotId !== snapshotId ||
-    !error ||
-    typeof error !== 'object' ||
-    Array.isArray(error) ||
-    (error as Record<string, unknown>).code !== 'STALE_SNAPSHOT'
-  ) {
-    throw new Error(
-      'Expected the stale action error code to be STALE_SNAPSHOT.',
-    );
-  }
-}
-
-function assertActionEnvelope(
-  value: Record<string, unknown>,
-  action: string,
-  sessionId: string | undefined,
-): void {
-  if (value.ok !== true || value.action !== action) {
-    throw new Error(
-      `Expected a successful "${action}" unified action envelope.`,
-    );
-  }
-  if (value.platform !== 'android') {
-    throw new Error(
-      `Expected the "${action}" action to identify platform android.`,
-    );
-  }
-  if (
-    typeof value.deviceId !== 'string' ||
-    value.applicationId !== ANDROID_PACKAGE ||
-    typeof value.durationMs !== 'number' ||
-    !value.target ||
-    typeof value.target !== 'object' ||
-    Array.isArray(value.target) ||
-    !value.result ||
-    typeof value.result !== 'object' ||
-    Array.isArray(value.result) ||
-    !Array.isArray(value.warnings)
-  ) {
-    throw new Error(
-      `The "${action}" result is missing unified action envelope fields.`,
-    );
-  }
-  if (sessionId && value.sessionId !== sessionId) {
-    throw new Error(
-      `The "${action}" action returned an unexpected session ID.`,
-    );
   }
 }
 
@@ -491,38 +426,4 @@ async function findSafeElement(
   throw new Error(
     `Could not find the safe ${SAFE_CONTROL_ID} control after waiting for Wave to finish loading.`,
   );
-}
-
-function assertToolSucceeded(step: string, result: ToolTextResult): void {
-  if (result.isError) {
-    throw new Error(`${step} failed: ${result.text}`);
-  }
-}
-
-function readSessionId(text: string): string {
-  const sessionId = text.match(/ID:\s*([^\s]+)/)?.[1];
-  if (!sessionId) {
-    throw new Error(`Could not parse Appium session ID from: ${text}`);
-  }
-  return sessionId;
-}
-
-function sessionArgs(sessionId: string | undefined): { sessionId?: string } {
-  return sessionId ? { sessionId } : {};
-}
-
-function parseJsonObject(text: string, label: string): Record<string, unknown> {
-  const parsed = JSON.parse(text) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`The ${label} response was not a JSON object.`);
-  }
-  return parsed as Record<string, unknown>;
-}
-
-function readString(value: Record<string, unknown>, key: string): string {
-  const result = value[key];
-  if (typeof result !== 'string' || !result) {
-    throw new Error(`Expected ${key} to be a non-empty string.`);
-  }
-  return result;
 }

@@ -2,12 +2,12 @@ import { Alert, Button, Card } from 'panelui-native';
 import { useEffect, useState } from 'react';
 import { AppState, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
   PcmPlaybackProof,
   type PcmPlaybackProofState,
 } from '@/dev/pcm-playback-proof';
+import { ProofRow } from '@/dev/proof-row';
 
 const RUNNING_PHASES = new Set<PcmPlaybackProofState['phase']>([
   'cancelling',
@@ -146,24 +146,5 @@ export function PcmPlaybackProofCard() {
         </View>
       </Card.Footer>
     </Card>
-  );
-}
-
-function ProofRow({
-  label,
-  testID,
-  value,
-}: {
-  label: string;
-  testID: string;
-  value: number | string;
-}) {
-  return (
-    <View className="flex-row justify-between gap-4" testID={testID}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <ThemedText type="code">{value}</ThemedText>
-    </View>
   );
 }
