@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   busyComposerLane,
+  CATALOG_UNAVAILABLE_NOTICE,
   detectSlashTrigger,
   highlightedCommandLength,
   leadingSlashToken,
@@ -145,6 +146,38 @@ test('submission routing follows the approved registry', () => {
   // A name neither Wave nor the catalog knows stays ordinary text.
   assert.equal(resolveSlashSubmission('/shrug', CATALOG), undefined);
   assert.equal(resolveSlashSubmission('/shrug', undefined), undefined);
+});
+
+test('a gateway without a catalog degrades to an honest notice', () => {
+  // Unknown leading-slash text is refused, never silently chatted: Wave
+  // cannot tell command from prose without a catalog.
+  const degraded = resolveSlashSubmission('/shrug it off', undefined, true);
+  assert.equal(degraded?.surface.kind, 'unavailable');
+  assert.equal(
+    degraded?.surface.kind === 'unavailable'
+      ? degraded.surface.reason
+      : undefined,
+    CATALOG_UNAVAILABLE_NOTICE,
+  );
+  // Registry commands still resolve without any catalog.
+  assert.deepEqual(resolveSlashSubmission('/usage', undefined, true), {
+    arg: '',
+    name: 'usage',
+    surface: { kind: 'execute' },
+  });
+  assert.equal(
+    resolveSlashSubmission('/model', undefined, true)?.surface.kind,
+    'local',
+  );
+  // Ordinary prose is unaffected, and a loaded catalog keeps the
+  // stays-ordinary-text rule for unknown names.
+  assert.equal(
+    resolveSlashSubmission('hello there', undefined, true),
+    undefined,
+  );
+  assert.equal(resolveSlashSubmission('/shrug', CATALOG, true), undefined);
+  // The busy lane keeps refused text off the correction/redirect path.
+  assert.equal(busyComposerLane('/shrug it off', undefined, true), 'command');
 });
 
 test('busy lane and highlight follow submission recognition', () => {

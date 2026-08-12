@@ -236,9 +236,14 @@ export function ChatComposer({
   const slashResolution = useMemo(
     () =>
       attachments.attachments.length === 0
-        ? resolveSlashSubmission(draft, slash.catalog)
+        ? resolveSlashSubmission(draft, slash.catalog, slash.catalogUnavailable)
         : undefined,
-    [attachments.attachments.length, draft, slash.catalog],
+    [
+      attachments.attachments.length,
+      draft,
+      slash.catalog,
+      slash.catalogUnavailable,
+    ],
   );
   const suggestions = useMemo(
     () => (blocked ? [] : slash.suggestionsFor(draft.slice(0, caret))),
@@ -259,7 +264,7 @@ export function ChatComposer({
     const value = raw.trim();
     const resolution =
       attachments.attachments.length === 0
-        ? resolveSlashSubmission(raw, slash.catalog)
+        ? resolveSlashSubmission(raw, slash.catalog, slash.catalogUnavailable)
         : undefined;
     if (resolution) {
       runSlash(resolution);
@@ -289,13 +294,18 @@ export function ChatComposer({
     readDraft,
     runSlash,
     slash.catalog,
+    slash.catalogUnavailable,
     writeDraft,
   ]);
 
   const correct = useCallback(() => {
     const originalDraft = readDraft();
     const originalSelection = selectionRef.current;
-    const resolution = resolveSlashSubmission(originalDraft, slash.catalog);
+    const resolution = resolveSlashSubmission(
+      originalDraft,
+      slash.catalog,
+      slash.catalogUnavailable,
+    );
     if (resolution && attachments.attachments.length === 0) {
       runSlash(resolution);
       return;
@@ -338,6 +348,7 @@ export function ChatComposer({
     readDraft,
     runSlash,
     slash.catalog,
+    slash.catalogUnavailable,
     writeDraft,
   ]);
 
@@ -345,7 +356,11 @@ export function ChatComposer({
     const current = readDraft();
     const resolution =
       attachments.attachments.length === 0
-        ? resolveSlashSubmission(current, slash.catalog)
+        ? resolveSlashSubmission(
+            current,
+            slash.catalog,
+            slash.catalogUnavailable,
+          )
         : undefined;
     if (resolution) runSlash(resolution);
     else if (busy) correct();
@@ -358,6 +373,7 @@ export function ChatComposer({
     runSlash,
     send,
     slash.catalog,
+    slash.catalogUnavailable,
   ]);
 
   const toggleDictation = useCallback(async () => {

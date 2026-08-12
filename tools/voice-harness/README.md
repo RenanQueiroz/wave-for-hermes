@@ -45,7 +45,8 @@ non-empty username/password:
 
 Pre-grant the microphone so the recorder starts (the recording's content is
 irrelevant): `xcrun simctl privacy booted grant microphone com.renanqueiroz.wave`
-on iOS, or the mobile agent's permissions tool on Android.
+on iOS, or the mobile agent's permissions tool on Android. Granting through
+`simctl privacy` can terminate a running app — relaunch it after granting.
 
 Typical driven flow (mobile agent): deep link to a conversation → start
 gateway voice → wait for the `listening` phase in the `wave-gateway-voice`

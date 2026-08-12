@@ -1,6 +1,8 @@
 /**
- * Slash-command protocol shapes: normalization for `commands.catalog`,
- * `complete.slash`, and the `slash.exec`/`command.dispatch` result family.
+ * Slash-command protocol shapes: normalization for `commands.catalog` and
+ * the `slash.exec`/`command.dispatch` result family. (`complete.slash` is
+ * deliberately unused: Wave filters the cached catalog locally instead of
+ * minting a ticket per keystroke.)
  *
  * Catalog descriptions, completion labels, and command outputs are
  * gateway-authored text and stay bounded inert strings — never markdown,
@@ -10,7 +12,6 @@
  */
 
 const MAX_CATALOG_ENTRIES = 200;
-const MAX_COMPLETION_ITEMS = 30;
 const MAX_COMMAND_CHARS = 60;
 const MAX_DESCRIPTION_CHARS = 160;
 const MAX_OUTPUT_CHARS = 8_000;
@@ -29,19 +30,6 @@ export interface WaveCommandCatalog {
   /** Lowercased alias → canonical command (both with the leading slash). */
   canon: Record<string, string>;
   entries: WaveCommandCatalogEntry[];
-}
-
-export interface WaveSlashCompletionItem {
-  display: string;
-  kind: 'command' | 'skill';
-  meta: string;
-  text: string;
-}
-
-export interface WaveSlashCompletion {
-  items: WaveSlashCompletionItem[];
-  /** > 1 marks an argument-stage completion that replaces from that column. */
-  replaceFrom?: number;
 }
 
 /** What one executed command asks the client to do. */
@@ -122,39 +110,6 @@ export function normalizeCommandCatalog(payload: unknown): WaveCommandCatalog {
   }
 
   return { canon, entries };
-}
-
-export function normalizeSlashCompletion(
-  payload: unknown,
-): WaveSlashCompletion {
-  const record =
-    payload && typeof payload === 'object'
-      ? (payload as Record<string, unknown>)
-      : {};
-  const items: WaveSlashCompletionItem[] = [];
-  const rows = Array.isArray(record.items) ? record.items : [];
-  for (const row of rows) {
-    if (items.length >= MAX_COMPLETION_ITEMS) break;
-    if (!row || typeof row !== 'object') continue;
-    const item = row as Record<string, unknown>;
-    const text = boundedText(item.text, MAX_COMMAND_CHARS * 2).trim();
-    if (!text) continue;
-    items.push({
-      display: boundedText(item.display, MAX_DESCRIPTION_CHARS).trim() || text,
-      kind: item.kind === 'skill' ? 'skill' : 'command',
-      meta: boundedText(item.meta, MAX_DESCRIPTION_CHARS).replace(/\s+/g, ' '),
-      text,
-    });
-  }
-  const replaceFrom = record.replace_from;
-  return {
-    items,
-    ...(typeof replaceFrom === 'number' &&
-    Number.isInteger(replaceFrom) &&
-    replaceFrom > 1
-      ? { replaceFrom }
-      : {}),
-  };
 }
 
 /**

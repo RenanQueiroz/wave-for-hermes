@@ -417,7 +417,10 @@ documentation before implementing UI.
   `src/features/chat/slash-commands.ts` routes each recognized command (local action, dedicated
   RPC, or gateway `slash.exec`/`command.dispatch`); administration-flavored commands are
   explicitly unavailable with honest copy, and a name neither Wave nor the gateway catalog knows
-  stays ordinary text. Slash text never reaches `prompt.submit` or `session.redirect` — the
+  stays ordinary text. When the gateway exposes no catalog at all (older server or failed fetch),
+  an unrecognized leading-slash submit surfaces a bounded "commands aren't available" notice
+  instead of silently chatting the text. Slash text never reaches `prompt.submit` or
+  `session.redirect` — the
   gateway does not parse slash commands server-side — and while a turn runs, recognized commands
   dispatch on their own RPC lane (Desktop parity) with a visibly distinct Run action. Catalog
   entries, completion labels, and command outputs are gateway-authored untrusted text: bounded,

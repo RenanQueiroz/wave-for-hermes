@@ -106,7 +106,11 @@ absent or malformed.
   `prefill` draft, or a `send` expansion submitted through the normal `prompt.submit` path with
   its bounded `display` shown as the user row. `/compress` uses the dedicated
   `session.compress` RPC (Desktop avoids `slash.exec` there — it times out on large sessions)
-  and `/title` uses the existing rename endpoint.
+  and `/title` uses the existing rename endpoint. `/status` deliberately routes through generic
+  `slash.exec`: the deployed gateway exposes no dedicated status RPC. A gateway without
+  `commands.catalog` degrades honestly — Wave's own registry commands still run, and an
+  unrecognized leading-slash submit gets a bounded "commands aren't available on this server"
+  notice instead of silently becoming a chat turn.
 - **Branch and regenerate (v0.20)**: `session.branch {session_id: <live sid>, count?}` copies
   the live session's history (all of it when `count` is omitted — Wave's exact newest-turn
   case) into a new stored session and returns `stored_session_id` + `title`. Regenerate is

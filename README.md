@@ -136,9 +136,11 @@ currently includes:
 - a native-form Settings screen (SwiftUI `Form` / Material 3 list via `@expo/ui`) with an
   OpenAI key section that validates the key before saving, stores it with
   `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, exposes presence (never the value) to the UI, can remove it,
-  plus per-device Realtime model and voice menu pickers. The model picker accepts only
-  `gpt-realtime-2.1-mini` (the latency/cost-oriented default) or `gpt-realtime-2.1` (the
-  larger-model option), and a change applies to the next call;
+  plus per-device Realtime model and voice choices on dedicated native selection pages
+  (`/settings/[selection]`, radio rows on Android and checkmark rows on iOS — no dropdown
+  pickers). The model selection accepts only `gpt-realtime-2.1-mini` (the latency/cost-oriented
+  default) or `gpt-realtime-2.1` (the larger-model option), and a change applies to the next
+  call;
 - a persisted system/light/dark appearance choice on PanelUI's default theme, applied live
   across the app including native headers, native forms, and the status bar;
 - a Settings row that opens native iOS and Android open-source acknowledgements generated from
@@ -369,13 +371,14 @@ Use PanelUI's semantic tokens rather than hard-coded palette colors. For colors 
 props or non-PanelUI components, resolve the corresponding `--color-*` token with
 `useCSSVariable`.
 
-Settings and Connect are native forms built on `@expo/ui` (`FieldGroup`, `TextInput` with
-`useNativeState`, `Picker`, `Switch`, `ListItem`) hosted per screen; the form owns its own
-scrolling and keyboard insets. The chat composer is also direct `@expo/ui`: SwiftUI/Compose owns
-the field and controls, `@expo/material-symbols` supplies the Android half of universal native icon
-mappings, and universal native bottom sheets present attachments and models. A focused non-visual
-React Native dock owns its keyboard translation. The rest of the app stays PanelUI, and the chat
-transcript stays on the Wave-owned scroller.
+Settings and Connect are platform-native `@expo/ui` trees behind shared behavior modules: a
+SwiftUI `Form`/`Section` tree on iOS and a Material 3 Compose list on Android, each hosted per
+screen and owning its own scrolling and keyboard insets. The chat composer is also direct
+`@expo/ui`: SwiftUI/Compose owns the field and controls, `@expo/material-symbols` supplies the
+Android half of Wave's shared icon mapping (SF Symbols on iOS), and platform-native sheets
+(SwiftUI `BottomSheet` / Compose `ModalBottomSheet`) present attachments and models from their
+own presentation Hosts. A focused non-visual React Native dock owns its keyboard translation.
+The rest of the app stays PanelUI, and the chat transcript stays on the Wave-owned scroller.
 
 The [PanelUI CLI](https://www.panelui.dev/docs/cli) is optional. Use it only when a component needs
 to be copied into the repository for deliberate source-level customization; package and copied

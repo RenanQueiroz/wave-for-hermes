@@ -110,6 +110,10 @@ export function useSlashComposer({
     retry: 1,
   });
   const catalog = catalogQuery.data;
+  // A settled failure means this gateway offers no catalog (older server or
+  // unreachable RPC): leading-slash submits get an honest notice instead of
+  // silently chatting the text. A merely pending catalog stays permissive.
+  const catalogUnavailable = catalogQuery.isError;
 
   /** Call whenever the draft or caret moves; returns the open trigger. */
   const observeDraft = useCallback((textBeforeCaret: string) => {
@@ -248,6 +252,7 @@ export function useSlashComposer({
 
   return {
     catalog,
+    catalogUnavailable,
     dismissResult,
     observeDraft,
     result,

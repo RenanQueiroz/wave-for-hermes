@@ -70,6 +70,10 @@ interface RegistryEntry {
 
 const NOT_IN_WAVE = 'is not part of Wave — use the Hermes desktop app or CLI.';
 
+/** Honest copy for gateways that expose no command catalog at all. */
+export const CATALOG_UNAVAILABLE_NOTICE =
+  "Commands aren't available on this server.";
+
 /**
  * The Wave registry. `execute` routes through the gateway's `slash.exec`
  * (which internally forwards skills, bundles, and pending-input commands to
@@ -145,11 +149,15 @@ export interface WaveSlashResolution {
  * ordinary prompt (or correction) text. Unknown names resolve through the
  * catalog: cataloged commands and skills execute on the gateway; a name the
  * catalog has never heard of stays ordinary text, so a stray "/shrug" cannot
- * become a failed command by accident.
+ * become a failed command by accident. When the gateway exposes no catalog
+ * at all (`catalogUnavailable` — an older server or a failed fetch), an
+ * unrecognized leading-slash submit surfaces an honest notice instead of
+ * silently chatting the text, since Wave cannot tell command from prose.
  */
 export function resolveSlashSubmission(
   text: string,
   catalog: WaveCommandCatalog | undefined,
+  catalogUnavailable = false,
 ): WaveSlashResolution | undefined {
   const token = leadingSlashToken(text);
   if (!token) return undefined;
@@ -187,6 +195,13 @@ export function resolveSlashSubmission(
       surface: { kind: 'execute' },
     };
   }
+  if (catalogUnavailable && !catalog) {
+    return {
+      arg: token.arg,
+      name: token.name,
+      surface: { kind: 'unavailable', reason: CATALOG_UNAVAILABLE_NOTICE },
+    };
+  }
   return undefined;
 }
 
@@ -198,16 +213,20 @@ export function resolveSlashSubmission(
 export function busyComposerLane(
   text: string,
   catalog: WaveCommandCatalog | undefined,
+  catalogUnavailable = false,
 ): 'command' | 'correction' {
-  return resolveSlashSubmission(text, catalog) ? 'command' : 'correction';
+  return resolveSlashSubmission(text, catalog, catalogUnavailable)
+    ? 'command'
+    : 'correction';
 }
 
 /** The `/name` prefix length to highlight in the composer, or 0. */
 export function highlightedCommandLength(
   text: string,
   catalog: WaveCommandCatalog | undefined,
+  catalogUnavailable = false,
 ): number {
-  const resolution = resolveSlashSubmission(text, catalog);
+  const resolution = resolveSlashSubmission(text, catalog, catalogUnavailable);
   if (!resolution) return 0;
   const token = leadingSlashToken(text);
   return token ? text.indexOf('/') + 1 + token.name.length : 0;

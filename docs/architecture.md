@@ -212,8 +212,9 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   `PanelUIProvider` mounts the keyboard controller's `KeyboardProvider` exactly once at the app
   root — mounting a second one breaks per-frame keyboard animation on Android. The extracted
   `ChatComposer` is a direct Expo UI native island: one intrinsic-height `Host` contains the
-  SwiftUI/Compose field, controls, accessory states, and universal icons, while the attachment and
-  model presentations are universal native `BottomSheet` siblings. Native observable state owns
+  SwiftUI/Compose field, controls, accessory states, and platform icons, while the attachment and
+  model presentations are platform-native sheets (SwiftUI `BottomSheet` / Compose
+  `ModalBottomSheet`), each in its own sibling presentation `Host`. Native observable state owns
   the immediate draft, so typing re-renders only the composer controller and not the transcript.
   The non-visual React Native `ChatComposerDock` alone translates the host with the keyboard;
   SwiftUI and Compose keyboard insets are disabled to prevent the prior iOS double lift. Opening a

@@ -42,6 +42,11 @@ generating acknowledgements during Prebuild and are not imported into the React 
 bundle. The generated native acknowledgement data includes runtime transitive and optional
 dependencies while excluding root development dependencies.
 
+Addendum (2026-08-11): the native composer added `@expo/material-symbols@0.1.x`, the Android half
+of Wave's shared icon mapping. It is a pure icon-data/component package with zero runtime and peer
+dependencies, no native module of its own, no network or filesystem access, and no audit findings;
+it changes none of the conclusions above.
+
 The production audit scoped to `@wave/contracts` reports zero findings:
 
 ```bash
