@@ -558,10 +558,7 @@ test('control: seedSessions fixture populates the session list', async () => {
     };
     assert.equal(body.sessions.length, 5);
     assert.equal(body.sessions[0]?.title, 'Fixture 1');
-    assert.equal(
-      body.sessions.filter((session) => session.pinned).length,
-      3,
-    );
+    assert.equal(body.sessions.filter((session) => session.pinned).length, 3);
   } finally {
     await harness.close();
   }
