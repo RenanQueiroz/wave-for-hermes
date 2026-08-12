@@ -171,6 +171,12 @@ The production smoke test exports both platforms and rejects credential-shaped l
 JavaScript bundles. The [dependency review](./docs/dependency-security.md) records current
 SDK-compatibility and audit decisions.
 
+## Contributing
+
+Contributions are welcome. Read the [contributor guide](./CONTRIBUTING.md) and the product and
+architecture constraints in [AGENTS.md](./AGENTS.md) before starting a change. Report suspected
+vulnerabilities privately through the [security policy](./SECURITY.md), not in a public issue.
+
 ## Repository map
 
 ```text
@@ -192,6 +198,8 @@ platform-native SwiftUI and Jetpack Compose implementations behind shared behavi
 
 - [Architecture and workspace boundaries](./docs/architecture.md)
 - [Security model](./docs/security.md)
+- [Vulnerability reporting policy](./SECURITY.md)
+- [Contributor guide](./CONTRIBUTING.md)
 - [Hermes gateway contract](./docs/hermes-connectivity.md)
 - [Roadmap](./docs/roadmap.md)
 - [Dependency and supply-chain review](./docs/dependency-security.md)
