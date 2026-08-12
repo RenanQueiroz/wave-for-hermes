@@ -11,8 +11,10 @@ import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useWaveConnection } from '@/features/connection/connection-provider';
+import { useTheme } from '@/hooks/use-theme';
 import { activeSessionStore } from '@/services/sessions/active-session-store';
 
+import { OfflineActions } from './offline-actions';
 import { waveSessionQueryKey } from './session-query-keys';
 
 export function NewConversationScreen() {
@@ -38,6 +40,7 @@ export function NewConversationScreen() {
 // leaves reconnection to a deliberate retry or the automatic re-verification.
 function OfflineNewConversationScreen({ retry }: { retry(): Promise<void> }) {
   const navigation = useNavigation();
+  const theme = useTheme();
   const [retrying, setRetrying] = useState(false);
 
   return (
@@ -55,27 +58,18 @@ function OfflineNewConversationScreen({ retry }: { retry(): Promise<void> }) {
           </Alert.Description>
         </Alert.Content>
       </Alert>
-      <View className="w-full max-w-sm gap-2">
-        <Button
-          fullWidth
-          accessibilityLabel="Browse cached conversations"
-          testID="offline-browse-cached-button"
-          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
-          Browse cached conversations
-        </Button>
-        <Button
-          fullWidth
-          variant="outline"
-          accessibilityLabel="Retry connecting to the gateway"
-          loading={retrying}
-          testID="offline-retry-connection-button"
-          onPress={() => {
+      <View className="w-full max-w-sm">
+        <OfflineActions
+          colorScheme={theme.mode}
+          retrying={retrying}
+          seedColor={theme.primary}
+          onBrowseCached={() => navigation.dispatch(DrawerActions.openDrawer())}
+          onRetry={() => {
             if (retrying) return;
             setRetrying(true);
             void retry().finally(() => setRetrying(false));
-          }}>
-          Try again
-        </Button>
+          }}
+        />
       </View>
     </View>
   );

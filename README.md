@@ -378,7 +378,9 @@ screen and owning its own scrolling and keyboard insets. The chat composer is al
 Android half of Wave's shared icon mapping (SF Symbols on iOS), and platform-native sheets
 (SwiftUI `BottomSheet` / Compose `ModalBottomSheet`) present attachments and models from their
 own presentation Hosts. A focused non-visual React Native dock owns its keyboard translation.
-The rest of the app stays PanelUI, and the chat transcript stays on the Wave-owned scroller.
+The offline landing's actions are platform-native buttons behind a shared contract
+(`offline-actions.{ios,android}.tsx`). The rest of the app stays PanelUI, and the chat
+transcript stays on the Wave-owned scroller.
 
 The [PanelUI CLI](https://www.panelui.dev/docs/cli) is optional. Use it only when a component needs
 to be copied into the repository for deliberate source-level customization; package and copied

@@ -190,7 +190,12 @@ documentation before implementing UI.
   view on Android): it renders nothing in the tree, so the list stays the route root. Search
   behavior (debounce, the local-title + server-content merge, keep-paging-while-searching)
   lives in `session-search-screen.shared.ts`; result rows are fixed-height native Hosts
-  (`session-search-row.{ios,android}.tsx`, two-line: title + bounded inert snippet). Every tap on a Realtime
+  (`session-search-row.{ios,android}.tsx`, two-line: title + bounded inert snippet). The
+  offline landing's two actions are platform-native buttons
+  (`src/features/sessions/offline-actions.{ios,android}.tsx`, intrinsic-height Hosts behind a
+  shared props contract); the iOS pair deliberately takes no `seedColor` because PanelUI's
+  near-white dark-theme primary would leave SwiftUI's `borderedProminent` label without
+  contrast, while Android's Material seed derives readable on-primary colors. Every tap on a Realtime
   voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the
