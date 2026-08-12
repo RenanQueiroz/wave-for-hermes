@@ -2,15 +2,13 @@ import { Button, Image, Menu } from '@expo/ui/swift-ui';
 import {
   accessibilityIdentifier,
   accessibilityLabel,
-  buttonBorderShape,
+  background,
   buttonStyle,
   contentShape,
-  controlSize,
   disabled as disabledModifier,
   frame,
   opacity,
   shapes,
-  tint,
 } from '@expo/ui/swift-ui/modifiers';
 
 import { NATIVE_ICON_BUTTON_SIZE } from '@/components/native-icon-button/button.types';
@@ -32,23 +30,31 @@ export function AttachmentMenu({
 }: AttachmentMenuProps) {
   return (
     <Menu
+      // The tonal circle is painted on the label itself rather than via a
+      // tinted borderedProminent trigger: a tint on the Menu propagates into
+      // the presented menu, rendering its item symbols in the dark secondary
+      // color — nearly invisible on the menu surface.
       label={
         <Image
           color={colors.secondaryForeground}
           size={19}
           systemName={CHAT_COMPOSER_ICONS.add}
+          modifiers={[
+            frame({
+              height: NATIVE_ICON_BUTTON_SIZE,
+              width: NATIVE_ICON_BUTTON_SIZE,
+            }),
+            background(colors.secondary, shapes.circle()),
+          ]}
         />
       }
       modifiers={[
-        buttonStyle('borderedProminent'),
-        buttonBorderShape('circle'),
-        controlSize('regular'),
+        buttonStyle('plain'),
         frame({
           height: NATIVE_ICON_BUTTON_SIZE,
           width: NATIVE_ICON_BUTTON_SIZE,
         }),
         contentShape(shapes.circle()),
-        tint(colors.secondary),
         accessibilityLabel('Add an attachment'),
         accessibilityIdentifier('chat-attachment-button'),
         disabledModifier(disabled),
