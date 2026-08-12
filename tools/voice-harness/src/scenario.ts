@@ -74,6 +74,12 @@ export interface HarnessScenario {
   realtimeCalls?: HarnessRealtimeScript[];
   /** FIFO of `session.redirect` outcomes; default is `redirected`. */
   redirects?: HarnessRedirectScript[];
+  /**
+   * Seed the session store on scenario load — a fixture for drawer paging
+   * and fling-performance checks. Sessions get spread `last_active`
+   * timestamps so date sections vary.
+   */
+  seedSessions?: HarnessSessionSeed;
   speech?: HarnessSpeechScript;
   transcribe?: HarnessTranscribeScript;
   /** FIFO of transcripts served by `/api/audio/transcribe`. */
@@ -81,6 +87,17 @@ export interface HarnessScenario {
   /** FIFO of turn scripts consumed by `prompt.submit`. */
   turns?: HarnessTurnScript[];
 }
+
+export interface HarnessSessionSeed {
+  count: number;
+  messagesPerSession?: number;
+  /** Pin every Nth seeded session (1 pins all). */
+  pinnedEvery?: number;
+  titlePrefix?: string;
+}
+
+const MAX_SEEDED_SESSIONS = 1_000;
+const MAX_SEEDED_MESSAGES = 10;
 
 export const DEFAULT_TRANSCRIPT = 'Hello from the harness.';
 
@@ -249,6 +266,28 @@ export function normalizeScenario(value: unknown): HarnessScenario {
     scenario.realtimeCalls = record.realtimeCalls
       .slice(0, MAX_LIST_ENTRIES)
       .map(normalizeRealtimeScript);
+  }
+
+  const seed = asRecord(record.seedSessions);
+  if (seed && typeof seed.count === 'number' && seed.count > 0) {
+    scenario.seedSessions = {
+      count: Math.min(Math.floor(seed.count), MAX_SEEDED_SESSIONS),
+      ...(typeof seed.messagesPerSession === 'number' &&
+      seed.messagesPerSession >= 1
+        ? {
+            messagesPerSession: Math.min(
+              Math.floor(seed.messagesPerSession),
+              MAX_SEEDED_MESSAGES,
+            ),
+          }
+        : {}),
+      ...(typeof seed.pinnedEvery === 'number' && seed.pinnedEvery >= 1
+        ? { pinnedEvery: Math.floor(seed.pinnedEvery) }
+        : {}),
+      ...(typeof seed.titlePrefix === 'string'
+        ? { titlePrefix: seed.titlePrefix.slice(0, 100) }
+        : {}),
+    };
   }
 
   const speech = asRecord(record.speech);

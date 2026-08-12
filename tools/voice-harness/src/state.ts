@@ -9,6 +9,7 @@ import {
   type HarnessRealtimeScript,
   type HarnessRedirectScript,
   type HarnessScenario,
+  type HarnessSessionSeed,
   type HarnessTurnScript,
 } from './scenario.js';
 
@@ -41,6 +42,37 @@ export class HarnessState {
 
   loadScenario(scenario: HarnessScenario): void {
     this.scenario = scenario;
+    if (scenario.seedSessions) this.seedSessions(scenario.seedSessions);
+  }
+
+  /**
+   * Deterministic session fixture for drawer paging and fling checks. Adds to
+   * whatever exists; load after `/control/reset` for a clean store. Sessions
+   * age in six-hour steps so today/yesterday/older sections all appear.
+   */
+  private seedSessions(seed: HarnessSessionSeed): void {
+    const nowSeconds = Date.now() / 1_000;
+    for (let index = 0; index < seed.count; index += 1) {
+      const session = this.createSession();
+      session.title = `${seed.titlePrefix ?? 'Seeded conversation'} ${index + 1}`;
+      if (seed.pinnedEvery !== undefined && index % seed.pinnedEvery === 0) {
+        session.pinned = true;
+      }
+      const messages = seed.messagesPerSession ?? 2;
+      const timestamp = nowSeconds - index * 6 * 60 * 60;
+      for (let row = 0; row < messages; row += 1) {
+        this.messageCounter += 1;
+        session.messages.push({
+          content:
+            row % 2 === 0
+              ? `Seeded prompt ${index + 1}`
+              : `Seeded reply ${index + 1}`,
+          id: this.messageCounter,
+          role: row % 2 === 0 ? 'user' : 'assistant',
+          timestamp,
+        });
+      }
+    }
   }
 
   reset(): void {

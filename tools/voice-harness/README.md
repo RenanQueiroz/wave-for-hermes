@@ -67,6 +67,10 @@ when drained.
 
 ```jsonc
 {
+  // Deterministic session fixture for drawer paging/fling checks: seeds the
+  // store on scenario load (additive — POST /control/reset first for a clean
+  // run). Sessions age in 6-hour steps so date sections vary; count ≤ 1000.
+  "seedSessions": { "count": 300, "messagesPerSession": 2, "pinnedEvery": 50 },
   "transcripts": ["play some jazz", "stop"], // /api/audio/transcribe FIFO
   "turns": [
     // prompt.submit FIFO

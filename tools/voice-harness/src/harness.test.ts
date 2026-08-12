@@ -544,6 +544,29 @@ test('speak-stream: start, PCM for each text, end on done; fallback mode; single
   }
 });
 
+test('control: seedSessions fixture populates the session list', async () => {
+  const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
+  try {
+    await loadScenario(harness, {
+      seedSessions: { count: 5, pinnedEvery: 2, titlePrefix: 'Fixture' },
+    });
+    const jar = await signIn(harness);
+    const listed = await api(harness, jar, '/api/sessions');
+    assert.equal(listed.status, 200);
+    const body = (await listed.json()) as {
+      sessions: { pinned: boolean; title: string }[];
+    };
+    assert.equal(body.sessions.length, 5);
+    assert.equal(body.sessions[0]?.title, 'Fixture 1');
+    assert.equal(
+      body.sessions.filter((session) => session.pinned).length,
+      3,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test('control: reset clears sessions, journal, and scenario', async () => {
   const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
   try {
