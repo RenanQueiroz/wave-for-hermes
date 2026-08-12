@@ -1,141 +1,234 @@
 import { Image } from 'expo-image';
 import * as SplashScreen from 'expo-splash-screen';
-import { useState } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
-import Animated, { Easing, Keyframe } from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  Easing,
+  Extrapolation,
+  interpolate,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 import { scheduleOnRN } from 'react-native-worklets';
 
-const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
-const DURATION = 600;
+const BACKGROUND_COLOR = '#090909';
+const MARK_COLOR = '#ffffff';
+const MARK_SIZE = 120;
+const MOTION_DURATION = 520;
+const MOTION_HOLD = 80;
+const REDUCED_MOTION_DURATION = 160;
+const WAVE_PATH_LENGTH = 782.35;
+const WAVE_PATH =
+  'M 91.5 115.5 C 91.5 195.5 125.5 384.5 192.5 384.5 C 237.5 384.5 231.5 256.5 263.5 256.5 C 296.5 256.5 291.5 354.5 333.5 354.5 C 378.5 354.5 408.5 255.5 408.5 187.5';
 
-export function AnimatedSplashOverlay() {
-  const [animate, setAnimate] = useState(false);
-  const [visible, setVisible] = useState(true);
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-  if (!visible) return null;
+type TravelingRecedeSplashProps = {
+  onFinished: () => void;
+  onMarkDisplayed?: () => void;
+  reducedMotion?: boolean;
+  start: boolean;
+  testID?: string;
+};
 
-  const splashKeyframe = new Keyframe({
-    0: {
-      transform: [{ scale: 1 }],
-      opacity: 1,
-    },
-    20: {
-      opacity: 1,
-    },
-    70: {
-      opacity: 0,
-      easing: Easing.elastic(0.7),
-    },
-    100: {
-      opacity: 0,
-      transform: [{ scale: 1 }],
-      easing: Easing.elastic(0.7),
-    },
+export function TravelingRecedeSplash({
+  onFinished,
+  onMarkDisplayed,
+  reducedMotion,
+  start,
+  testID,
+}: TravelingRecedeSplashProps) {
+  const systemReducedMotion = useReducedMotion();
+  const shouldReduceMotion = reducedMotion ?? systemReducedMotion;
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    cancelAnimation(progress);
+    progress.value = 0;
+
+    if (!start) return;
+
+    const delay = shouldReduceMotion ? 0 : MOTION_HOLD;
+    const duration = shouldReduceMotion
+      ? REDUCED_MOTION_DURATION
+      : MOTION_DURATION;
+
+    progress.value = withDelay(
+      delay,
+      withTiming(
+        1,
+        {
+          duration,
+          easing: Easing.bezier(0.22, 0.61, 0.36, 1),
+        },
+        (finished) => {
+          'worklet';
+          if (finished) scheduleOnRN(onFinished);
+        },
+      ),
+    );
+
+    return () => cancelAnimation(progress);
+  }, [onFinished, progress, shouldReduceMotion, start]);
+
+  const backgroundStyle = useAnimatedStyle(() => ({
+    opacity: shouldReduceMotion
+      ? 1 - progress.value
+      : interpolate(
+          progress.value,
+          [0, 0.66, 1],
+          [1, 1, 0],
+          Extrapolation.CLAMP,
+        ),
+  }));
+
+  const markStyle = useAnimatedStyle(() => {
+    if (shouldReduceMotion) {
+      return {
+        opacity: 1 - progress.value,
+        transform: [{ scale: 1 }],
+      };
+    }
+
+    const recede = interpolate(
+      progress.value,
+      [0.08, 1],
+      [0, 1],
+      Extrapolation.CLAMP,
+    );
+
+    return {
+      opacity: interpolate(
+        progress.value,
+        [0, 0.78, 1],
+        [1, 1, 0],
+        Extrapolation.CLAMP,
+      ),
+      transform: [
+        { perspective: 560 },
+        { translateX: recede * 14 },
+        { rotateY: `${recede * -22}deg` },
+        { scale: 1 - recede * 0.16 },
+      ],
+    };
   });
 
-  const image = (
-    <Image
-      style={styles.image}
-      source={require('@/assets/images/wave-mark.png')}
-    />
-  );
+  const handoffImageStyle = useAnimatedStyle(() => ({
+    opacity: shouldReduceMotion
+      ? 1
+      : interpolate(progress.value, [0, 0.08], [1, 0], Extrapolation.CLAMP),
+  }));
 
-  return animate ? (
-    <Animated.View
-      entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
-        'worklet';
-        if (finished) {
-          scheduleOnRN(setVisible, false);
-        }
-      })}
-      style={styles.splashOverlay}>
-      {image}
-    </Animated.View>
-  ) : (
-    <View
-      onLayout={() => {
-        SplashScreen.hideAsync().finally(() => {
-          setAnimate(true);
-        });
-      }}
-      style={styles.splashOverlay}>
-      {image}
-    </View>
-  );
-}
+  const pathProps = useAnimatedProps(() => ({
+    strokeDashoffset: shouldReduceMotion
+      ? 0
+      : interpolate(
+          progress.value,
+          [0.08, 0.92],
+          [0, -WAVE_PATH_LENGTH],
+          Extrapolation.CLAMP,
+        ),
+  }));
 
-const keyframe = new Keyframe({
-  0: {
-    transform: [{ scale: INITIAL_SCALE_FACTOR }],
-  },
-  100: {
-    transform: [{ scale: 1 }],
-    easing: Easing.elastic(0.7),
-  },
-});
-
-const logoKeyframe = new Keyframe({
-  0: {
-    transform: [{ scale: 1.3 }],
-    opacity: 0,
-  },
-  40: {
-    transform: [{ scale: 1.3 }],
-    opacity: 0,
-    easing: Easing.elastic(0.7),
-  },
-  100: {
-    opacity: 1,
-    transform: [{ scale: 1 }],
-    easing: Easing.elastic(0.7),
-  },
-});
-
-export function AnimatedIcon() {
   return (
-    <View style={styles.iconContainer}>
-      <Animated.View
-        entering={keyframe.duration(DURATION)}
-        style={styles.background}
-      />
-      <Animated.View
-        style={styles.imageContainer}
-        entering={logoKeyframe.duration(DURATION)}>
-        <Image
-          style={styles.image}
-          source={require('@/assets/images/wave-mark.png')}
-        />
+    <View
+      accessible={false}
+      onLayout={onMarkDisplayed}
+      pointerEvents="none"
+      style={styles.splashOverlay}
+      testID={testID}>
+      <Animated.View style={[styles.background, backgroundStyle]} />
+
+      <Animated.View style={[styles.mark, markStyle]}>
+        <Svg
+          accessible={false}
+          height={MARK_SIZE}
+          viewBox="0 0 500 500"
+          width={MARK_SIZE}>
+          <AnimatedPath
+            animatedProps={pathProps}
+            d={WAVE_PATH}
+            fill="none"
+            stroke={MARK_COLOR}
+            strokeDasharray={[WAVE_PATH_LENGTH, WAVE_PATH_LENGTH]}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={60}
+          />
+        </Svg>
+
+        <Animated.View style={[styles.handoffImage, handoffImageStyle]}>
+          <Image
+            accessible={false}
+            contentFit="contain"
+            onDisplay={onMarkDisplayed}
+            onError={() => onMarkDisplayed?.()}
+            source={require('@/assets/images/wave-mark.png')}
+            style={styles.image}
+            transition={0}
+          />
+        </Animated.View>
       </Animated.View>
     </View>
   );
 }
 
+export function AnimatedSplashOverlay() {
+  const [started, setStarted] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const nativeHideRequested = useRef(false);
+
+  const handleMarkDisplayed = useCallback(() => {
+    if (nativeHideRequested.current) return;
+    nativeHideRequested.current = true;
+
+    void SplashScreen.hideAsync()
+      .catch(() => {
+        // Fast Refresh can race the native splash screen. The React overlay is
+        // already ready, so the outro can still complete safely.
+      })
+      .finally(() => setStarted(true));
+  }, []);
+
+  const handleFinished = useCallback(() => setVisible(false), []);
+
+  if (!visible) return null;
+
+  return (
+    <TravelingRecedeSplash
+      onFinished={handleFinished}
+      onMarkDisplayed={handleMarkDisplayed}
+      start={started}
+      testID="wave-splash-overlay"
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  imageContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  background: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: BACKGROUND_COLOR,
   },
-  iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 128,
-    height: 128,
-    zIndex: 100,
+  handoffImage: {
+    ...StyleSheet.absoluteFill,
   },
   image: {
-    width: 120,
-    height: 120,
+    width: MARK_SIZE,
+    height: MARK_SIZE,
   },
-  background: {
-    borderRadius: 40,
-    backgroundColor: '#090909',
-    width: 128,
-    height: 128,
-    position: 'absolute',
+  mark: {
+    width: MARK_SIZE,
+    height: MARK_SIZE,
+    transformOrigin: 'left center',
   },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#090909',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,

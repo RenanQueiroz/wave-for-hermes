@@ -14,7 +14,9 @@ import { WaveConnectionProvider } from '@/features/connection/connection-provide
 import { useApplyThemePreference } from '@/features/settings/theme-preference';
 import { WaveQueryProvider } from '@/services/query/wave-query-provider';
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch(() => {
+  // Fast Refresh can race a splash screen that is already hidden.
+});
 
 function resolveColor(
   value: string | number | undefined,

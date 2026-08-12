@@ -4,6 +4,7 @@ import { ScrollView, View } from 'react-native';
 
 import { PcmPlaybackProofCard } from '@/dev/pcm-playback-proof-card';
 import { RealtimeHarnessCard } from '@/dev/realtime-harness-card';
+import { SplashAnimationProofCard } from '@/dev/splash-animation-proof-card';
 import { WebRtcProofCard } from '@/dev/webrtc-proof-card';
 
 export function DevelopmentScreen() {
@@ -22,6 +23,7 @@ export function DevelopmentScreen() {
           Development-only checks for native foundations used by Wave.
         </Typography.Paragraph>
       </View>
+      <SplashAnimationProofCard />
       <PcmPlaybackProofCard />
       <WebRtcProofCard />
       <RealtimeHarnessCard />
