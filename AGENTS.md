@@ -202,11 +202,21 @@ documentation before implementing UI.
   user's secure-stored key, caches it by app-owned model and voice, and owns the single
   `expo-audio` player lifecycle; platform-native settings rows only dispatch the selection.
 - Transcript surfaces stay PanelUI/RN. The chat composer is a deliberate direct-Expo-UI
-  surface: shared code owns product state and events only, while `view.android.tsx`
-  and `sheets.android.tsx` render direct Jetpack Compose exports and their `.ios.tsx` peers render
+  surface: shared code owns product state and events only, while `view.android.tsx`,
+  `sheets.android.tsx`, and `attachment-menu.android.tsx` render direct Jetpack Compose exports
+  and their `.ios.tsx` peers render
   direct SwiftUI exports. Hosts, visible controls, icons, native observable state, and sheet
   presentations must all come from the platform subpackages rather than universal Expo UI
-  components. The React Native `ChatComposerDock` is the sole keyboard-movement owner and
+  components. Attachment selection is an anchored native menu on the composer's + button
+  (SwiftUI `Menu` / Compose `DropdownMenu` behind the shared `attachment-menu.types.ts`
+  contract): menu items launch their pickers directly with no sheet state or handoff timer,
+  and the menu floats above the keyboard rather than dismissing it. The model picker remains
+  the composer's only sheet, styled in each platform's list idiom — an iOS inset-grouped
+  `List` with sections on a solid `presentationBackground` (the translucent sheet material
+  let the composer bleed through), and Android grouped `ListItem` rows mirroring the
+  Settings segmented-row language. Keep the Android model sheet's content on a plain
+  scrollable `Column`: a `LazyColumn` inside `ModalBottomSheet` swallows every pointer event
+  before it reaches JS (device-verified on the Pixel 8 Pro). The React Native `ChatComposerDock` is the sole keyboard-movement owner and
   positions the composer as an overlay so the transcript can scroll beneath it; it reports its
   effective resting or keyboard-raised bottom footprint so the transcript keeps reachable content
   above the dock, and its keyboard-independent resting footprint separately so the empty-state

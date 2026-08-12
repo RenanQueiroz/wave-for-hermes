@@ -25,6 +25,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 
 import { NativeIconButton } from '@/components/native-icon-button';
+import { AttachmentMenu } from '@/features/chat/composer/attachment-menu';
 import { CHAT_COMPOSER_ICONS } from '@/features/chat/composer/icons';
 import { ChatComposerInput } from '@/features/chat/composer/input';
 import { NativeModelPill } from '@/features/chat/composer/model/pill';
@@ -51,7 +52,9 @@ export function ChatComposerNativeView(props: ChatComposerNativeViewProps) {
     modelLabel,
     nativeSelection,
     nativeText,
-    onAttachmentPress,
+    onAttachFile,
+    onAttachImage,
+    onAttachPhoto,
     onChangeText,
     onDictationPress,
     onInvokeTrailingAction,
@@ -108,15 +111,12 @@ export function ChatComposerNativeView(props: ChatComposerNativeViewProps) {
             frame({ alignment: 'leading', maxWidth: Infinity }),
             padding({ horizontal: 12 }),
           ]}>
-          <NativeIconButton
-            accessibilityLabel="Add an attachment"
-            backgroundColor={colors.secondary}
+          <AttachmentMenu
+            colors={colors}
             disabled={busy || blocked}
-            foregroundColor={colors.secondaryForeground}
-            icon={CHAT_COMPOSER_ICONS.add}
-            testID="chat-attachment-button"
-            variant="tonal"
-            onPress={onAttachmentPress}
+            onPickFile={onAttachFile}
+            onPickImage={onAttachImage}
+            onTakePhoto={onAttachPhoto}
           />
           {showModel ? (
             <NativeModelPill

@@ -48,7 +48,9 @@ export interface ChatComposerNativeViewProps {
   suggestions: WaveCommandCatalogEntry[];
   turnActionError?: string;
   onAcceptSuggestion(entry: WaveCommandCatalogEntry): void;
-  onAttachmentPress(): void;
+  onAttachFile(): void;
+  onAttachImage(): void;
+  onAttachPhoto(): void;
   onChangeText(value: string): void;
   onDictationPress(): void;
   onDismissAttachmentError(): void;

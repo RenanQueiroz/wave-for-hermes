@@ -93,7 +93,7 @@ currently includes:
   stale-working hints, full-width markdown assistant responses beside user-only bubbles, tool
   runs summarized as bounded one-line actions and current-session tracking. The keyboard-sticky
   rounded composer is a direct `@expo/ui` native island — including its multiline field, icons,
-  accessory content, and sheets — with an internal attachment control and exactly one trailing
+  accessory content, model sheet, and anchored attachment menu — with exactly one trailing
   action: Send when text is present, live voice when it is empty, or — during an active turn —
   Correct for text and Stop when empty;
 - inline mid-turn prompts: Hermes approval and clarify requests render in the turn they belong
@@ -337,7 +337,7 @@ development client; a JavaScript reload alone cannot add native code. In a signe
 build, open **Development tools** and select **Start proof** to verify microphone acquisition, a
 local peer negotiation, a remote audio track, a data-channel echo, and cleanup. Realtime remains
 audio-only. Camera access is requested separately and only after the user chooses the chat
-attachment Camera action.
+attachment menu's Take Photo action.
 
 The proof remains a small local diagnostic separate from the production OpenAI Realtime transport.
 See [`docs/webrtc-foundation.md`](./docs/webrtc-foundation.md) for the exact workflow, validation
@@ -375,9 +375,10 @@ Settings and Connect are platform-native `@expo/ui` trees behind shared behavior
 SwiftUI `Form`/`Section` tree on iOS and a Material 3 Compose list on Android, each hosted per
 screen and owning its own scrolling and keyboard insets. The chat composer is also direct
 `@expo/ui`: SwiftUI/Compose owns the field and controls, `@expo/material-symbols` supplies the
-Android half of Wave's shared icon mapping (SF Symbols on iOS), and platform-native sheets
-(SwiftUI `BottomSheet` / Compose `ModalBottomSheet`) present attachments and models from their
-own presentation Hosts. A focused non-visual React Native dock owns its keyboard translation.
+Android half of Wave's shared icon mapping (SF Symbols on iOS), attachment selection is an
+anchored native menu on the + button (SwiftUI `Menu` / Compose `DropdownMenu`), and the model
+picker is a platform-native sheet (SwiftUI `BottomSheet` / Compose `ModalBottomSheet`) rendered
+in each platform's grouped-list idiom from its own presentation Host. A focused non-visual React Native dock owns its keyboard translation.
 The offline landing's actions are platform-native buttons behind a shared contract
 (`offline-actions.{ios,android}.tsx`). The rest of the app stays PanelUI, and the chat
 transcript stays on the Wave-owned scroller.

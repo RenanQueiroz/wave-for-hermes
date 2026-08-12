@@ -18,10 +18,7 @@ import type { ChatComposerInputRef } from '@/features/chat/composer/input.types'
 import { useSessionModelPicker } from '@/features/chat/composer/model/picker';
 import { NativeModelConfirmation } from '@/features/chat/composer/model/confirmation';
 import { useNativeState } from '@/features/chat/composer/native-state';
-import {
-  AttachmentSourceSheet,
-  ModelPickerSheet,
-} from '@/features/chat/composer/sheets';
+import { ModelPickerSheet } from '@/features/chat/composer/sheets';
 import {
   appendDictationTranscript,
   inferComposerSelectionAfterTextChange,
@@ -44,8 +41,6 @@ import type { GatewayClient } from '@/services/gateway/gateway-client';
 import type { WaveCommandCatalogEntry } from '@/services/gateway/gateway-commands';
 import type { WaveChatClient } from '@/services/wave/wave-chat-client';
 import { compositeOverlay } from '@/utils/colors';
-
-const SHEET_TO_PICKER_DELAY_MS = 300;
 
 export interface ChatComposerProps {
   activePrompt: boolean;
@@ -147,12 +142,8 @@ export function ChatComposer({
   const selectionRef = useRef({ end: 0, start: 0 });
   const sessionRef = useRef(sessionId);
   const mountedRef = useRef(true);
-  const attachmentPickerTimer = useRef<
-    ReturnType<typeof setTimeout> | undefined
-  >(undefined);
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
-  const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
   const [surfaceHeight, setSurfaceHeight] = useState(100);
   const attachments = useChatAttachments();
   const dictation = useDictation({ client: gatewayClient });
@@ -167,9 +158,6 @@ export function ChatComposer({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (attachmentPickerTimer.current) {
-        clearTimeout(attachmentPickerTimer.current);
-      }
     };
   }, []);
 
@@ -207,7 +195,6 @@ export function ChatComposer({
     void (async () => {
       await inputRef.current?.blur();
       Keyboard.dismiss();
-      setAttachmentSheetOpen(false);
       model.openPicker();
     })();
   }, [model]);
@@ -403,27 +390,20 @@ export function ChatComposer({
     [caret, readDraft, writeDraft],
   );
 
-  const openAttachmentSheet = useCallback(() => {
-    void (async () => {
-      await inputRef.current?.blur();
-      Keyboard.dismiss();
-      model.closePicker();
-      setAttachmentSheetOpen(true);
-    })();
-  }, [model]);
-
-  const selectAttachmentSource = useCallback((action: () => Promise<void>) => {
-    const owner = sessionRef.current;
-    setAttachmentSheetOpen(false);
-    if (attachmentPickerTimer.current) {
-      clearTimeout(attachmentPickerTimer.current);
-    }
-    attachmentPickerTimer.current = setTimeout(() => {
-      attachmentPickerTimer.current = undefined;
-      if (!mountedRef.current || sessionRef.current !== owner) return;
-      void action();
-    }, SHEET_TO_PICKER_DELAY_MS);
-  }, []);
+  // The attachment menu dismisses natively before its action fires, so each
+  // source launches its picker directly — no sheet state or handoff timer.
+  const attachPhoto = useCallback(
+    () => void attachments.takePhoto(),
+    [attachments],
+  );
+  const attachImage = useCallback(
+    () => void attachments.pickImage(),
+    [attachments],
+  );
+  const attachFile = useCallback(
+    () => void attachments.pickFile(),
+    [attachments],
+  );
 
   const action = resolveComposerAction({
     activePrompt,
@@ -534,7 +514,9 @@ export function ChatComposer({
               suggestions={suggestions}
               turnActionError={turnActionError}
               onAcceptSuggestion={acceptSuggestion}
-              onAttachmentPress={openAttachmentSheet}
+              onAttachFile={attachFile}
+              onAttachImage={attachImage}
+              onAttachPhoto={attachPhoto}
               onChangeText={handleChangeText}
               onDictationPress={() => void toggleDictation()}
               onDismissAttachmentError={attachments.dismissError}
@@ -552,16 +534,12 @@ export function ChatComposer({
         </ChatComposerHost>
       </ChatComposerDock>
 
-      <AttachmentSourceSheet
-        colors={colors}
-        isPresented={attachmentSheetOpen}
-        onDismiss={() => setAttachmentSheetOpen(false)}
-        onPickFile={() => selectAttachmentSource(attachments.pickFile)}
-        onPickImage={() => selectAttachmentSource(attachments.pickImage)}
-        onTakePhoto={() => selectAttachmentSource(attachments.takePhoto)}
-      />
       {gatewayClient ? (
-        <ModelPickerSheet colors={colors} model={model} />
+        <ModelPickerSheet
+          colorScheme={theme.mode}
+          colors={colors}
+          model={model}
+        />
       ) : null}
     </>
   );

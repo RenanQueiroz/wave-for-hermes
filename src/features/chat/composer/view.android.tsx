@@ -23,6 +23,7 @@ import {
 import type { ImageSourcePropType } from 'react-native';
 
 import { NativeIconButton } from '@/components/native-icon-button';
+import { AttachmentMenu } from '@/features/chat/composer/attachment-menu';
 import { CHAT_COMPOSER_ICONS } from '@/features/chat/composer/icons';
 import { ChatComposerInput } from '@/features/chat/composer/input';
 import { NativeModelPill } from '@/features/chat/composer/model/pill';
@@ -49,7 +50,9 @@ export function ChatComposerNativeView(props: ChatComposerNativeViewProps) {
     modelLabel,
     nativeSelection,
     nativeText,
-    onAttachmentPress,
+    onAttachFile,
+    onAttachImage,
+    onAttachPhoto,
     onChangeText,
     onDictationPress,
     onInvokeTrailingAction,
@@ -106,15 +109,12 @@ export function ChatComposerNativeView(props: ChatComposerNativeViewProps) {
             verticalAlignment="center"
             horizontalArrangement={{ spacedBy: 8 }}
             modifiers={[fillMaxWidth(), padding(12, 0, 12, 0)]}>
-            <NativeIconButton
-              accessibilityLabel="Add an attachment"
-              backgroundColor={colors.secondary}
+            <AttachmentMenu
+              colors={colors}
               disabled={busy || blocked}
-              foregroundColor={colors.secondaryForeground}
-              icon={CHAT_COMPOSER_ICONS.add}
-              testID="chat-attachment-button"
-              variant="tonal"
-              onPress={onAttachmentPress}
+              onPickFile={onAttachFile}
+              onPickImage={onAttachImage}
+              onTakePhoto={onAttachPhoto}
             />
             {showModel ? (
               <NativeModelPill

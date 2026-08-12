@@ -1,151 +1,55 @@
 import {
+  CircularProgressIndicator,
   Column,
   DropdownMenu,
   DropdownMenuItem,
-  FilledTonalButton,
   Host,
   Icon,
-  LazyColumn,
+  IconButton,
+  ListItem,
   ModalBottomSheet,
+  RadioButton,
   Row,
-  Shape,
   Spacer,
   Switch,
   Text,
-  TextButton,
 } from '@expo/ui/jetpack-compose';
 import {
+  Shapes,
   alpha,
+  clickable,
+  clip,
   fillMaxWidth,
-  height,
   padding,
+  selectable,
+  size,
   testID as testIDModifier,
+  toggleable,
+  verticalScroll,
   weight,
-  width,
 } from '@expo/ui/jetpack-compose/modifiers';
-import { useState } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import type { ImageSourcePropType } from 'react-native';
+import { useCSSVariable } from 'uniwind';
+
+import { useTheme } from '@/hooks/use-theme';
 
 import { CHAT_COMPOSER_ICONS } from '@/features/chat/composer/icons';
 import {
   MODEL_EFFORT_LABELS,
   modelOptionDescription,
 } from '@/features/chat/composer/model/picker';
-import type {
-  AttachmentSourceSheetProps,
-  ModelPickerSheetProps,
-} from '@/features/chat/composer/sheets.types';
+import type { ModelPickerSheetProps } from '@/features/chat/composer/sheets.types';
 import { displayModelName } from '@/features/chat/composer/state';
 import type { ComposerColors } from '@/features/chat/composer/view.types';
 import { modelFamilies } from '@/services/gateway/gateway-models';
 
-export function AttachmentSourceSheet({
-  colors,
-  isPresented,
-  onDismiss,
-  onPickFile,
-  onPickImage,
-  onTakePhoto,
-}: AttachmentSourceSheetProps) {
-  if (!isPresented) return null;
-
-  return (
-    <Host pointerEvents="none" style={{ position: 'absolute' }}>
-      <ModalBottomSheet
-        contentColor={colors.foreground}
-        containerColor={colors.background}
-        showDragHandle
-        skipPartiallyExpanded
-        modifiers={[testIDModifier('chat-attachment-sheet')]}
-        onDismissRequest={onDismiss}>
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement="spaceEvenly"
-          modifiers={[fillMaxWidth(), padding(16, 8, 16, 24)]}>
-          <AttachmentSourceButton
-            accessibilityLabel="Take a photo"
-            colors={colors}
-            icon={CHAT_COMPOSER_ICONS.camera as ImageSourcePropType}
-            label="Camera"
-            testID="attachment-source-camera"
-            onPress={onTakePhoto}
-          />
-          <AttachmentSourceButton
-            accessibilityLabel="Choose a photo"
-            colors={colors}
-            icon={CHAT_COMPOSER_ICONS.photos as ImageSourcePropType}
-            label="Photos"
-            testID="attachment-source-photos"
-            onPress={onPickImage}
-          />
-          <AttachmentSourceButton
-            accessibilityLabel="Choose a text file"
-            colors={colors}
-            icon={CHAT_COMPOSER_ICONS.paperclip as ImageSourcePropType}
-            label="Files"
-            testID="attachment-source-files"
-            onPress={onPickFile}
-          />
-        </Row>
-      </ModalBottomSheet>
-    </Host>
-  );
-}
-
-function AttachmentSourceButton({
-  accessibilityLabel,
-  colors,
-  icon,
-  label,
-  onPress,
-  testID,
-}: {
-  accessibilityLabel: string;
-  colors: ComposerColors;
-  icon: ImageSourcePropType;
-  label: string;
-  onPress(): void;
-  testID: string;
-}) {
-  return (
-    <FilledTonalButton
-      colors={{
-        containerColor: colors.muted,
-        contentColor: colors.foreground,
-      }}
-      contentPadding={{ bottom: 8, end: 8, start: 8, top: 8 }}
-      shape={Shape.RoundedCorner({
-        cornerRadii: {
-          bottomEnd: 16,
-          bottomStart: 16,
-          topEnd: 16,
-          topStart: 16,
-        },
-      })}
-      modifiers={[width(96), height(84), testIDModifier(testID)]}
-      onClick={onPress}>
-      <Column
-        horizontalAlignment="center"
-        verticalArrangement={{ spacedBy: 8 }}>
-        <Icon
-          contentDescription={accessibilityLabel}
-          source={icon}
-          size={22}
-          tint={colors.foreground}
-        />
-        <Text
-          color={colors.foreground}
-          style={{ fontSize: 13, fontWeight: '500' }}>
-          {label}
-        </Text>
-      </Column>
-    </FilledTonalButton>
-  );
-}
-
 export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
   const [effortMenuOpen, setEffortMenuOpen] = useState(false);
+  const rowSurface = useSheetRowSurface();
   if (!model.open) return null;
+
+  const rowPalette = sheetRowPalette(colors, rowSurface);
 
   return (
     <Host pointerEvents="none" style={{ position: 'absolute' }}>
@@ -158,26 +62,68 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
         sheetGesturesEnabled
         modifiers={[testIDModifier('chat-model-sheet')]}
         onDismissRequest={model.closePicker}>
-        <LazyColumn
-          contentPadding={{ bottom: 24, end: 16, start: 16, top: 4 }}
+        {/* A plain scrollable Column: LazyColumn inside ModalBottomSheet
+            swallows every pointer event before it reaches JS (device-verified
+            on Pixel 8 Pro), and the model catalog is bounded anyway. */}
+        <Column
           horizontalAlignment="start"
-          verticalArrangement={{ spacedBy: 2 }}
-          modifiers={[fillMaxWidth()]}>
-          <Text
-            color={colors.foreground}
-            style={{ fontSize: 20, fontWeight: '700' }}
-            modifiers={[
-              padding(8, 0, 8, 8),
-              testIDModifier('chat-model-picker'),
-            ]}>
-            Model for this chat
-          </Text>
+          verticalArrangement={{ spacedBy: 0 }}
+          modifiers={[
+            fillMaxWidth(),
+            verticalScroll(),
+            padding(16, 0, 16, 24),
+          ]}>
+          <Row
+            verticalAlignment="center"
+            modifiers={[fillMaxWidth(), padding(4, 0, 0, 8)]}>
+            <Text
+              color={colors.foreground}
+              style={{ typography: 'titleLarge' }}
+              modifiers={[testIDModifier('chat-model-picker')]}>
+              Model for this chat
+            </Text>
+            <Spacer modifiers={[weight(1)]} />
+            {model.refreshing ? (
+              <Row
+                verticalAlignment="center"
+                modifiers={[size(40, 40), padding(11, 11, 11, 11)]}>
+                <CircularProgressIndicator
+                  color={colors.mutedForeground}
+                  strokeWidth={2}
+                  modifiers={[size(18, 18)]}
+                />
+              </Row>
+            ) : (
+              <IconButton
+                colors={{ contentColor: colors.mutedForeground }}
+                modifiers={[size(40, 40), testIDModifier('chat-model-refresh')]}
+                onClick={() => void model.refreshModels()}>
+                <Icon
+                  contentDescription="Refresh the model list"
+                  source={CHAT_COMPOSER_ICONS.refresh as ImageSourcePropType}
+                  size={18}
+                  tint={colors.mutedForeground}
+                />
+              </IconButton>
+            )}
+          </Row>
           {model.isLoading ? (
-            <SheetMessage
-              colors={colors}
-              testID="chat-model-loading"
-              text="Loading models…"
-            />
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 8 }}
+              modifiers={[fillMaxWidth(), padding(4, 8, 4, 8)]}>
+              <CircularProgressIndicator
+                color={colors.mutedForeground}
+                strokeWidth={2}
+                modifiers={[size(16, 16)]}
+              />
+              <Text
+                color={colors.mutedForeground}
+                style={{ typography: 'bodyMedium' }}
+                modifiers={[testIDModifier('chat-model-loading')]}>
+                Loading models…
+              </Text>
+            </Row>
           ) : model.isInitialError ? (
             <SheetMessage
               colors={colors}
@@ -187,107 +133,103 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
             />
           ) : model.catalog ? (
             <>
-              {model.showReasoning ? (
-                <SwitchRow
-                  disabled={model.busyControl !== undefined}
-                  label="Thinking"
-                  testID="chat-model-thinking"
-                  value={model.thinkingEnabled}
-                  onValueChange={model.setThinking}
-                />
+              {model.showReasoning || model.showFast ? (
+                <Column
+                  verticalArrangement={{ spacedBy: SHEET_ROW_SEGMENT_GAP }}
+                  modifiers={[fillMaxWidth(), padding(0, 0, 0, 12)]}>
+                  {[
+                    model.showReasoning ? (
+                      <SheetSwitchRow
+                        key="thinking"
+                        disabled={model.busyControl !== undefined}
+                        label="Thinking"
+                        labelColor={colors.foreground}
+                        palette={rowPalette}
+                        testID="chat-model-thinking"
+                        value={model.thinkingEnabled}
+                        onValueChange={model.setThinking}
+                      />
+                    ) : null,
+                    model.showFast ? (
+                      <SheetSwitchRow
+                        key="fast"
+                        disabled={model.busyControl !== undefined}
+                        label="Fast mode"
+                        labelColor={colors.foreground}
+                        palette={rowPalette}
+                        testID="chat-model-fast"
+                        value={model.fastEnabled}
+                        onValueChange={model.setFastMode}
+                      />
+                    ) : null,
+                    model.showReasoning && model.thinkingEnabled ? (
+                      <ListItem
+                        key="effort"
+                        colors={rowPalette}
+                        modifiers={[
+                          fillMaxWidth(),
+                          ...(model.busyControl === undefined
+                            ? [clickable(() => setEffortMenuOpen(true))]
+                            : []),
+                          testIDModifier('chat-model-reasoning-row'),
+                        ]}>
+                        <ListItem.HeadlineContent>
+                          <Text
+                            color={colors.foreground}
+                            style={{ typography: 'titleMedium' }}
+                            modifiers={[padding(4, 8, 0, 8)]}>
+                            Effort
+                          </Text>
+                        </ListItem.HeadlineContent>
+                        <ListItem.TrailingContent>
+                          <DropdownMenu
+                            color={colors.card}
+                            expanded={effortMenuOpen}
+                            onDismissRequest={() => setEffortMenuOpen(false)}>
+                            <DropdownMenu.Trigger>
+                              <Row
+                                verticalAlignment="center"
+                                modifiers={[
+                                  padding(0, 8, 4, 8),
+                                  testIDModifier('chat-model-reasoning'),
+                                ]}>
+                                <Text
+                                  color={colors.mutedForeground}
+                                  style={{ typography: 'bodyLarge' }}>
+                                  {MODEL_EFFORT_LABELS[model.selectedReasoning]}
+                                </Text>
+                              </Row>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Items>
+                              {model.reasoningEfforts.map((effort) => (
+                                <DropdownMenuItem
+                                  key={effort}
+                                  elementColors={{
+                                    textColor: colors.foreground,
+                                  }}
+                                  onClick={() => {
+                                    setEffortMenuOpen(false);
+                                    model.setReasoning(effort);
+                                  }}>
+                                  <DropdownMenuItem.Text>
+                                    <Text color={colors.foreground}>
+                                      {MODEL_EFFORT_LABELS[effort]}
+                                    </Text>
+                                  </DropdownMenuItem.Text>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenu.Items>
+                          </DropdownMenu>
+                        </ListItem.TrailingContent>
+                      </ListItem>
+                    ) : null,
+                  ]
+                    .filter((row): row is ReactElement => row !== null)
+                    .map((row, index, rows) =>
+                      positionSheetRow(row, index, rows.length),
+                    )}
+                </Column>
               ) : null}
-              {model.showFast ? (
-                <SwitchRow
-                  disabled={model.busyControl !== undefined}
-                  label="Fast mode"
-                  testID="chat-model-fast"
-                  value={model.fastEnabled}
-                  onValueChange={model.setFastMode}
-                />
-              ) : null}
-              {model.showReasoning && model.thinkingEnabled ? (
-                <Row
-                  verticalAlignment="center"
-                  modifiers={[
-                    fillMaxWidth(),
-                    padding(8, 6, 8, 6),
-                    testIDModifier('chat-model-reasoning-row'),
-                  ]}>
-                  <Text
-                    color={colors.foreground}
-                    style={{ fontSize: 14, fontWeight: '600' }}>
-                    Effort
-                  </Text>
-                  <Spacer modifiers={[weight(1)]} />
-                  <DropdownMenu
-                    color={colors.card}
-                    expanded={effortMenuOpen}
-                    onDismissRequest={() => setEffortMenuOpen(false)}>
-                    <DropdownMenu.Trigger>
-                      <TextButton
-                        enabled={model.busyControl === undefined}
-                        colors={{ contentColor: colors.foreground }}
-                        modifiers={[testIDModifier('chat-model-reasoning')]}
-                        onClick={() => setEffortMenuOpen(true)}>
-                        <Text
-                          color={colors.foreground}
-                          style={{ fontSize: 14 }}>
-                          {MODEL_EFFORT_LABELS[model.selectedReasoning]}
-                        </Text>
-                      </TextButton>
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Items>
-                      {model.reasoningEfforts.map((effort) => (
-                        <DropdownMenuItem
-                          key={effort}
-                          elementColors={{ textColor: colors.foreground }}
-                          onClick={() => {
-                            setEffortMenuOpen(false);
-                            model.setReasoning(effort);
-                          }}>
-                          <DropdownMenuItem.Text>
-                            <Text color={colors.foreground}>
-                              {MODEL_EFFORT_LABELS[effort]}
-                            </Text>
-                          </DropdownMenuItem.Text>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenu.Items>
-                  </DropdownMenu>
-                </Row>
-              ) : null}
-              <Row
-                verticalAlignment="center"
-                modifiers={[fillMaxWidth(), padding(8, 6, 8, 6)]}>
-                <Text
-                  color={colors.mutedForeground}
-                  style={{ fontSize: 12, fontWeight: '600' }}>
-                  Models
-                </Text>
-                <Spacer modifiers={[weight(1)]} />
-                <TextButton
-                  enabled={!model.refreshing}
-                  colors={{ contentColor: colors.foreground }}
-                  contentPadding={{ bottom: 0, end: 8, start: 8, top: 0 }}
-                  modifiers={[height(36), testIDModifier('chat-model-refresh')]}
-                  onClick={() => void model.refreshModels()}>
-                  <Row
-                    verticalAlignment="center"
-                    horizontalArrangement={{ spacedBy: 5 }}>
-                    <Icon
-                      contentDescription="Refresh"
-                      source={
-                        CHAT_COMPOSER_ICONS.refresh as ImageSourcePropType
-                      }
-                      size={15}
-                      tint={colors.foreground}
-                    />
-                    <Text color={colors.foreground} style={{ fontSize: 13 }}>
-                      {model.refreshing ? 'Refreshing…' : 'Refresh'}
-                    </Text>
-                  </Row>
-                </TextButton>
-              </Row>
               {model.catalog.providers.length === 0 ? (
                 <SheetMessage
                   colors={colors}
@@ -295,93 +237,122 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
                   text="This server lists no switchable models."
                 />
               ) : (
-                model.catalog.providers.flatMap((provider) => [
-                  <Text
-                    key={`${provider.slug}-header`}
-                    color={colors.mutedForeground}
-                    style={{ fontSize: 12, fontWeight: '600' }}
-                    modifiers={[padding(8, 10, 8, 0)]}>
-                    {provider.name}
-                  </Text>,
-                  ...modelFamilies(provider.models).map((family) => {
-                    const option = family.option;
-                    const selected =
-                      provider.current &&
-                      (option.id === model.catalog?.currentModel ||
-                        family.fastVariant?.id === model.catalog?.currentModel);
-                    const description = modelOptionDescription(option);
-                    const testID = `chat-model-${provider.slug}-${option.id}`;
-                    return (
-                      <TextButton
-                        key={`${provider.slug}-${option.id}`}
-                        enabled={!option.unavailable && !model.busyModel}
-                        colors={{ contentColor: colors.foreground }}
-                        contentPadding={{
-                          bottom: 8,
-                          end: 10,
-                          start: 10,
-                          top: 8,
-                        }}
-                        modifiers={[
-                          fillMaxWidth(),
-                          alpha(option.unavailable ? 0.45 : 1),
-                          testIDModifier(testID),
-                        ]}
-                        onClick={() => {
-                          if (selected) {
-                            model.closePicker();
-                            return;
-                          }
-                          void model.select({
-                            model: option.id,
-                            provider: provider.slug,
-                          });
-                        }}>
-                        <Row
-                          verticalAlignment="center"
-                          modifiers={[fillMaxWidth()]}>
-                          <Column
-                            horizontalAlignment="start"
-                            verticalArrangement={{ spacedBy: 2 }}>
-                            <Text
-                              color={colors.foreground}
-                              maxLines={1}
-                              overflow="ellipsis"
-                              style={{ fontSize: 14, fontWeight: '500' }}>
-                              {displayModelName(option.id)}
-                            </Text>
-                            {description ? (
-                              <Text
-                                color={colors.mutedForeground}
-                                maxLines={1}
-                                overflow="ellipsis"
-                                style={{ fontSize: 12 }}>
-                                {description}
-                              </Text>
-                            ) : null}
-                          </Column>
-                          <Spacer modifiers={[weight(1)]} />
-                          {model.busyModel === option.id ? (
-                            <Text
-                              color={colors.mutedForeground}
-                              style={{ fontSize: 12 }}>
-                              Switching…
-                            </Text>
-                          ) : selected ? (
-                            <Icon
-                              contentDescription="Selected"
-                              source={
-                                CHAT_COMPOSER_ICONS.check as ImageSourcePropType
-                              }
-                              size={18}
-                              tint={colors.primary}
-                            />
-                          ) : null}
-                        </Row>
-                      </TextButton>
-                    );
-                  }),
-                ])
+                model.catalog.providers.map((provider) => {
+                  const families = modelFamilies(provider.models);
+                  return (
+                    <Column
+                      key={provider.slug}
+                      verticalArrangement={{ spacedBy: SHEET_ROW_SEGMENT_GAP }}
+                      modifiers={[fillMaxWidth(), padding(0, 0, 0, 12)]}>
+                      <Text
+                        color={colors.mutedForeground}
+                        style={{ typography: 'labelMedium' }}
+                        modifiers={[padding(16, 2, 16, 6)]}>
+                        {provider.name}
+                      </Text>
+                      {families.map((family, index) => {
+                        const option = family.option;
+                        const selected = Boolean(
+                          provider.current &&
+                          (option.id === model.catalog?.currentModel ||
+                            family.fastVariant?.id ===
+                              model.catalog?.currentModel),
+                        );
+                        const description = modelOptionDescription(option);
+                        const testID = `chat-model-${provider.slug}-${option.id}`;
+                        const interactive =
+                          !option.unavailable && !model.busyModel;
+                        return (
+                          <ListItem
+                            key={`${provider.slug}-${option.id}`}
+                            colors={rowPalette}
+                            modifiers={[
+                              fillMaxWidth(),
+                              clip(
+                                sheetRowShape(
+                                  rowPosition(index, families.length),
+                                ),
+                              ),
+                              alpha(option.unavailable ? 0.45 : 1),
+                              ...(interactive
+                                ? [
+                                    selectable(
+                                      selected,
+                                      () => {
+                                        if (selected) {
+                                          model.closePicker();
+                                          return;
+                                        }
+                                        void model.select({
+                                          model: option.id,
+                                          provider: provider.slug,
+                                        });
+                                      },
+                                      'radioButton',
+                                    ),
+                                  ]
+                                : []),
+                              testIDModifier(testID),
+                            ]}>
+                            <ListItem.HeadlineContent>
+                              <Column
+                                verticalArrangement={{ spacedBy: 2 }}
+                                modifiers={[padding(4, 8, 0, 8)]}>
+                                <Text
+                                  color={colors.foreground}
+                                  maxLines={1}
+                                  overflow="ellipsis"
+                                  style={{ typography: 'titleMedium' }}>
+                                  {displayModelName(option.id)}
+                                </Text>
+                                {description ? (
+                                  <Text
+                                    color={colors.mutedForeground}
+                                    maxLines={1}
+                                    overflow="ellipsis"
+                                    style={{ typography: 'bodyMedium' }}>
+                                    {description}
+                                  </Text>
+                                ) : null}
+                              </Column>
+                            </ListItem.HeadlineContent>
+                            <ListItem.TrailingContent>
+                              <Row modifiers={[padding(0, 0, 4, 0)]}>
+                                {model.busyModel === option.id ? (
+                                  <CircularProgressIndicator
+                                    color={colors.mutedForeground}
+                                    strokeWidth={2}
+                                    modifiers={[size(20, 20)]}
+                                  />
+                                ) : option.unavailable ? (
+                                  <Row modifiers={[size(20, 20)]} />
+                                ) : (
+                                  <RadioButton
+                                    selected={selected}
+                                    onClick={
+                                      interactive
+                                        ? () => {
+                                            if (selected) {
+                                              model.closePicker();
+                                              return;
+                                            }
+                                            void model.select({
+                                              model: option.id,
+                                              provider: provider.slug,
+                                            });
+                                          }
+                                        : undefined
+                                    }
+                                  />
+                                )}
+                              </Row>
+                            </ListItem.TrailingContent>
+                          </ListItem>
+                        );
+                      })}
+                    </Column>
+                  );
+                })
               )}
             </>
           ) : null}
@@ -393,38 +364,135 @@ export function ModelPickerSheet({ colors, model }: ModelPickerSheetProps) {
               text={model.error}
             />
           ) : null}
-        </LazyColumn>
+        </Column>
       </ModalBottomSheet>
     </Host>
   );
 }
 
-function SwitchRow({
+type SheetRowPosition = 'first' | 'last' | 'middle' | 'only';
+type SheetRowPalette = NonNullable<Parameters<typeof ListItem>[0]['colors']>;
+
+// Mirrors the validated Android settings-row language
+// (settings-list-item.android.tsx): segmented rounded corners, a 2dp gap,
+// and rows on the shared PanelUI surface token instead of the page background.
+const SHEET_ROW_INNER_CORNER_RADIUS = 4;
+const SHEET_ROW_OUTER_CORNER_RADIUS = 16;
+const SHEET_ROW_SEGMENT_GAP = 2;
+const SHEET_ROW_SURFACE_TOKEN = '--color-surface-tertiary';
+
+function useSheetRowSurface(): string {
+  const theme = useTheme();
+  const [surface] = useCSSVariable([SHEET_ROW_SURFACE_TOKEN]);
+  return typeof surface === 'string' ? surface : theme.backgroundElement;
+}
+
+function sheetRowPalette(
+  colors: ComposerColors,
+  surface: string,
+): SheetRowPalette {
+  return {
+    containerColor: surface,
+    contentColor: colors.foreground,
+    leadingContentColor: colors.mutedForeground,
+    overlineContentColor: colors.mutedForeground,
+    supportingContentColor: colors.mutedForeground,
+    trailingContentColor: colors.mutedForeground,
+  };
+}
+
+function rowPosition(index: number, count: number): SheetRowPosition {
+  if (count === 1) return 'only';
+  if (index === 0) return 'first';
+  if (index === count - 1) return 'last';
+  return 'middle';
+}
+
+function sheetRowShape(position: SheetRowPosition) {
+  const topRadius =
+    position === 'first' || position === 'only'
+      ? SHEET_ROW_OUTER_CORNER_RADIUS
+      : SHEET_ROW_INNER_CORNER_RADIUS;
+  const bottomRadius =
+    position === 'last' || position === 'only'
+      ? SHEET_ROW_OUTER_CORNER_RADIUS
+      : SHEET_ROW_INNER_CORNER_RADIUS;
+
+  return Shapes.RoundedCorner({
+    bottomEnd: bottomRadius,
+    bottomStart: bottomRadius,
+    topEnd: topRadius,
+    topStart: topRadius,
+  });
+}
+
+/** Re-key a control-group row with its segment shape once siblings are known. */
+function positionSheetRow(
+  row: ReactElement,
+  index: number,
+  count: number,
+): ReactNode {
+  return (
+    <Column
+      key={`sheet-row-${index}`}
+      modifiers={[
+        fillMaxWidth(),
+        clip(sheetRowShape(rowPosition(index, count))),
+      ]}>
+      {row}
+    </Column>
+  );
+}
+
+function SheetSwitchRow({
   disabled,
   label,
-  onValueChange,
+  labelColor,
+  palette,
   testID,
   value,
+  onValueChange,
 }: {
   disabled: boolean;
   label: string;
-  onValueChange(value: boolean): void;
+  labelColor: string;
+  palette: SheetRowPalette;
   testID: string;
   value: boolean;
+  onValueChange(value: boolean): void;
 }) {
   return (
-    <Row
-      verticalAlignment="center"
-      modifiers={[fillMaxWidth(), padding(8, 6, 8, 6)]}>
-      <Text style={{ fontSize: 14 }}>{label}</Text>
-      <Spacer modifiers={[weight(1)]} />
-      <Switch
-        enabled={!disabled}
-        value={value}
-        modifiers={[testIDModifier(testID)]}
-        onCheckedChange={onValueChange}
-      />
-    </Row>
+    <ListItem
+      colors={palette}
+      modifiers={[
+        fillMaxWidth(),
+        ...(disabled
+          ? []
+          : [
+              toggleable(value, () => onValueChange(!value), {
+                role: 'switch',
+              }),
+            ]),
+      ]}>
+      <ListItem.HeadlineContent>
+        <Text
+          color={labelColor}
+          style={{ typography: 'titleMedium' }}
+          modifiers={[padding(4, 8, 0, 8)]}>
+          {label}
+        </Text>
+      </ListItem.HeadlineContent>
+      <ListItem.TrailingContent>
+        <Row modifiers={[padding(0, 0, 4, 0)]}>
+          <Switch
+            enabled={!disabled}
+            value={value}
+            modifiers={[testIDModifier(testID)]}
+            onCheckedChange={onValueChange}
+          />
+        </Row>
+      </ListItem.TrailingContent>
+    </ListItem>
   );
 }
 
@@ -442,10 +510,10 @@ function SheetMessage({
   return (
     <Text
       color={destructive ? colors.destructive : colors.mutedForeground}
-      style={{ fontSize: 12, textAlign: 'center' }}
+      style={{ textAlign: 'center', typography: 'bodyMedium' }}
       modifiers={[
         fillMaxWidth(),
-        padding(8, destructive ? 6 : 2, 8, destructive ? 6 : 2),
+        padding(8, destructive ? 8 : 4, 8, destructive ? 8 : 4),
         testIDModifier(testID),
       ]}>
       {text}
