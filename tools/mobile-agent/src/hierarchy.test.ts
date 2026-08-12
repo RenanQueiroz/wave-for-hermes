@@ -19,9 +19,9 @@ const IOS_XML = `<?xml version="1.0"?>
 const ANDROID_XML = `<?xml version="1.0"?>
 <hierarchy>
   <android.widget.FrameLayout enabled="true" displayed="true" bounds="[0,0][1080,2400]">
-    <android.widget.Button text="Continue" resource-id="com.renanqueiroz.wave:id/continue" content-desc="Continue" clickable="true" enabled="true" displayed="true" bounds="[20,100][220,180]"/>
+    <android.widget.Button text="Continue" resource-id="com.renanqueiroz.wave.dev:id/continue" content-desc="Continue" clickable="true" enabled="true" displayed="true" bounds="[20,100][220,180]"/>
     <android.view.View clickable="true" enabled="true" displayed="true" bounds="[20,200][220,280]">
-      <android.widget.TextView text="Explore" resource-id="com.renanqueiroz.wave:id/navigation_bar_item_small_label_view" a11y-important="false" clickable="false" enabled="true" displayed="true" bounds="[40,220][200,260]"/>
+      <android.widget.TextView text="Explore" resource-id="com.renanqueiroz.wave.dev:id/navigation_bar_item_small_label_view" a11y-important="false" clickable="false" enabled="true" displayed="true" bounds="[40,220][200,260]"/>
     </android.view.View>
   </android.widget.FrameLayout>
 </hierarchy>`;
@@ -48,7 +48,7 @@ test('normalizes iOS accessibility nodes and locators', () => {
 test('normalizes Android resource IDs and bounds', () => {
   const snapshot = parseHierarchy(ANDROID_XML, 'android-session', 'android');
   const result = findHierarchyNodes(snapshot, {
-    resourceId: 'com.renanqueiroz.wave:id/continue',
+    resourceId: 'com.renanqueiroz.wave.dev:id/continue',
     exact: true,
   });
 

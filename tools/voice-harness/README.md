@@ -44,7 +44,7 @@ non-empty username/password:
 - Android emulator: `http://10.0.2.2:8790`
 
 Pre-grant the microphone so the recorder starts (the recording's content is
-irrelevant): `xcrun simctl privacy booted grant microphone com.renanqueiroz.wave`
+irrelevant): `xcrun simctl privacy booted grant microphone com.renanqueiroz.wave.dev`
 on iOS, or the mobile agent's permissions tool on Android. Granting through
 `simctl privacy` can terminate a running app — relaunch it after granting.
 

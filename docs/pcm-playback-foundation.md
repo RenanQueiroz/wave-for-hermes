@@ -114,7 +114,7 @@ full-duplex/AEC proof, but is not a Wave dependency.
 ## Development proof
 
 Development builds expose **Settings → Development → Streaming PCM playback proof**. The same
-screen can be opened directly with `wave://development`; the route and proof remain unavailable in
+screen can be opened directly with `wave-dev://development`; the route and proof remain unavailable in
 production builds.
 
 One run:

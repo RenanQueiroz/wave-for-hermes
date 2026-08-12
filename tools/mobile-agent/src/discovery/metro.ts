@@ -5,7 +5,7 @@ import type {
   MetroDiscovery,
   MetroServer,
 } from '../types.js';
-import type { MobileAgentConfig } from '../config.js';
+import { ANDROID_PACKAGE, type MobileAgentConfig } from '../config.js';
 
 interface RawInspectorTarget {
   id?: unknown;
@@ -30,7 +30,7 @@ export async function discoverMetro(
     await Promise.all(urls.map(async (url) => await probeMetro(url)))
   ).filter((server): server is MetroServer => server !== undefined);
   const withWave = servers.filter((server) =>
-    server.targets.some((target) => target.appId === 'com.renanqueiroz.wave'),
+    server.targets.some((target) => target.appId === ANDROID_PACKAGE),
   );
   let selected: MetroServer | undefined;
 
@@ -60,7 +60,7 @@ export async function discoverMetro(
     });
   } else {
     const target = selected.targets.find(
-      (candidate) => candidate.appId === 'com.renanqueiroz.wave',
+      (candidate) => candidate.appId === ANDROID_PACKAGE,
     );
     diagnostics.push({
       code: target ? 'METRO_AND_CDP_READY' : 'METRO_READY',

@@ -82,9 +82,12 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "start": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start",
-    "android": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --android",
-    "ios": "cross-env EXPO_UNSTABLE_MCP_SERVER=1 expo start --ios",
+    "start": "cross-env APP_VARIANT=development EXPO_UNSTABLE_MCP_SERVER=1 expo start",
+    "android": "cross-env APP_VARIANT=development EXPO_UNSTABLE_MCP_SERVER=1 expo start --android",
+    "ios": "cross-env APP_VARIANT=development EXPO_UNSTABLE_MCP_SERVER=1 expo start --ios",
+    "prebuild:development": "cross-env APP_VARIANT=development expo prebuild --clean",
+    "run:development:android": "cross-env APP_VARIANT=development expo run:android",
+    "run:development:ios": "cross-env APP_VARIANT=development expo run:ios",
     "build:contracts": "npm run build --workspace @wave/contracts",
     "build:preview:android:local": "npx --yes eas-cli@21.4.0 build --platform android --profile preview --local --output ./artifacts/wave-preview.apk",
     "build:production:android:local": "npx --yes eas-cli@21.4.0 build --platform android --profile production --local --output ./artifacts/wave-production.aab",

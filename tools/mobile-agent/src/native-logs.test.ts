@@ -11,16 +11,14 @@ test('finds a Radon iOS app process when its command includes launch arguments',
   const deviceSetPath =
     '/Users/test/Library/Caches/com.swmansion.radon-ide/Devices/iOS';
   const udid = 'D0C58420-E685-4A70-9C69-AA634B245C82';
+  const appContainerPath = `${deviceSetPath}/${udid}/data/Containers/Bundle/Application/APP/waveDev.app`;
   const processList = [
-    `77448 /Library/Developer/CoreSimulator/simctl --set ${deviceSetPath} launch ${udid} com.renanqueiroz.wave`,
-    `77477 ${deviceSetPath}/${udid}/data/Containers/Bundle/Application/APP/wave.app/wave --initialUrl exp+wave://expo-development-client`,
-    `77478 ${deviceSetPath}/${udid}/data/Containers/Bundle/Application/APP/wave.app/wave-helper`,
+    `77448 /Library/Developer/CoreSimulator/simctl --set ${deviceSetPath} launch ${udid} com.renanqueiroz.wave.dev`,
+    `77477 ${appContainerPath}/waveDev --initialUrl exp+wave://expo-development-client`,
+    `77478 ${appContainerPath}/waveDev-helper`,
   ].join('\n');
 
-  assert.deepEqual(
-    findIosProcessIds(processList, deviceSetPath, udid),
-    [77477],
-  );
+  assert.deepEqual(findIosProcessIds(processList, appContainerPath), [77477]);
 });
 
 test('parses and redacts iOS NDJSON logs', () => {
@@ -30,7 +28,7 @@ test('parses and redacts iOS NDJSON logs', () => {
       timestamp: '2026-07-29 01:38:22.030624-0400',
       messageType: 'Error',
       processImagePath: '/path/wave.app/wave',
-      subsystem: 'com.renanqueiroz.wave',
+      subsystem: 'com.renanqueiroz.wave.dev',
       category: 'network',
       eventMessage: 'token=secret-value request failed',
     }),

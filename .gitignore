@@ -30,7 +30,7 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files — never commit secrets; nothing in the app reads these
+# local env files — never commit secrets; app config reads only APP_VARIANT
 .env
 .env.*
 

@@ -14,7 +14,7 @@ import type { HierarchySnapshot } from './hierarchy.js';
 const identity = {
   platform: 'ios' as const,
   deviceId: 'radon-device',
-  applicationId: 'com.renanqueiroz.wave',
+  applicationId: 'com.renanqueiroz.wave.dev',
   sessionId: 'session-1',
 };
 
@@ -71,7 +71,7 @@ test('detached reloads use the same envelope without inventing a session', async
     identity: {
       platform: 'android',
       deviceId: 'emulator-5554',
-      applicationId: 'com.renanqueiroz.wave',
+      applicationId: 'com.renanqueiroz.wave.dev',
     },
     action: 'reload',
     target: { runtime: 'hermes' },

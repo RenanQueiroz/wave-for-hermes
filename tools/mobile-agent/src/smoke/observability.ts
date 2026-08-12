@@ -1,4 +1,4 @@
-import type { MobileAgentConfig } from '../config.js';
+import { ANDROID_PACKAGE, type MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
 import { callToolText, connectMobileAgentClient } from '../mcp/client.js';
 import type { InspectorTarget, MobilePlatform } from '../types.js';
@@ -27,8 +27,7 @@ export async function runObservabilitySmoke(
     if (
       doctor.metro.selected?.targets.some(
         (candidate) =>
-          candidate.appId === 'com.renanqueiroz.wave' &&
-          candidate.webSocketDebuggerUrl,
+          candidate.appId === ANDROID_PACKAGE && candidate.webSocketDebuggerUrl,
       )
     ) {
       break;
@@ -40,8 +39,7 @@ export async function runObservabilitySmoke(
   const targets =
     metro?.targets.filter(
       (candidate) =>
-        candidate.appId === 'com.renanqueiroz.wave' &&
-        candidate.webSocketDebuggerUrl,
+        candidate.appId === ANDROID_PACKAGE && candidate.webSocketDebuggerUrl,
     ) ?? [];
   const target = selectTarget(targets, options.targetId);
   if (!metro || !target?.webSocketDebuggerUrl) {

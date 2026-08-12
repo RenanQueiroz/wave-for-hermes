@@ -77,21 +77,24 @@ test('safe lifecycle and deep-link helpers use platform-specific mobile commands
   await terminateNativeApplication(ios);
   await terminateNativeApplication(android);
   await backgroundNativeApplication(android, 3);
-  await openNativeDeepLink(ios, 'wave://chat', true);
+  await openNativeDeepLink(ios, 'wave-dev://chat', true);
 
   assert.deepEqual(commands, [
     {
       command: 'mobile: terminateApp',
-      parameters: { bundleId: 'com.renanqueiroz.wave' },
+      parameters: { bundleId: 'com.renanqueiroz.wave.dev' },
     },
     {
       command: 'mobile: terminateApp',
-      parameters: { appId: 'com.renanqueiroz.wave' },
+      parameters: { appId: 'com.renanqueiroz.wave.dev' },
     },
     { command: 'mobile: backgroundApp', parameters: { seconds: 3 } },
     {
       command: 'mobile: deepLink',
-      parameters: { url: 'wave://chat', bundleId: 'com.renanqueiroz.wave' },
+      parameters: {
+        url: 'wave-dev://chat',
+        bundleId: 'com.renanqueiroz.wave.dev',
+      },
     },
   ]);
 });
@@ -135,7 +138,7 @@ function resolved(
     sessionId: 'session-1',
     platform,
     deviceId: 'device-1',
-    applicationId: 'com.renanqueiroz.wave',
+    applicationId: 'com.renanqueiroz.wave.dev',
   };
 }
 

@@ -216,16 +216,20 @@ requires `react-native-webrtc`, `react-native-legal`, `expo-secure-store`,
 run it:
 
 ```bash
-npx expo prebuild --clean
-npx expo run:ios
+npm run prebuild:development
+npm run run:development:ios
 # or
-npx expo run:android
+npm run run:development:android -- --device
 ```
+
+The local scripts explicitly select the development variant. When switching variants manually,
+set the same `APP_VARIANT` for both `expo prebuild --clean` and `expo run`; native identifiers are
+baked in during Prebuild and a stale generated project will still launch the previous variant.
 
 ### Streaming PCM playback proof
 
 The development client includes a focused native proof for the raw Int16 PCM stream returned by
-Hermes v0.20. Open **Settings → Development** while connected, or open `wave://development`
+Hermes v0.20. Open **Settings → Development** while connected, or open `wave-dev://development`
 directly in a development build, then run **Streaming PCM playback proof**. It checks bounded
 20 ms chunk scheduling, exact drain, feed underruns, a sample-rate restart, cancellation, and
 cleanup. After a pass, **Run again** starts another proof without requiring Stop. The route is
@@ -240,10 +244,19 @@ pops or crackles; the owner accepted physical voice-mode behavior on 2026-08-07.
 now backs production streamed gateway speech. See
 [`docs/pcm-playback-foundation.md`](./docs/pcm-playback-foundation.md) for the exact contract.
 
-Native identifiers are configured in `app.json`:
+`app.json` remains the source of truth for the production identity. The thin `app.config.ts`
+overlay derives these installable variants from `APP_VARIANT`:
 
-- iOS bundle identifier: `com.renanqueiroz.wave`
-- Android application ID: `com.renanqueiroz.wave`
+| Variant       | Display name     | iOS bundle ID / Android application ID | URL scheme     |
+| ------------- | ---------------- | -------------------------------------- | -------------- |
+| `development` | `wave (Dev)`     | `com.renanqueiroz.wave.dev`            | `wave-dev`     |
+| `preview`     | `wave (Preview)` | `com.renanqueiroz.wave.preview`        | `wave-preview` |
+| `production`  | `wave`           | `com.renanqueiroz.wave`                | `wave`         |
+
+Development is the safe default for local Expo commands. Unknown values fail config resolution
+instead of silently producing a misidentified binary. Only development registers Expo Dev
+Client's generated `exp+wave` scheme, so Metro and QR links cannot be claimed by preview or
+production when the three builds are installed together.
 
 ### Standalone and EAS builds
 
@@ -254,6 +267,10 @@ The repository requires EAS CLI 21.4.0 or newer and defines three profiles in `e
 | `development` | Installable development client; native code is included, but Metro is required |
 | `preview`     | Internally distributed release build; Android produces a standalone APK        |
 | `production`  | Store build; Android uses the default AAB output                               |
+
+Each EAS profile sets its matching `APP_VARIANT`, so its display name, native identity, and URL
+scheme are fixed before native generation. The first signed build of a new development or preview
+identity may require EAS to create or select separate signing credentials for that identifier.
 
 Sign in to Expo once, then use the local-only build scripts:
 

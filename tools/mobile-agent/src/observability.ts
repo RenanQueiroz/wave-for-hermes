@@ -1,6 +1,6 @@
 import WebSocket, { type RawData } from 'ws';
 
-import type { MobileAgentConfig } from './config.js';
+import { ANDROID_PACKAGE, type MobileAgentConfig } from './config.js';
 import { discoverMetro } from './discovery/metro.js';
 import type { InspectorTarget } from './types.js';
 
@@ -309,7 +309,7 @@ export class ObservabilityCollector {
     await this.send('Page.reload');
     return {
       ok: true,
-      applicationId: 'com.renanqueiroz.wave',
+      applicationId: ANDROID_PACKAGE,
       targetId,
       durationMs: Date.now() - startedAt,
       reconnecting: true,
@@ -350,8 +350,7 @@ export class ObservabilityCollector {
     const candidates =
       metro.selected?.targets.filter(
         (candidate) =>
-          candidate.appId === 'com.renanqueiroz.wave' &&
-          candidate.webSocketDebuggerUrl,
+          candidate.appId === ANDROID_PACKAGE && candidate.webSocketDebuggerUrl,
       ) ?? [];
     const target = this.config.observabilityTargetId
       ? candidates.find(

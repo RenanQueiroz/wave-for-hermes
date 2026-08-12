@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { capabilitiesFor } from '../capabilities.js';
-import type { MobileAgentConfig } from '../config.js';
+import { ANDROID_PACKAGE, type MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
 import {
   callToolText,
@@ -107,7 +107,7 @@ export async function runAndroidSmoke(
       'appium_app_lifecycle',
       {
         action: 'query_state',
-        id: 'com.renanqueiroz.wave',
+        id: ANDROID_PACKAGE,
         ...sessionArgs(sessionId),
       },
     );
@@ -370,7 +370,7 @@ function assertStaleSnapshotRejected(
     envelope.action !== 'tap' ||
     envelope.platform !== 'android' ||
     typeof envelope.deviceId !== 'string' ||
-    envelope.applicationId !== 'com.renanqueiroz.wave' ||
+    envelope.applicationId !== ANDROID_PACKAGE ||
     (sessionId && envelope.sessionId !== sessionId) ||
     typeof envelope.durationMs !== 'number' ||
     !target ||
@@ -405,7 +405,7 @@ function assertActionEnvelope(
   }
   if (
     typeof value.deviceId !== 'string' ||
-    value.applicationId !== 'com.renanqueiroz.wave' ||
+    value.applicationId !== ANDROID_PACKAGE ||
     typeof value.durationMs !== 'number' ||
     !value.target ||
     typeof value.target !== 'object' ||

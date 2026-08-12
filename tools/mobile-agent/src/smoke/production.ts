@@ -65,7 +65,11 @@ export async function runProductionBridgeSmoke(
         cwd: config.projectRoot,
         timeoutMs: 5 * 60_000,
         maxBuffer: 30 * 1024 * 1024,
-        env: { ...process.env, NODE_ENV: 'production' },
+        env: {
+          ...process.env,
+          APP_VARIANT: 'production',
+          NODE_ENV: 'production',
+        },
       },
     );
     if (!exported.ok) {

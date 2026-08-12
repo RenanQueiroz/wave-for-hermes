@@ -1,4 +1,10 @@
-import type { MobileAgentConfig } from './config.js';
+import { basename } from 'node:path';
+
+import {
+  ANDROID_PACKAGE,
+  IOS_BUNDLE_ID,
+  type MobileAgentConfig,
+} from './config.js';
 import { discoverAndroid } from './discovery/android.js';
 import { discoverIos } from './discovery/ios.js';
 import { redactText } from './observability.js';
@@ -47,7 +53,16 @@ async function readIosLogs(
   const device = discovery.selected;
   if (!device)
     throw new Error('No unique booted Radon iOS simulator is available.');
-  const processId = await findIosProcessId(config, device.udid);
+  if (!device.appContainerPath) {
+    throw new Error(
+      `${IOS_BUNDLE_ID} is not installed on Radon simulator ${device.udid}.`,
+    );
+  }
+  const processId = await findIosProcessId(
+    config,
+    device.udid,
+    device.appContainerPath,
+  );
   const result = await runCommand(
     'xcrun',
     [
@@ -85,6 +100,7 @@ async function readIosLogs(
 async function findIosProcessId(
   config: MobileAgentConfig,
   udid: string,
+  appContainerPath: string,
 ): Promise<number> {
   const found = await runCommand('ps', ['-axo', 'pid=,command='], {
     timeoutMs: 5_000,
@@ -94,7 +110,7 @@ async function findIosProcessId(
       found.stderr.trim() || found.error || 'Could not inspect iOS processes.',
     );
   }
-  const pids = findIosProcessIds(found.stdout, config.iosDeviceSetPath, udid);
+  const pids = findIosProcessIds(found.stdout, appContainerPath);
   if (pids.length !== 1 || pids[0] === undefined) {
     throw new Error(
       `Expected one running Wave process on Radon simulator ${udid}, found ${pids.length}. Launch Wave and try again.`,
@@ -105,24 +121,20 @@ async function findIosProcessId(
 
 export function findIosProcessIds(
   processList: string,
-  deviceSetPath: string,
-  udid: string,
+  appContainerPath: string,
 ): number[] {
-  const processPrefix = `${deviceSetPath}/${udid}/`;
-  const executableMarker = '/wave.app/wave';
+  const executableName = basename(appContainerPath, '.app');
+  const executablePath = `${appContainerPath}/${executableName}`;
   const processIds: number[] = [];
 
   for (const line of processList.split(/\r?\n/)) {
     const match = line.match(/^\s*(\d+)\s+(.+)$/);
     if (!match) continue;
     const [, rawProcessId, command] = match;
-    if (!rawProcessId || !command?.startsWith(processPrefix)) continue;
-    const executableIndex = command.indexOf(executableMarker);
-    if (executableIndex < 0) continue;
-    const executableEnd = executableIndex + executableMarker.length;
+    if (!rawProcessId || !command?.startsWith(executablePath)) continue;
     if (
-      command.length > executableEnd &&
-      !/\s/.test(command[executableEnd] ?? '')
+      command.length > executablePath.length &&
+      !/\s/.test(command[executablePath.length] ?? '')
     )
       continue;
     const processId = Number.parseInt(rawProcessId, 10);
@@ -150,7 +162,7 @@ async function readAndroidLogs(
   }
   const pidResult = await runCommand(
     discovery.adbPath,
-    ['-s', device.serial, 'shell', 'pidof', 'com.renanqueiroz.wave'],
+    ['-s', device.serial, 'shell', 'pidof', ANDROID_PACKAGE],
     { timeoutMs: 5_000 },
   );
   const processId = Number.parseInt(
@@ -159,7 +171,7 @@ async function readAndroidLogs(
   );
   if (!pidResult.ok || !Number.isInteger(processId) || processId <= 0) {
     throw new Error(
-      `com.renanqueiroz.wave is not running on Android device ${device.serial}. Launch Wave and try again.`,
+      `${ANDROID_PACKAGE} is not running on Android device ${device.serial}. Launch Wave and try again.`,
     );
   }
   const lineLimit = Math.min(Math.max(options.limit * 4, 200), 4_000);

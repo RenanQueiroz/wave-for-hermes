@@ -97,7 +97,7 @@ tool catalog instead of silently starting before the local server is ready.
 9. Delete the Appium session when finished. Disconnect cleanup also deletes any owned
    session.
 
-Wave's development-only `wave://development` route registers bounded proof providers while it is
+Wave's development-only `wave-dev://development` route registers bounded proof providers while it is
 mounted. `webrtc-proof` reports the native loopback proof and `pcm-playback-proof` reports only the
 PCM proof phase, first-playing latency, expected/drained frame counts, feed-underrun count, format
 restart, and cancellation outcome. These providers expose no audio, credential, URL, transcript,
@@ -129,7 +129,7 @@ return one machine-readable contract:
   "action": "tap",
   "platform": "ios",
   "deviceId": "<dynamic-device-id>",
-  "applicationId": "com.renanqueiroz.wave",
+  "applicationId": "com.renanqueiroz.wave.dev",
   "sessionId": "<appium-session-id>",
   "startedAt": "2026-07-29T20:00:00.000Z",
   "completedAt": "2026-07-29T20:00:00.500Z",
@@ -263,7 +263,7 @@ mutation API.
   ADB serial reported by `mobile_list_devices`.
 - Android CMake fails with a restricted Java method warning: restart the Radon launch
   configuration so its `envCommand` can select JDK 17 or Android Studio's bundled JDK 21.
-- Appium cannot find the app: confirm `com.renanqueiroz.wave` is installed on the device
+- Appium cannot find the app: confirm `com.renanqueiroz.wave.dev` is installed on the device
   reported by `mobile_doctor`.
 - Android is unavailable: start the Radon Android emulator, install/launch Wave there,
   and rerun the doctor.

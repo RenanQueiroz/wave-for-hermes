@@ -3,8 +3,8 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const IOS_BUNDLE_ID = 'com.renanqueiroz.wave';
-export const ANDROID_PACKAGE = 'com.renanqueiroz.wave';
+export const IOS_BUNDLE_ID = 'com.renanqueiroz.wave.dev';
+export const ANDROID_PACKAGE = 'com.renanqueiroz.wave.dev';
 export const REQUIRED_NODE_MAJOR = 22;
 export const PINNED_APPIUM_MCP_VERSION = '1.91.0';
 export const DEFAULT_TRACE_MAX_COUNT = 50;

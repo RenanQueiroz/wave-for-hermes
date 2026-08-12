@@ -50,7 +50,10 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   aligned with the SDK. Do not replace Expo-selected native package versions with arbitrary latest
   versions.
 - Run `npx expo install --check` after dependency changes.
-- Treat `app.json` as the source of truth for app configuration and native identifiers.
+- Treat `app.json` as the source of truth for stable app configuration and the production native
+  identifiers. Keep `app.config.ts` a thin typed variant overlay: development and preview may
+  derive distinct names, URL schemes, and identifier suffixes from `APP_VARIANT`, but stable
+  values and the production identity remain in `app.json`.
 - Treat `eas.json` as the source of truth for EAS build profiles: `development` is a Metro-backed
   development client, `preview` is an internally distributed standalone APK on Android, and
   `production` keeps the store defaults. Every root package script that invokes `eas build` must

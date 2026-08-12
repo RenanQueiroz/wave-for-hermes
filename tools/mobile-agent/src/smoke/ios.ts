@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { capabilitiesFor } from '../capabilities.js';
-import type { MobileAgentConfig } from '../config.js';
+import { IOS_BUNDLE_ID, type MobileAgentConfig } from '../config.js';
 import { runDoctor } from '../doctor.js';
 import {
   callToolText,
@@ -324,7 +324,7 @@ function assertStaleSnapshotRejected(
     envelope.action !== 'tap' ||
     envelope.platform !== 'ios' ||
     typeof envelope.deviceId !== 'string' ||
-    envelope.applicationId !== 'com.renanqueiroz.wave' ||
+    envelope.applicationId !== IOS_BUNDLE_ID ||
     (sessionId && envelope.sessionId !== sessionId) ||
     typeof envelope.durationMs !== 'number' ||
     !target ||
@@ -359,7 +359,7 @@ function assertActionEnvelope(
   }
   if (
     typeof value.deviceId !== 'string' ||
-    value.applicationId !== 'com.renanqueiroz.wave' ||
+    value.applicationId !== IOS_BUNDLE_ID ||
     typeof value.durationMs !== 'number' ||
     !value.target ||
     typeof value.target !== 'object' ||
