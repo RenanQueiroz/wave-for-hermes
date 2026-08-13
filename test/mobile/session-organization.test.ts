@@ -11,7 +11,21 @@ import {
 import { organizeWaveSessions } from '../../src/features/sessions/session-organization.ts';
 import type { WaveSessionPage } from '../../src/services/wave/wave-chat-client.ts';
 
-const NOW = new Date('2026-08-03T18:00:00-04:00');
+// The grouping is by the device's local calendar, so fixtures must be built
+// from local date components — fixed-offset ISO strings would shift across
+// calendar days depending on the machine's timezone (this bit CI's UTC
+// runners before it bit anyone's device).
+const NOW = new Date(2026, 7, 3, 18, 0, 0);
+
+function localIso(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): string {
+  return new Date(year, month, day, hour, minute).toISOString();
+}
 
 function session(
   id: string,
@@ -29,11 +43,11 @@ function session(
 test('organizes pins and mutually exclusive local-calendar date groups', () => {
   const sections = organizeWaveSessions(
     [
-      session('today', { lastActiveAt: '2026-08-03T08:00:00-04:00' }),
-      session('future', { lastActiveAt: '2026-08-04T08:00:00-04:00' }),
-      session('yesterday', { lastActiveAt: '2026-08-02T23:59:00-04:00' }),
-      session('week', { lastActiveAt: '2026-07-28T12:00:00-04:00' }),
-      session('old', { lastActiveAt: '2026-07-01T12:00:00-04:00' }),
+      session('today', { lastActiveAt: localIso(2026, 7, 3, 8, 0) }),
+      session('future', { lastActiveAt: localIso(2026, 7, 4, 8, 0) }),
+      session('yesterday', { lastActiveAt: localIso(2026, 7, 2, 23, 59) }),
+      session('week', { lastActiveAt: localIso(2026, 6, 28, 12, 0) }),
+      session('old', { lastActiveAt: localIso(2026, 6, 1, 12, 0) }),
       session('missing-date'),
       session('pinned-old', {
         lastActiveAt: '2020-01-01T00:00:00Z',
