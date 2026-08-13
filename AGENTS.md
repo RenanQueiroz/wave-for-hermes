@@ -109,7 +109,7 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   line and clean iOS and Android builds pass. Keep it listed in `expo.install.exclude`, re-run
   drawer, swipe-back, and gesture flows after changing it, and remove the exclusion once Expo's
   supported version catches up.
-- `react-native-keyboard-controller` 1.22.2 is a deliberate SDK 57 compatibility exception: Expo's
+- `react-native-keyboard-controller` 1.22.3 is a deliberate SDK 57 compatibility exception: Expo's
   bundled dependency map still recommends 1.21.9, so keep the exact application version listed in
   `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
   and remove the exclusion once Expo's supported version catches up.

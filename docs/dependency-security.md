@@ -36,7 +36,14 @@ the supported upstream update instead.
 
 This review refreshed the lockfile from vulnerable `nanoid@3.3.16` to `3.3.18`, which is accepted by
 Expo Router and PostCSS's existing ranges and fixes the zero-size custom-generator denial of
-service. No application manifest range or native dependency changed.
+service. That lock-only remediation did not change an application manifest range or native
+dependency.
+
+The current dependency refresh also moved `panelui-native` from 0.49.0 to 0.63.0,
+`react-native-keyboard-controller` from 1.22.2 to 1.22.3, and Zustand from 5.0.14 to 5.0.15.
+`react-native-gesture-handler@3.1.0` and `react-native-audio-api@0.13.2` were already the latest
+stable releases, so their validated versions remain unchanged. Expo's SDK 57 compatibility map
+still requires the documented Gesture Handler and Keyboard Controller exclusions.
 
 The production audit scoped to `@wave/contracts` reports zero findings:
 
@@ -48,9 +55,11 @@ npm audit --omit=dev --workspace @wave/contracts
 
 `tools/voice-harness` reports zero production audit findings.
 
-The mobile-agent lockfile was refreshed within its existing direct dependency ranges. That update
-removed the fixable Hono, fast-uri, brace-expansion, and related rollups. Its standard `npm audit`
-now reports six high rows, all from one underlying
+The mobile-agent toolchain now uses `appium-mcp@1.92.2`,
+`appium-xcuitest-driver@12.3.2`, `@xmldom/xmldom@0.9.11`, `ws@8.21.3`, and the current Node
+types. TypeScript stays on 6.0.3 because TypeScript 7's platform compiler package was not restored
+reliably by a clean npm install in this larger tool graph. Its standard `npm audit` still reports
+six high rows, all from one underlying
 [`extract-zip` symlink traversal advisory](https://github.com/advisories/GHSA-jmr9-qjv8-65gv)
 through `appium-mcp -> webdriver -> @wdio/utils -> @puppeteer/browsers`. This repository-local
 automation tool is never bundled into Wave or installed on a user's device. The affected browser
