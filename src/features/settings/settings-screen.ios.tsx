@@ -19,6 +19,7 @@ import {
   onSubmit,
   submitLabel,
   textInputAutocapitalization,
+  tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { Redirect } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -29,7 +30,7 @@ import {
   SETTINGS_COPY,
   useSettingsScreen,
 } from '@/features/settings/settings-screen.shared';
-import { useTheme } from '@/hooks/use-theme';
+import { switchOnTint, useTheme } from '@/hooks/use-theme';
 
 const SECONDARY_TEXT = foregroundStyle({
   style: 'secondary',
@@ -145,6 +146,7 @@ export function SettingsScreen() {
               <Toggle
                 isOn={settings.realtimeEnabled}
                 modifiers={[
+                  tint(switchOnTint(theme)),
                   disabled(settings.realtimeEnabledPending),
                   accessibilityIdentifier('realtime-enabled-switch'),
                 ]}
@@ -157,6 +159,7 @@ export function SettingsScreen() {
               <Toggle
                 isOn={settings.captions}
                 modifiers={[
+                  tint(switchOnTint(theme)),
                   disabled(!settings.captionsHydrated),
                   accessibilityIdentifier('realtime-captions-switch'),
                 ]}

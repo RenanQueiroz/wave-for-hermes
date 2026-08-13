@@ -66,3 +66,19 @@ export function useTheme() {
 function resolveColor(value: string | number | undefined, fallback: string) {
   return typeof value === 'string' ? value : fallback;
 }
+
+/**
+ * The on-tint for an iOS switch under the monochrome palette. The Hosts seed
+ * SwiftUI's tint with primary, which is near-white in dark themes — an
+ * active track the same color as the switch's fixed white thumb. Dark mode
+ * takes the monochrome mid gray instead so on/off stays distinctive; light
+ * mode keeps the near-black primary. (Android is unaffected: its explicit
+ * Material switch colors invert the thumb.)
+ */
+export function switchOnTint(theme: {
+  mode: 'light' | 'dark';
+  primary: string;
+  textSecondary: string;
+}): string {
+  return theme.mode === 'dark' ? theme.textSecondary : theme.primary;
+}

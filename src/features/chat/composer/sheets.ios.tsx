@@ -33,6 +33,7 @@ import {
   presentationDragIndicator,
   scrollContentBackground,
   tag,
+  tint,
 } from '@expo/ui/swift-ui/modifiers';
 
 import { CHAT_COMPOSER_ICONS } from '@/features/chat/composer/icons';
@@ -41,6 +42,7 @@ import {
   modelOptionDescription,
 } from '@/features/chat/composer/model/picker';
 import type { ModelPickerSheetProps } from '@/features/chat/composer/sheets.types';
+import { switchOnTint } from '@/hooks/use-theme';
 import { displayModelName } from '@/features/chat/composer/state';
 import type { ComposerColors } from '@/features/chat/composer/view.types';
 import { modelFamilies } from '@/services/gateway/gateway-models';
@@ -50,6 +52,11 @@ export function ModelPickerSheet({
   colors,
   model,
 }: ModelPickerSheetProps) {
+  const toggleTint = switchOnTint({
+    mode: colorScheme,
+    primary: colors.primary,
+    textSecondary: colors.mutedForeground,
+  });
   return (
     <Host
       colorScheme={colorScheme}
@@ -151,6 +158,7 @@ export function ModelPickerSheet({
                           isOn={model.thinkingEnabled}
                           label="Thinking"
                           modifiers={[
+                            tint(toggleTint),
                             listRowBackground(colors.surfaceTertiary),
                             accessibilityIdentifier('chat-model-thinking'),
                             disabled(model.busyControl !== undefined),
@@ -163,6 +171,7 @@ export function ModelPickerSheet({
                           isOn={model.fastEnabled}
                           label="Fast mode"
                           modifiers={[
+                            tint(toggleTint),
                             listRowBackground(colors.surfaceTertiary),
                             accessibilityIdentifier('chat-model-fast'),
                             disabled(model.busyControl !== undefined),

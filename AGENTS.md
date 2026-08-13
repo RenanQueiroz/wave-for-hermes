@@ -162,7 +162,11 @@ documentation before implementing UI.
   Seed every Settings and Connect native `Host` from PanelUI's semantic primary token and pass the
   selected app color scheme explicitly. On iOS that owns SwiftUI tint; prominent labels use the
   semantic primary-foreground token explicitly so the near-white dark primary keeps readable
-  contrast. On Android a seed alone is not enough: Material 3 `SchemeTonalSpot` adds chroma even to
+  contrast. iOS switches additionally take an explicit monochrome on-tint
+  (`switchOnTint` in `use-theme.ts`: primary in light, the mid-gray muted-foreground in dark)
+  because the seeded near-white dark primary renders an active track the same white as the
+  switch's fixed thumb; Android is unaffected — its explicit Material switch colors invert the
+  thumb. On Android a seed alone is not enough: Material 3 `SchemeTonalSpot` adds chroma even to
   black, white, and gray seeds. Resolve page roles through `useWaveMaterialColors` and pass its
   explicit control-color maps so Wave stays monochromatic instead of inheriting either that added
   hue or the device wallpaper palette.
