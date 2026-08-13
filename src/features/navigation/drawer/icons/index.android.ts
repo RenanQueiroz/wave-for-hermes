@@ -9,6 +9,7 @@ export const DRAWER_ICONS = {
   rename: require('@expo/material-symbols/edit.xml'),
   search: require('@expo/material-symbols/search.xml'),
   settings: require('@expo/material-symbols/settings.xml'),
+  update: require('@expo/material-symbols/system_update_alt.xml'),
   sourceAutomation: require('@expo/material-symbols/precision_manufacturing.xml'),
   sourceExternal: require('@expo/material-symbols/arrow_outward.xml'),
   sourceOther: require('@expo/material-symbols/pending.xml'),

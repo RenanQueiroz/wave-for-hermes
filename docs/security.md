@@ -291,6 +291,19 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   certificate differs — so its custody (offline backup outside the repository) is a
   release-security control; a compromised dependency running inside the signing job remains
   the accepted residual risk, mitigated by the audited lockfile policy.
+- The Android in-app updater consumes that release feed as untrusted input. It runs only in the
+  production application id, makes one bounded unauthenticated request per check to the pinned
+  `releases/latest` endpoint (`expo/fetch`, no tokens, no retries, nothing logged), and parses
+  the response strictly: tag shape `v<x.y.z>-<versionCode>`, exact expected asset names,
+  download URLs required to carry the pinned `releases/download/` prefix, bounded sizes, and
+  release notes truncated to inert plain text (control characters stripped, never rendered as
+  markdown). Downloads land in a dedicated cache directory that is swept on launch, are
+  size-capped during transfer, and are verified against the release's `.md5` sidecar before the
+  file's content URI is handed to the system installer via `ACTION_VIEW` — Wave never installs
+  silently, and `REQUEST_INSTALL_PACKAGES` exists only for this flow. The authenticity gate is
+  Android's own signing check: an APK not signed with the release keystore cannot install over
+  Wave regardless of what the feed claims. A compromised feed therefore degrades to denial of
+  service (bad metadata fails closed with bounded copy), not code execution.
 
 ## Validation status
 

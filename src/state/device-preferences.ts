@@ -27,6 +27,11 @@ import {
   type RealtimeVoicePreference,
 } from '../services/realtime/realtime-voice-preference-record.ts';
 import {
+  parseUpdateAutoCheckPreference,
+  serializeUpdateAutoCheckPreference,
+  WAVE_UPDATE_AUTO_CHECK_DEFAULT,
+} from '../services/updates/update-check-preference-record.ts';
+import {
   createPreferenceStore,
   type PreferenceStorage,
 } from './create-preference-store.ts';
@@ -110,6 +115,16 @@ export function createDevicePreferenceStores(storage?: PreferenceStorage) {
       storeErrorMessage: 'Wave could not save the appearance preference.',
       ...(storage ? { storage } : {}),
     }),
+    updateAutoCheck: createPreferenceStore<boolean>({
+      codec: {
+        decode: parseUpdateAutoCheckPreference,
+        encode: serializeUpdateAutoCheckPreference,
+      },
+      defaultValue: WAVE_UPDATE_AUTO_CHECK_DEFAULT,
+      key: 'wave.update-auto-check-preference.v1',
+      storeErrorMessage: 'Wave could not save the update check preference.',
+      ...(storage ? { storage } : {}),
+    }),
   };
 }
 
@@ -119,3 +134,4 @@ export const realtimeCaptionPreference = stores.realtimeCaptions;
 export const realtimeModelPreference = stores.realtimeModel;
 export const realtimeVoicePreference = stores.realtimeVoice;
 export const themeAppearancePreference = stores.themeAppearance;
+export const updateAutoCheckPreference = stores.updateAutoCheck;

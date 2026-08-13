@@ -15,6 +15,11 @@ import {
 } from '../../src/services/realtime/realtime-voice-preference-record.ts';
 import { openAiKeyStore } from '../../src/services/realtime/openai-key-store.ts';
 import {
+  parseUpdateAutoCheckPreference,
+  serializeUpdateAutoCheckPreference,
+  WAVE_UPDATE_AUTO_CHECK_DEFAULT,
+} from '../../src/services/updates/update-check-preference-record.ts';
+import {
   createDevicePreferenceStores,
   parseThemeAppearance,
   serializeThemeAppearance,
@@ -80,6 +85,32 @@ test('records reject malformed, retired, and unknown-field payloads', () => {
       JSON.stringify({ preference: 'robotic', version: 1 }),
     ),
   );
+});
+
+test('the update auto-check record is strict and defaults on', () => {
+  assert.equal(WAVE_UPDATE_AUTO_CHECK_DEFAULT, true);
+  assert.equal(
+    parseUpdateAutoCheckPreference(serializeUpdateAutoCheckPreference(false)),
+    false,
+  );
+  assert.throws(() => parseUpdateAutoCheckPreference('true'));
+  assert.throws(() =>
+    parseUpdateAutoCheckPreference(JSON.stringify({ autoCheck: true })),
+  );
+  assert.throws(() =>
+    parseUpdateAutoCheckPreference(
+      JSON.stringify({ autoCheck: true, extra: 1, version: 1 }),
+    ),
+  );
+  assert.throws(() =>
+    parseUpdateAutoCheckPreference(
+      JSON.stringify({ autoCheck: 'yes', version: 1 }),
+    ),
+  );
+
+  const memory = memoryStorage();
+  const stores = createDevicePreferenceStores(memory.storage);
+  assert.equal(stores.updateAutoCheck.api.getState().value, true);
 });
 
 test('the default Realtime voice preference resolves to the call default', () => {

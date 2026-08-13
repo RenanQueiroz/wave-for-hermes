@@ -8,8 +8,12 @@ import {
   useOpenAiKeySettings,
   type OpenAiKeyFieldRef,
 } from '@/features/realtime/use-openai-key-settings';
-import { realtimeCaptionPreference } from '@/state/device-preferences';
+import {
+  realtimeCaptionPreference,
+  updateAutoCheckPreference,
+} from '@/state/device-preferences';
 import { useConnectedWave } from '@/state/use-connected-wave';
+import { useDevicePreference } from '@/state/use-device-state';
 
 import {
   SETTINGS_SELECTION_PATHS,
@@ -31,6 +35,9 @@ export const SETTINGS_COPY = {
     'Your OpenAI key is stored securely on this phone and sent only to OpenAI.',
   realtimePreferenceDescription:
     'Use Realtime for voice mode. Off means the keyless server-side voice',
+  updateAutoCheckDescription:
+    'Look for new Wave releases on GitHub when the app opens',
+  versionDescription: 'The Wave build installed on this phone',
 } as const;
 
 /**
@@ -46,6 +53,7 @@ export function useSettingsScreen(
   const router = useRouter();
   const key = useOpenAiKeySettings(keyDraftRef);
   const preferences = useSettingsPreferences();
+  const updateAutoCheck = useDevicePreference(updateAutoCheckPreference);
   const disconnectMutation = useMutation({
     mutationFn: disconnect,
     onSuccess: (disconnected) => {
@@ -87,6 +95,8 @@ export function useSettingsScreen(
     selectedModelLabel: preferences.selectedModelLabel,
     selectedVoiceLabel: preferences.selectedVoiceLabel,
     showDevelopmentTools: __DEV__,
+    updateAutoCheck: updateAutoCheck.value,
+    updateAutoCheckHydrated: updateAutoCheck.hydrated,
     voiceHydrated: preferences.voiceHydrated,
     openAppearanceSettings: () =>
       router.push(SETTINGS_SELECTION_PATHS.appearance),
@@ -101,6 +111,8 @@ export function useSettingsScreen(
     saveKey,
     setCaptions: (value: boolean) =>
       void realtimeCaptionPreference.set(value).catch(() => undefined),
+    setUpdateAutoCheck: (value: boolean) =>
+      void updateAutoCheckPreference.set(value).catch(() => undefined),
     setRealtimeEnabled: (value: boolean) =>
       key.setRealtimeEnabled.mutate(value),
     updateKeyDraft,

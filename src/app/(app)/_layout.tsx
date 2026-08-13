@@ -2,6 +2,8 @@ import { Stack } from 'expo-router';
 import { Platform } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
+import { AppUpdateProvider } from '@/features/updates/app-update-provider';
+
 const IOS_HEADER_STYLE = { shadowColor: 'transparent' } as const;
 const IOS_LARGE_HEADER_STYLE = {
   backgroundColor: 'transparent',
@@ -20,57 +22,59 @@ export default function AppLayout() {
   ]);
 
   return (
-    <Stack
-      screenOptions={{
-        headerBackButtonDisplayMode: 'minimal',
-        headerStyle:
-          typeof background === 'string'
-            ? { backgroundColor: background }
-            : undefined,
-        headerTintColor:
-          typeof foreground === 'string' ? foreground : undefined,
-        headerLargeTitleStyle:
-          typeof foreground === 'string' ? { color: foreground } : undefined,
-        headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
-        headerShadowVisible: Platform.OS === 'android' ? false : undefined,
-      }}>
-      <Stack.Screen name="(chat)" options={{ headerShown: false }} />
-      <Stack.Screen name="search">
-        <Stack.Title large>Search conversations</Stack.Title>
-        {Platform.OS === 'ios' ? (
-          <Stack.Header
-            largeStyle={IOS_LARGE_HEADER_STYLE}
-            style={IOS_HEADER_STYLE}
-          />
-        ) : null}
-      </Stack.Screen>
-      <Stack.Screen name="settings">
-        <Stack.Title large>Settings</Stack.Title>
-        {Platform.OS === 'ios' ? (
-          <Stack.Header
-            largeStyle={IOS_LARGE_HEADER_STYLE}
-            style={IOS_HEADER_STYLE}
-          />
-        ) : null}
-      </Stack.Screen>
-      <Stack.Screen name="settings/[selection]">
-        <Stack.Title large />
-        {Platform.OS === 'ios' ? (
-          <Stack.Header
-            largeStyle={IOS_LARGE_HEADER_STYLE}
-            style={IOS_HEADER_STYLE}
-          />
-        ) : null}
-      </Stack.Screen>
-      <Stack.Screen name="development">
-        <Stack.Title large>Development</Stack.Title>
-        {Platform.OS === 'ios' ? (
-          <Stack.Header
-            largeStyle={IOS_LARGE_HEADER_STYLE}
-            style={IOS_HEADER_STYLE}
-          />
-        ) : null}
-      </Stack.Screen>
-    </Stack>
+    <AppUpdateProvider>
+      <Stack
+        screenOptions={{
+          headerBackButtonDisplayMode: 'minimal',
+          headerStyle:
+            typeof background === 'string'
+              ? { backgroundColor: background }
+              : undefined,
+          headerTintColor:
+            typeof foreground === 'string' ? foreground : undefined,
+          headerLargeTitleStyle:
+            typeof foreground === 'string' ? { color: foreground } : undefined,
+          headerTitleAlign: Platform.OS === 'android' ? 'left' : 'center',
+          headerShadowVisible: Platform.OS === 'android' ? false : undefined,
+        }}>
+        <Stack.Screen name="(chat)" options={{ headerShown: false }} />
+        <Stack.Screen name="search">
+          <Stack.Title large>Search conversations</Stack.Title>
+          {Platform.OS === 'ios' ? (
+            <Stack.Header
+              largeStyle={IOS_LARGE_HEADER_STYLE}
+              style={IOS_HEADER_STYLE}
+            />
+          ) : null}
+        </Stack.Screen>
+        <Stack.Screen name="settings">
+          <Stack.Title large>Settings</Stack.Title>
+          {Platform.OS === 'ios' ? (
+            <Stack.Header
+              largeStyle={IOS_LARGE_HEADER_STYLE}
+              style={IOS_HEADER_STYLE}
+            />
+          ) : null}
+        </Stack.Screen>
+        <Stack.Screen name="settings/[selection]">
+          <Stack.Title large />
+          {Platform.OS === 'ios' ? (
+            <Stack.Header
+              largeStyle={IOS_LARGE_HEADER_STYLE}
+              style={IOS_HEADER_STYLE}
+            />
+          ) : null}
+        </Stack.Screen>
+        <Stack.Screen name="development">
+          <Stack.Title large>Development</Stack.Title>
+          {Platform.OS === 'ios' ? (
+            <Stack.Header
+              largeStyle={IOS_LARGE_HEADER_STYLE}
+              style={IOS_HEADER_STYLE}
+            />
+          ) : null}
+        </Stack.Screen>
+      </Stack>
+    </AppUpdateProvider>
   );
 }

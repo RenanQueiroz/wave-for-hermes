@@ -104,9 +104,12 @@ jobs:
           APK="wave-$WAVE_VERSION_NAME.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
+          # The in-app updater verifies the .md5 sidecar (the platform's
+          # native file hash); .sha256 is for humans and other tools.
+          md5sum "$APK" > "$APK.md5"
           gh release create "v$WAVE_VERSION_NAME-$WAVE_ANDROID_VERSION_CODE" \
             --target "$GITHUB_SHA" \
             --title "Wave $WAVE_VERSION_NAME ($WAVE_ANDROID_VERSION_CODE)" \
             --generate-notes \
             --latest \
-            "$APK" "$APK.sha256"
+            "$APK" "$APK.sha256" "$APK.md5"

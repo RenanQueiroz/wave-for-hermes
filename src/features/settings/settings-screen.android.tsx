@@ -20,11 +20,13 @@ import {
   padding,
   testID as testIDModifier,
 } from '@expo/ui/jetpack-compose/modifiers';
+import * as Application from 'expo-application';
 import { Redirect } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useCSSVariable } from 'uniwind';
 
 import type { OpenAiKeyFieldRef } from '@/features/realtime/use-openai-key-settings';
+import { useAppUpdate } from '@/features/updates/app-update-provider';
 import {
   SettingsListGroup,
   SettingsListItem,
@@ -118,6 +120,7 @@ export function SettingsScreen() {
   const keyDraftRef = useRef<OpenAiKeyFieldRef>(null);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const settings = useSettingsScreen(keyDraftRef);
+  const appUpdate = useAppUpdate();
   const theme = useTheme();
   const background = useCSSVariable('--color-background');
   const colors = useWaveMaterialColors({
@@ -286,6 +289,23 @@ export function SettingsScreen() {
             />
           </SettingsListGroup>
 
+          {appUpdate.supported ? (
+            <SectionHeader testID="updates-card">Updates</SectionHeader>
+          ) : null}
+          {appUpdate.supported ? (
+            <SettingsListGroup>
+              <SettingsListItem
+                description={SETTINGS_COPY.updateAutoCheckDescription}
+                enabled={settings.updateAutoCheckHydrated}
+                label="Automatically check for updates"
+                type="switch"
+                testID="update-auto-check-switch"
+                value={settings.updateAutoCheck}
+                onValueChange={settings.setUpdateAutoCheck}
+              />
+            </SettingsListGroup>
+          ) : null}
+
           <SectionHeader testID="legal-card">About</SectionHeader>
           <SettingsListGroup>
             <SettingsListItem
@@ -293,6 +313,11 @@ export function SettingsScreen() {
               label="Open-source licenses"
               testID="open-source-licenses"
               onPress={settings.openLicenses}
+            />
+            <SettingsListItem
+              description={`${Application.nativeApplicationVersion ?? '?'} (${Application.nativeBuildVersion ?? '?'})`}
+              label="Version"
+              testID="app-version"
             />
             {settings.showDevelopmentTools ? (
               <SettingsListItem

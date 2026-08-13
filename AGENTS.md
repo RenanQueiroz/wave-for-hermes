@@ -65,7 +65,11 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   locally, so local flows keep debug signing; the plugin throws if the Gradle template drifts),
   the versionCode is the `main` commit count via `WAVE_ANDROID_VERSION_CODE` (validated in
   `app.config.ts`), and each push publishes one immutable release tagged
-  `v<version>-<versionCode>` with the APK and a sha256 sidecar. The human version is
+  `v<version>-<versionCode>` with the APK plus sha256 and md5 sidecars (the md5 sidecar is what
+  the in-app updater verifies). Android builds compile `arm64-v8a` only
+  (`buildArchs` in `app.json`) — one small release asset instead of a 4-ABI universal APK, and
+  the updater needs no architecture selection; x86 emulators are unsupported by that choice,
+  and revisiting it means either restoring ABIs or teaching the updater per-ABI assets. The human version is
   single-sourced from `package.json` (plain `x.y.z`, validated): `app.config.ts` injects it
   into the Expo config and `app.json` must not regain a `version` field. The signing secrets live only
   in the `release` GitHub environment locked to `main`. Keep the workflow's security posture:
@@ -276,7 +280,10 @@ documentation before implementing UI.
   or a second keyboard-avoidance path inside the composer.
 - The conversation drawer is chat chrome. Enable its edge-swipe gesture only on `/new` and
   top-level `/conversation/[sessionId]` routes; Settings, search, development, voice, and other
-  pushed routes must not expose or swipe-open it. Keep Disconnect out of the drawer.
+  pushed routes must not expose or swipe-open it. Keep Disconnect out of the drawer. The
+  Android footer carries one additional row below Settings — "Check for updates", rendered only
+  when the updater reports itself supported (production application id) — which closes the
+  drawer and triggers a manual check; iOS never gets this row.
   The drawer's content is native (`src/features/navigation/drawer/`): behavior lives in
   `content.shared.ts`, `content.{ios,android}.tsx` own the platform trees, and the session
   list stays the virtualized `LegendList` (`session-list.tsx`) because `@expo/ui` lists render
@@ -565,6 +572,36 @@ documentation before implementing UI.
   conversation identifiers, or sensitive conversation payloads. Production request logs keep only
   the Wave request correlation ID, HTTP method/status, timing, and explicitly reviewed lifecycle
   fields.
+
+## App updates (Android)
+
+Wave updates itself from the GitHub Releases feed the CI pipeline publishes. iOS has no
+self-update surface; every UI piece is Android-only through file-suffix platform splits.
+
+- The flow lives in `src/features/updates/` (shared reducer + copy, Android provider and
+  Compose sheet, iOS passthrough) over `src/services/updates/` (strict feed parser, bounded
+  `expo/fetch` client, auto-check preference codec). The provider wraps the `(app)` layout's
+  Stack and owns every side effect; the sheet is presentation-only over the shared state
+  machine, and screens reach the updater only through `useAppUpdate()`.
+- The updater is active only when the application id is exactly the production package and only
+  compares `versionCode` (from `expo-application`), never version-name strings. Release
+  payloads are untrusted input: pinned `releases/latest` URL, tag shape
+  `v<x.y.z>-<versionCode>`, exact asset names, download URLs required to start with the pinned
+  `releases/download/` prefix, bounded sizes and notes (inert plain text, control characters
+  stripped, never markdown). Checks are single-flight, unauthenticated, token-free, non-retrying,
+  and never logged beyond the standard bounded fields.
+- The automatic check runs once per process, ~3 s after mount, only when the
+  `wave.update-auto-check-preference.v1` record (default on; Settings → Updates switch) allows
+  it, and fails silently — only a found update ever surfaces the sheet from an auto check.
+  Manual checks always show the sheet, including honest up-to-date and bounded error states.
+- Downloads go to a swept `wave-updates` cache directory via the modern `expo-file-system`
+  download task, are size-capped during transfer, verified against exact asset size and the
+  `.md5` sidecar, then handed to the system installer with `ACTION_VIEW` on the file's content
+  URI. Never install silently, never promise an automatic relaunch (Android kills the process
+  and blocks background activity starts — the sheet's copy says Wave will close), and keep
+  `REQUEST_INSTALL_PACKAGES` scoped to this flow. Android's signing-certificate check is the
+  authenticity gate; the keystore custody rules in the release-pipeline bullet are what make it
+  meaningful.
 
 ## WebRTC foundation
 

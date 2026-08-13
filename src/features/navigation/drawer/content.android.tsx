@@ -38,6 +38,7 @@ import {
   type DrawerSessionListItem,
 } from '@/features/navigation/drawer/content.shared';
 import { DRAWER_ICONS } from '@/features/navigation/drawer/icons';
+import { useAppUpdate } from '@/features/updates/app-update-provider';
 import {
   DRAWER_ROW_HEIGHTS,
   DrawerNavRow,
@@ -101,6 +102,7 @@ function ConnectedWaveDrawerContent({
   const theme = useTheme();
   const nativeColors = useWaveMaterialColors({ colorScheme: theme.mode });
   const closeDrawer = useCallback(() => navigation.closeDrawer(), [navigation]);
+  const appUpdate = useAppUpdate();
   const drawer = useWaveDrawerContent({
     baseUrl,
     client,
@@ -335,6 +337,18 @@ function ConnectedWaveDrawerContent({
               testID="drawer-settings"
               onPress={() => drawer.navigate('/settings')}
             />
+            {appUpdate.supported ? (
+              <DrawerNavRow
+                colors={colors}
+                icon={DRAWER_ICONS.update as ImageSourcePropType}
+                label="Check for updates"
+                testID="drawer-check-updates"
+                onPress={() => {
+                  closeDrawer();
+                  appUpdate.checkNow();
+                }}
+              />
+            ) : null}
           </Column>
         </Host>
       </View>

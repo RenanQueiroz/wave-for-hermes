@@ -170,9 +170,12 @@ local artifacts.
 ### Android release pipeline
 
 Every push to `main` runs [`release-apk`](./.github/workflows/release-apk.yml) on GitHub
-Actions: it prebuilds the production variant, builds a signed, R8-optimized universal APK with
-Gradle (no EAS involvement), and publishes it as a GitHub release tagged
-`v<version>-<versionCode>` with a `.sha256` sidecar. The version name is single-sourced from
+Actions: it prebuilds the production variant, builds a signed, R8-optimized APK with Gradle
+(no EAS involvement), and publishes it as a GitHub release tagged `v<version>-<versionCode>`
+with `.sha256` and `.md5` sidecars. Builds target `arm64-v8a` only (`buildArchs` in
+`app.json`): every supported phone is arm64, and dropping the three unused ABIs cuts the APK
+from ~162 MB to ~57 MB while keeping one release asset the in-app updater can pick without
+architecture logic. The version name is single-sourced from
 `package.json` (`app.config.ts` injects it into the native build, the workflow reads it for the
 tag and APK name, and `app.json` deliberately has no version field — bump one file and it
 updates everywhere); the `versionCode` is the `main`-branch commit count, so every release
@@ -184,6 +187,20 @@ generated project keeps Expo's stock debug signing. The release keystore and its
 exist only in the repository's `release` GitHub environment — restricted to `main`, unreachable
 from forks — and in the maintainer's offline backup. Losing the keystore orphans every
 installed copy; committing it is never acceptable.
+
+### Updating Wave on Android
+
+Install the newest `wave-<version>.apk` from
+[GitHub Releases](https://github.com/RenanQueiroz/wave-for-hermes/releases/latest) once; after
+that the app updates itself. Production builds check the releases feed on launch (Settings →
+Updates can turn the automatic check off) and the drawer's **Check for updates** row checks on
+demand. When a newer `versionCode` exists, a sheet offers to download and install it: the
+download is verified against the release's `.md5` sidecar and exact size, then handed to the
+Android system installer — Wave closes during the install (the OS requires it) and the
+installer's **Open** button relaunches the new version. The first update on a device asks for
+Android's one-time "install unknown apps" permission. Android itself refuses any APK not signed
+with Wave's release key, so a tampered feed cannot replace a real install. Dev and preview
+clients have different application ids and never run the updater.
 
 ## Development tools
 

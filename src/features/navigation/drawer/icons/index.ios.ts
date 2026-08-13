@@ -11,6 +11,7 @@ export const DRAWER_ICONS = {
   rename: 'pencil',
   search: 'magnifyingglass',
   settings: 'gearshape',
+  update: 'square.and.arrow.down',
   sourceAutomation: 'gearshape.fill',
   sourceExternal: 'arrow.up.right',
   sourceOther: 'ellipsis.circle',
