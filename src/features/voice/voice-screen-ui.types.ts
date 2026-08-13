@@ -8,6 +8,39 @@
 
 export type VoiceActionIcon = 'end' | 'microphone' | 'retry' | 'send' | 'skip';
 
+export type VoiceCallGlyph =
+  | 'close'
+  | 'end'
+  | 'microphone'
+  | 'microphone-off'
+  | 'send'
+  | 'skip'
+  | 'working';
+
+export interface VoiceCallControlSpec {
+  accessibilityLabel: string;
+  /** Highlighted state (a muted microphone fills the circle with primary). */
+  active?: boolean;
+  disabled?: boolean;
+  glyph: VoiceCallGlyph;
+  key: string;
+  /** Short caption rendered under the control, call-UI style. */
+  label: string;
+  onPress(): void;
+  /**
+   * `end` renders the platform's hang-up affordance (iOS: red circle in the
+   * row; Android: wide destructive pill under the row). `start` renders a
+   * primary-filled circle. Default is a neutral circle.
+   */
+  role?: 'default' | 'end' | 'start';
+  testID: string;
+}
+
+export interface VoiceCallControlsProps {
+  /** Ordered controls for one call cluster. */
+  controls: VoiceCallControlSpec[];
+}
+
 export interface VoiceActionSpec {
   accessibilityLabel: string;
   disabled?: boolean;

@@ -33,7 +33,14 @@ export function projectWaveMaterialColors(
   const card = rgba(theme.card);
   const border = rgba(theme.border);
   const destructive = rgba(theme.destructive);
-  const onDestructive = rgba(theme.destructiveForeground);
+  // PanelUI's destructive-foreground token is the *on-surface* red (dark red
+  // in light theme, light red in dark theme), not a color for content on a
+  // destructive fill — using it there renders red-on-red. PanelUI's own
+  // destructive Button hardcodes white content because the destructive fill
+  // stays a saturated red in every theme; mirror that. If a theme ever adopts
+  // a light error container (Material-style dark pink), this must become
+  // theme-dependent instead.
+  const onDestructive = rgba('#ffffff');
 
   return {
     ...fallback,

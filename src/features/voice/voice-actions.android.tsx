@@ -94,7 +94,7 @@ function VoiceActionButton({
       onClick={action.onPress}>
       {action.icon ? (
         <Icon
-          size={18}
+          size={20}
           source={VOICE_ACTION_ICONS[action.icon]}
           modifiers={[padding(0, 0, 8, 0)]}
         />

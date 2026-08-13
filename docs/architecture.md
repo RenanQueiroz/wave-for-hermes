@@ -110,10 +110,14 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   and remote WebRTC stats for Realtime); missing levels degrade to the phase animation, neither
   samples nor level history are retained, and the phase title/description stay the accessible
   status. Around that glow, both screens render platform-native chrome: the status header,
-  plain-text transcript blocks, notice cards, and action buttons are shared SwiftUI/Compose
+  plain-text transcript blocks, notice cards, and controls are shared SwiftUI/Compose
   components under `src/features/voice/` (`voice-status`, `voice-transcript`, `voice-notice`,
-  `voice-actions` behind `voice-screen-ui.types.ts`), while the chat `PromptCard` and the
-  assistant reply's `Response` markdown block stay React Native. The affordances
+  `voice-actions`, `voice-call-controls` behind `voice-screen-ui.types.ts`), while the chat
+  `PromptCard` and the assistant reply's `Response` markdown block stay React Native. Call
+  clusters follow each platform's system call UI — captioned circular glyph buttons, with the
+  end control as iOS's red circle in the row and Android's wide destructive pill below it — and
+  both screens hold an `expo-keep-awake` lock only while a call or loop is active so the device
+  cannot auto-lock mid-conversation. The affordances
   are gated on a cached probe of what the server actually has configured, and disable with honest
   copy when it has neither provider.
 - `src/native/pcm-player.ts` is the one Wave owner for `react-native-audio-api`'s native

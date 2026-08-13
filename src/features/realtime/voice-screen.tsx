@@ -25,9 +25,14 @@ import {
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
+import { useVoiceKeepAwake } from '@/features/voice/use-voice-keep-awake';
 import { VoiceActions } from '@/features/voice/voice-actions';
+import { VoiceCallControls } from '@/features/voice/voice-call-controls';
 import { VoiceNotice } from '@/features/voice/voice-notice';
-import type { VoiceActionSpec } from '@/features/voice/voice-screen-ui.types';
+import type {
+  VoiceActionSpec,
+  VoiceCallControlSpec,
+} from '@/features/voice/voice-screen-ui.types';
 import { VoiceStatus } from '@/features/voice/voice-status';
 import { VoiceTranscript } from '@/features/voice/voice-transcript';
 import { useConnectedWave } from '@/state/use-connected-wave';
@@ -292,6 +297,10 @@ function ConnectedVoiceScreen({
     void stopAndRefresh();
   }, [stopAndRefresh]);
 
+  // Auto-lock would kill the call: background transitions stop it above, and
+  // nothing else holds the screen awake in a release build.
+  useVoiceKeepAwake(state.phase !== 'idle' && state.phase !== 'error');
+
   const canStart = state.phase === 'idle' || state.phase === 'error';
   const userLevel = state.microphoneEnabled ? state.userAudioLevel : undefined;
   const ambientLevel =
@@ -299,7 +308,7 @@ function ConnectedVoiceScreen({
       ? Math.max(userLevel ?? 0, state.assistantAudioLevel ?? 0)
       : undefined;
 
-  const actionRows: VoiceActionSpec[][] = [
+  const utilityRows: VoiceActionSpec[][] = [
     ...(state.error?.kind === 'media_permission'
       ? [
           [
@@ -342,59 +351,62 @@ function ConnectedVoiceScreen({
             },
           ],
         ]
-      : canStart
-        ? [
-            [
-              {
-                accessibilityLabel: 'Start voice',
-                icon: 'microphone' as const,
-                key: 'start',
-                kind: 'primary' as const,
-                label: 'Start voice',
-                onPress: start,
-                testID: 'voice-primary-button',
-              },
-            ],
-            // The route is a headerless modal, so without this the only exits
-            // are the system back gesture or starting a call.
-            [
-              {
-                accessibilityLabel: 'Close live voice',
-                icon: 'end' as const,
-                key: 'close',
-                kind: 'outline' as const,
-                label: 'Close',
-                onPress: () => void end(),
-                testID: 'voice-close-button',
-              },
-            ],
-          ]
-        : [
-            [
-              {
-                accessibilityLabel: state.microphoneEnabled
-                  ? 'Mute microphone'
-                  : 'Unmute microphone',
-                icon: 'microphone' as const,
-                key: 'microphone',
-                kind: 'outline' as const,
-                label: state.microphoneEnabled ? 'Mute' : 'Unmute',
-                onPress: () =>
-                  controller.setMicrophoneEnabled(!state.microphoneEnabled),
-                testID: 'voice-microphone-button',
-              },
-              {
-                accessibilityLabel: 'End live voice',
-                icon: 'end' as const,
-                key: 'end',
-                kind: 'destructive' as const,
-                label: 'End',
-                onPress: () => void end(),
-                testID: 'voice-end-button',
-              },
-            ],
-          ]),
+      : []),
   ];
+  // Render gates read plain state flags rather than these arrays: the
+  // ref-capturing callbacks inside make the arrays themselves untouchable
+  // during render for the React Compiler lint.
+  const showUtilityRows =
+    state.error?.kind === 'media_permission' ||
+    state.error?.kind === 'model_unavailable' ||
+    state.cleanupPending;
+  const callControls: VoiceCallControlSpec[] = state.cleanupPending
+    ? []
+    : canStart
+      ? [
+          {
+            accessibilityLabel: 'Start voice',
+            glyph: 'microphone' as const,
+            key: 'start',
+            label: 'Start voice',
+            onPress: start,
+            role: 'start' as const,
+            testID: 'voice-primary-button',
+          },
+          // The route is a headerless modal, so without this the only exits
+          // are the system back gesture or starting a call.
+          {
+            accessibilityLabel: 'Close live voice',
+            glyph: 'close' as const,
+            key: 'close',
+            label: 'Close',
+            onPress: () => void end(),
+            testID: 'voice-close-button',
+          },
+        ]
+      : [
+          {
+            accessibilityLabel: state.microphoneEnabled
+              ? 'Mute microphone'
+              : 'Unmute microphone',
+            active: !state.microphoneEnabled,
+            glyph: 'microphone-off' as const,
+            key: 'microphone',
+            label: state.microphoneEnabled ? 'Mute' : 'Unmute',
+            onPress: () =>
+              controller.setMicrophoneEnabled(!state.microphoneEnabled),
+            testID: 'voice-microphone-button',
+          },
+          {
+            accessibilityLabel: 'End live voice',
+            glyph: 'end' as const,
+            key: 'end',
+            label: 'End',
+            onPress: () => void end(),
+            role: 'end' as const,
+            testID: 'voice-end-button',
+          },
+        ];
 
   return (
     <View className="flex-1 bg-background">
@@ -460,8 +472,11 @@ function ConnectedVoiceScreen({
           ) : null}
         </View>
 
-        <View className="w-full max-w-md self-center">
-          <VoiceActions rows={actionRows} />
+        <View className="w-full max-w-md self-center gap-6">
+          {showUtilityRows ? <VoiceActions rows={utilityRows} /> : null}
+          {state.cleanupPending ? null : (
+            <VoiceCallControls controls={callControls} />
+          )}
         </View>
       </ScrollView>
     </View>

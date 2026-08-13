@@ -14,9 +14,14 @@ import {
   type GatewayVoicePhase,
 } from '@/features/voice/gateway-voice-machine';
 import { useGatewayVoice } from '@/features/voice/use-gateway-voice';
+import { useVoiceKeepAwake } from '@/features/voice/use-voice-keep-awake';
 import { VoiceActions } from '@/features/voice/voice-actions';
+import { VoiceCallControls } from '@/features/voice/voice-call-controls';
 import { VoiceNotice } from '@/features/voice/voice-notice';
-import type { VoiceActionSpec } from '@/features/voice/voice-screen-ui.types';
+import type {
+  VoiceActionSpec,
+  VoiceCallControlSpec,
+} from '@/features/voice/voice-screen-ui.types';
 import { VoiceStatus } from '@/features/voice/voice-status';
 import { VoiceTranscript } from '@/features/voice/voice-transcript';
 import type { GatewayClient } from '@/services/gateway/gateway-client';
@@ -157,6 +162,10 @@ export function GatewayVoiceScreen({
     router.back();
   }, [baseUrl, client, connectionId, queryClient, router, sessionId, stop]);
 
+  // Auto-lock would kill the loop mid-conversation: backgrounding stops it
+  // above, and nothing else holds the screen awake in a release build.
+  useVoiceKeepAwake(voice.state.phase !== 'idle');
+
   const phase = voice.state.phase;
   const idle = phase === 'idle';
   const userLevel =
@@ -169,86 +178,81 @@ export function GatewayVoiceScreen({
       : undefined;
   const mutedWhileListening = voice.state.muted && phase === 'listening';
 
-  const actionRows: VoiceActionSpec[][] = [];
-  if (voice.state.error?.includes('microphone access')) {
-    actionRows.push([
-      {
-        accessibilityLabel: 'Open microphone settings',
-        key: 'open-settings',
-        kind: 'outline',
-        label: 'Open microphone settings',
-        onPress: () => void Linking.openSettings(),
-        testID: 'gateway-voice-open-settings-button',
-      },
-    ]);
-  }
-  if (idle) {
-    actionRows.push(
-      [
+  const utilityRows: VoiceActionSpec[][] = voice.state.error?.includes(
+    'microphone access',
+  )
+    ? [
+        [
+          {
+            accessibilityLabel: 'Open microphone settings',
+            key: 'open-settings',
+            kind: 'outline',
+            label: 'Open microphone settings',
+            onPress: () => void Linking.openSettings(),
+            testID: 'gateway-voice-open-settings-button',
+          },
+        ],
+      ]
+    : [];
+  const callControls: VoiceCallControlSpec[] = idle
+    ? [
         {
           accessibilityLabel: 'Start voice mode',
           disabled: !canListen || !canSpeak,
-          icon: 'microphone',
+          glyph: 'microphone',
           key: 'start',
-          kind: 'primary',
-          label: 'Start voice mode',
+          label: 'Start voice',
           onPress: () => void start(),
+          role: 'start',
           testID: 'gateway-voice-primary-button',
         },
-      ],
-      // The screen must be leavable without starting — with no providers
-      // configured, Start is disabled and this is the only exit.
-      [
+        // The screen must be leavable without starting — with no providers
+        // configured, Start is disabled and this is the only exit.
         {
           accessibilityLabel: 'Close voice mode',
-          icon: 'end',
+          glyph: 'close',
           key: 'close',
-          kind: 'outline',
           label: 'Close',
           onPress: () => void end(),
           testID: 'gateway-voice-close-button',
         },
-      ],
-    );
-  } else {
-    actionRows.push([
-      {
-        accessibilityLabel: voice.state.muted
-          ? 'Unmute microphone'
-          : 'Mute microphone',
-        icon: 'microphone',
-        key: 'microphone',
-        kind: 'outline',
-        label: voice.state.muted ? 'Unmute' : 'Mute',
-        onPress: () => voice.setMuted(!voice.state.muted),
-        testID: 'gateway-voice-mute-button',
-      },
-      {
-        accessibilityLabel: secondaryLabel(phase),
-        disabled: phase === 'transcribing' || phase === 'thinking',
-        icon:
-          phase === 'speaking'
-            ? 'skip'
-            : phase === 'listening'
-              ? 'send'
-              : undefined,
-        key: 'secondary',
-        kind: 'outline',
-        label: secondaryLabel(phase),
-        onPress: phase === 'speaking' ? voice.skipSpeaking : voice.submitNow,
-        testID: 'gateway-voice-secondary-button',
-      },
-      {
-        accessibilityLabel: 'End voice mode',
-        icon: 'end',
-        key: 'end',
-        kind: 'destructive',
-        label: 'End',
-        onPress: () => void end(),
-        testID: 'gateway-voice-end-button',
-      },
-    ]);
-  }
+      ]
+    : [
+        {
+          accessibilityLabel: voice.state.muted
+            ? 'Unmute microphone'
+            : 'Mute microphone',
+          active: voice.state.muted,
+          glyph: 'microphone-off',
+          key: 'microphone',
+          label: voice.state.muted ? 'Unmute' : 'Mute',
+          onPress: () => voice.setMuted(!voice.state.muted),
+          testID: 'gateway-voice-mute-button',
+        },
+        {
+          accessibilityLabel: secondaryLabel(phase),
+          disabled: phase === 'transcribing' || phase === 'thinking',
+          glyph:
+            phase === 'speaking'
+              ? 'skip'
+              : phase === 'listening'
+                ? 'send'
+                : 'working',
+          key: 'secondary',
+          label: secondaryLabel(phase),
+          onPress: phase === 'speaking' ? voice.skipSpeaking : voice.submitNow,
+          testID: 'gateway-voice-secondary-button',
+        },
+        {
+          accessibilityLabel: 'End voice mode',
+          glyph: 'end',
+          key: 'end',
+          label: 'End',
+          onPress: () => void end(),
+          role: 'end',
+          testID: 'gateway-voice-end-button',
+        },
+      ];
 
   return (
     <View className="flex-1 bg-background">
@@ -343,8 +347,9 @@ export function GatewayVoiceScreen({
           ) : null}
         </View>
 
-        <View className="w-full max-w-md self-center">
-          <VoiceActions rows={actionRows} />
+        <View className="w-full max-w-md self-center gap-6">
+          {utilityRows.length > 0 ? <VoiceActions rows={utilityRows} /> : null}
+          <VoiceCallControls controls={callControls} />
         </View>
       </ScrollView>
     </View>

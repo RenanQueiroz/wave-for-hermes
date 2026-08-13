@@ -208,11 +208,19 @@ documentation before implementing UI.
   Android buttons receive explicit Wave Material colors rather than relying on the tonal seed.
   The voice screens (gateway voice and Realtime live voice) share platform-native chrome behind
   the contracts in `src/features/voice/voice-screen-ui.types.ts`: `voice-status`,
-  `voice-transcript`, `voice-notice`, and `voice-actions` are intrinsic-height SwiftUI/Compose
-  Hosts (action rows of `VoiceActionSpec`s — a single-button row renders full width, a
-  multi-button row splits evenly), while the PanelUI `Soundwave` ambient glow, the shared chat
-  `PromptCard`, and the gateway assistant reply's `Response` markdown block deliberately stay
-  React Native. Every tap on a Realtime
+  `voice-transcript`, `voice-notice`, `voice-actions`, and `voice-call-controls` are
+  intrinsic-height SwiftUI/Compose Hosts, while the PanelUI `Soundwave` ambient glow, the shared
+  chat `PromptCard`, and the gateway assistant reply's `Response` markdown block deliberately stay
+  React Native. Call clusters (start/close and the in-call controls) render through
+  `voice-call-controls`, which mimics each platform's system call UI: circular glyph buttons with
+  captions beneath, an active (muted) control filled with primary, and the end control as iOS's
+  red circle in the row versus Android's wide destructive pill below it. `voice-actions` remains
+  for utility rows (settings links, retry) — single-button rows full width, multi-button rows
+  split evenly. Content on a destructive fill is always white: PanelUI's destructive-foreground
+  token is the on-surface red and disappears on the red container (its own destructive Button
+  hardcodes white for the same reason). Both voice screens hold an `expo-keep-awake` lock only
+  while a call or loop is active, because nothing else stops auto-lock in a release build and
+  development clients mask the problem by keeping the screen awake in `__DEV__`. Every tap on a Realtime
   voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the

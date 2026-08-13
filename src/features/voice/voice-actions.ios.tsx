@@ -66,13 +66,16 @@ function VoiceActionButton({
   compact: boolean;
 }) {
   const theme = useTheme();
-  // Prominent labels use the explicit foreground tokens: the near-white dark
-  // primary needs primary-foreground for readable contrast (Settings parity).
+  // Prominent labels use explicit foreground colors: the near-white dark
+  // primary needs primary-foreground for readable contrast (Settings parity),
+  // and destructive fills take white — PanelUI's destructive-foreground token
+  // is the on-surface red and disappears on the red container, while its own
+  // destructive Button hardcodes white for the always-saturated fill.
   const contentColor =
     action.kind === 'primary'
       ? theme.primaryForeground
       : action.kind === 'destructive'
-        ? theme.destructiveForeground
+        ? '#ffffff'
         : theme.primary;
 
   return (
