@@ -205,7 +205,14 @@ documentation before implementing UI.
   (`src/features/sessions/offline-actions.{ios,android}.tsx`, intrinsic-height Hosts behind a
   shared props contract); both platform Hosts take the semantic primary seed, the iOS
   `borderedProminent` label explicitly uses primary-foreground for dark-theme contrast, and the
-  Android buttons receive explicit Wave Material colors rather than relying on the tonal seed. Every tap on a Realtime
+  Android buttons receive explicit Wave Material colors rather than relying on the tonal seed.
+  The voice screens (gateway voice and Realtime live voice) share platform-native chrome behind
+  the contracts in `src/features/voice/voice-screen-ui.types.ts`: `voice-status`,
+  `voice-transcript`, `voice-notice`, and `voice-actions` are intrinsic-height SwiftUI/Compose
+  Hosts (action rows of `VoiceActionSpec`s — a single-button row renders full width, a
+  multi-button row splits evenly), while the PanelUI `Soundwave` ambient glow, the shared chat
+  `PromptCard`, and the gateway assistant reply's `Response` markdown block deliberately stay
+  React Native. Every tap on a Realtime
   voice option, including the
   already-selected option, stops any existing preview and starts that voice from the beginning.
   The shared preview owner generates a bounded sample directly through OpenAI Realtime with the

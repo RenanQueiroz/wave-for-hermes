@@ -70,7 +70,10 @@ The production boundary is split across:
 - `src/services/realtime/openai-realtime-backend.ts` for the direct SDP exchange, the
   authenticated sideband, `ask_hermes` orchestration, and active-only `correct_hermes` steering on
   the user-owned key;
-- `src/features/realtime/voice-screen.tsx` for the PanelUI state renderer and accessible controls.
+- `src/features/realtime/voice-screen.tsx` for the state renderer and accessible controls: the
+  status header, transcripts, notices, and action buttons are the platform-native voice UI
+  components shared with gateway voice (`src/features/voice/voice-*.{ios,android}.tsx`), while the
+  ambient Soundwave glow stays PanelUI.
 
 React components never own raw WebRTC resources. Leaving the focused route, backgrounding an
 established call, ending explicitly, setup failure, connection failure, or call expiry closes local

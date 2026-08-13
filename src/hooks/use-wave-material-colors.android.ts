@@ -12,6 +12,8 @@ import type { ColorSchemeName } from 'react-native';
 import { useTheme } from '@/hooks/use-theme';
 import { projectWaveMaterialColors } from '@/hooks/wave-material-colors';
 
+export type { MaterialColors } from '@expo/ui/jetpack-compose';
+
 /**
  * Material You always adds chroma to a seed, including a black, white, or
  * gray seed. Replace every visible Material role with Wave's semantic
@@ -35,6 +37,17 @@ export function wavePrimaryButtonColors(colors: MaterialColors): ButtonColors {
   return {
     containerColor: colors.primary,
     contentColor: colors.onPrimary,
+    disabledContainerColor: colors.surfaceVariant,
+    disabledContentColor: colors.onSurfaceVariant,
+  };
+}
+
+export function waveDestructiveButtonColors(
+  colors: MaterialColors,
+): ButtonColors {
+  return {
+    containerColor: colors.error,
+    contentColor: colors.onError,
     disabledContainerColor: colors.surfaceVariant,
     disabledContentColor: colors.onSurfaceVariant,
   };

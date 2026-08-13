@@ -219,8 +219,9 @@ tools/                 Deterministic gateway and mobile test tooling
 docs/                  Architecture, security, and validation records
 ```
 
-Shared UI uses PanelUI semantic tokens. Settings, Connect, and the chat composer keep explicit
-platform-native SwiftUI and Jetpack Compose implementations behind shared behavior contracts. Read
+Shared UI uses PanelUI semantic tokens. Settings, Connect, the chat composer, and the voice
+screens keep explicit platform-native SwiftUI and Jetpack Compose implementations behind shared
+behavior contracts. Read
 [AGENTS.md](./AGENTS.md) before changing architecture or product boundaries.
 
 ## Documentation

@@ -1,15 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import {
-  Alert,
-  Button,
-  MicIcon,
-  RotateCcwIcon,
-  Soundwave,
-  Typography,
-  XIcon,
-} from 'panelui-native';
+import { Soundwave } from 'panelui-native';
 import {
   useCallback,
   useEffect,
@@ -33,6 +25,11 @@ import {
   type WaveRealtimePhase,
 } from '@/features/realtime/realtime-controller';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
+import { VoiceActions } from '@/features/voice/voice-actions';
+import { VoiceNotice } from '@/features/voice/voice-notice';
+import type { VoiceActionSpec } from '@/features/voice/voice-screen-ui.types';
+import { VoiceStatus } from '@/features/voice/voice-status';
+import { VoiceTranscript } from '@/features/voice/voice-transcript';
 import { useConnectedWave } from '@/state/use-connected-wave';
 import {
   realtimeCaptionPreference,
@@ -302,12 +299,111 @@ function ConnectedVoiceScreen({
       ? Math.max(userLevel ?? 0, state.assistantAudioLevel ?? 0)
       : undefined;
 
+  const actionRows: VoiceActionSpec[][] = [
+    ...(state.error?.kind === 'media_permission'
+      ? [
+          [
+            {
+              accessibilityLabel: 'Open microphone settings',
+              key: 'open-settings',
+              kind: 'outline' as const,
+              label: 'Open microphone settings',
+              onPress: () => void Linking.openSettings(),
+              testID: 'voice-open-settings-button',
+            },
+          ],
+        ]
+      : []),
+    ...(state.error?.kind === 'model_unavailable'
+      ? [
+          [
+            {
+              accessibilityLabel: 'Choose a different Realtime model',
+              key: 'open-model-settings',
+              kind: 'outline' as const,
+              label: 'Review model in Settings',
+              onPress: () => router.replace('/settings'),
+              testID: 'voice-open-model-settings-button',
+            },
+          ],
+        ]
+      : []),
+    ...(state.cleanupPending
+      ? [
+          [
+            {
+              accessibilityLabel: 'Retry ending call',
+              icon: 'retry' as const,
+              key: 'retry',
+              kind: 'primary' as const,
+              label: 'Retry ending call',
+              onPress: retryStop,
+              testID: 'voice-primary-button',
+            },
+          ],
+        ]
+      : canStart
+        ? [
+            [
+              {
+                accessibilityLabel: 'Start voice',
+                icon: 'microphone' as const,
+                key: 'start',
+                kind: 'primary' as const,
+                label: 'Start voice',
+                onPress: start,
+                testID: 'voice-primary-button',
+              },
+            ],
+            // The route is a headerless modal, so without this the only exits
+            // are the system back gesture or starting a call.
+            [
+              {
+                accessibilityLabel: 'Close live voice',
+                icon: 'end' as const,
+                key: 'close',
+                kind: 'outline' as const,
+                label: 'Close',
+                onPress: () => void end(),
+                testID: 'voice-close-button',
+              },
+            ],
+          ]
+        : [
+            [
+              {
+                accessibilityLabel: state.microphoneEnabled
+                  ? 'Mute microphone'
+                  : 'Unmute microphone',
+                icon: 'microphone' as const,
+                key: 'microphone',
+                kind: 'outline' as const,
+                label: state.microphoneEnabled ? 'Mute' : 'Unmute',
+                onPress: () =>
+                  controller.setMicrophoneEnabled(!state.microphoneEnabled),
+                testID: 'voice-microphone-button',
+              },
+              {
+                accessibilityLabel: 'End live voice',
+                icon: 'end' as const,
+                key: 'end',
+                kind: 'destructive' as const,
+                label: 'End',
+                onPress: () => void end(),
+                testID: 'voice-end-button',
+              },
+            ],
+          ]),
+  ];
+
   return (
     <View className="flex-1 bg-background">
       {/* Decorative conversation glow behind the content: one bloom breathing
           on whichever party is louder. Missing native stats leave the level
           undefined so the phase animation carries it; the phase title and
-          description remain the accessible status. */}
+          description remain the accessible status. The glow stays PanelUI —
+          it has no native counterpart — while the rest of the screen renders
+          platform-native chrome. */}
       <Soundwave
         level={ambientLevel}
         state={ambientVoiceState(state.phase)}
@@ -319,146 +415,53 @@ function ConnectedVoiceScreen({
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="flex-grow gap-8 px-6 py-8">
         <View className="flex-1 items-center justify-center gap-8">
-          <View className="w-full max-w-md items-center gap-3">
-            <Typography.Heading type="h1">
-              {phaseTitle(state.phase)}
-            </Typography.Heading>
-            <Typography.Paragraph muted className="text-center">
-              {phaseDescription(state.phase)}
-            </Typography.Paragraph>
-            {ephemeralTranscripts ? (
-              <Typography.Paragraph
-                muted
-                className="text-center text-xs"
-                testID="voice-ephemeral-note">
-                Live voice is not saved to this chat. Work Wave hands to Hermes
-                shows up in the conversation afterward.
-              </Typography.Paragraph>
-            ) : null}
+          <View className="w-full max-w-md">
+            <VoiceStatus
+              description={phaseDescription(state.phase)}
+              note={
+                ephemeralTranscripts
+                  ? 'Live voice is not saved to this chat. Work Wave hands to Hermes shows up in the conversation afterward.'
+                  : undefined
+              }
+              noteTestID="voice-ephemeral-note"
+              title={phaseTitle(state.phase)}
+            />
           </View>
 
-          <View className="w-full max-w-md gap-6">
-            {state.userTranscript ? (
-              <View className="gap-1">
-                <Typography.Paragraph type="small" weight="semibold">
-                  You
-                </Typography.Paragraph>
-                <Typography.Paragraph
-                  selectable
+          {state.userTranscript || state.assistantTranscript ? (
+            <View className="w-full max-w-md gap-6">
+              {state.userTranscript ? (
+                <VoiceTranscript
                   muted
-                  testID="voice-user-transcript">
-                  {state.userTranscript}
-                </Typography.Paragraph>
-              </View>
-            ) : null}
-            {state.assistantTranscript ? (
-              <View className="gap-1">
-                <Typography.Paragraph type="small" weight="semibold">
-                  Wave
-                </Typography.Paragraph>
-                <Typography.Paragraph
-                  selectable
-                  testID="voice-assistant-transcript">
-                  {state.assistantTranscript}
-                </Typography.Paragraph>
-              </View>
-            ) : null}
-          </View>
+                  speaker="You"
+                  testID="voice-user-transcript"
+                  text={state.userTranscript}
+                />
+              ) : null}
+              {state.assistantTranscript ? (
+                <VoiceTranscript
+                  speaker="Wave"
+                  testID="voice-assistant-transcript"
+                  text={state.assistantTranscript}
+                />
+              ) : null}
+            </View>
+          ) : null}
 
           {state.error ? (
-            <Alert
-              className="w-full max-w-md"
-              variant="destructive"
-              testID="voice-error">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Title>Live voice interrupted</Alert.Title>
-                <Alert.Description>{state.error.message}</Alert.Description>
-              </Alert.Content>
-            </Alert>
+            <View className="w-full max-w-md">
+              <VoiceNotice
+                destructive
+                description={state.error.message}
+                testID="voice-error"
+                title="Live voice interrupted"
+              />
+            </View>
           ) : null}
         </View>
 
-        <View className="w-full max-w-md self-center gap-3">
-          {state.error?.kind === 'media_permission' ? (
-            <Button
-              fullWidth
-              accessibilityLabel="Open microphone settings"
-              testID="voice-open-settings-button"
-              variant="outline"
-              onPress={() => void Linking.openSettings()}>
-              Open microphone settings
-            </Button>
-          ) : null}
-          {state.error?.kind === 'model_unavailable' ? (
-            <Button
-              fullWidth
-              accessibilityLabel="Choose a different Realtime model"
-              testID="voice-open-model-settings-button"
-              variant="outline"
-              onPress={() => router.replace('/settings')}>
-              Review model in Settings
-            </Button>
-          ) : null}
-          {state.cleanupPending ? (
-            <Button
-              fullWidth
-              accessibilityLabel="Retry ending call"
-              testID="voice-primary-button"
-              onPress={retryStop}>
-              <RotateCcwIcon size={18} />
-              Retry ending call
-            </Button>
-          ) : canStart ? (
-            <>
-              <Button
-                fullWidth
-                accessibilityLabel="Start voice"
-                testID="voice-primary-button"
-                onPress={start}>
-                <MicIcon size={18} />
-                Start voice
-              </Button>
-              {/* The route is a headerless modal, so without this the only
-                  exits are the system back gesture or starting a call. */}
-              <Button
-                fullWidth
-                variant="outline"
-                accessibilityLabel="Close live voice"
-                testID="voice-close-button"
-                onPress={() => void end()}>
-                <XIcon size={18} />
-                Close
-              </Button>
-            </>
-          ) : (
-            <View className="flex-row gap-3">
-              <Button
-                className="flex-1"
-                variant="outline"
-                accessibilityLabel={
-                  state.microphoneEnabled
-                    ? 'Mute microphone'
-                    : 'Unmute microphone'
-                }
-                testID="voice-microphone-button"
-                onPress={() =>
-                  controller.setMicrophoneEnabled(!state.microphoneEnabled)
-                }>
-                <MicIcon size={18} />
-                {state.microphoneEnabled ? 'Mute' : 'Unmute'}
-              </Button>
-              <Button
-                className="flex-1"
-                variant="destructive"
-                accessibilityLabel="End live voice"
-                testID="voice-end-button"
-                onPress={() => void end()}>
-                <XIcon size={18} />
-                End
-              </Button>
-            </View>
-          )}
+        <View className="w-full max-w-md self-center">
+          <VoiceActions rows={actionRows} />
         </View>
       </ScrollView>
     </View>
