@@ -482,17 +482,23 @@ documentation before implementing UI.
 
 - Bubbles belong to user messages only. Agent output renders full width and bubble-free:
   assistant text through PanelUI `Response` (model-authored link schemes outside the component's
-  allowlist stay inert text), each tool and handoff record as a PanelUI `Marker` action row with
-  no disclosure affordance, the turn's bounded reasoning trace as one PanelUI `Reasoning`
+  allowlist stay inert text), each tool and handoff record as a pressable PanelUI `Marker` action
+  row with no inline disclosure, the turn's bounded reasoning trace as one PanelUI `Reasoning`
   disclosure (streaming live, folded for history, rendered through the same `Response` markdown
   pipeline as assistant text), and waiting states
   as `Shimmer` text showing the reviewed activity label when fresh and "Working…" otherwise. Wave presents as one assistant: user-facing copy
   never frames Wave and Hermes as separate actors.
-- Tool calls render only as bounded one-line actions derived by the Wave-owned mapping in
+- Tool calls render as bounded one-line actions derived by the Wave-owned mapping in
   `src/features/chat/tool-actions.ts` from the validated tool name plus defensively parsed
   bounded input. Derived lines are single-line inert plain text, never markdown; unknown tools
-  fall back to a generic action; handoffs are detected by Wave-constructed ids, never titles;
-  raw tool input/output is not displayed.
+  fall back to a generic action; handoffs are detected by Wave-constructed ids, never titles.
+  Tapping a tool row presents the native tool-detail bottom sheet
+  (`tool-detail-sheet.{shared.ts,ios.tsx,android.tsx}` — SwiftUI `BottomSheet` /
+  Compose `ModalBottomSheet` whose content is a plain scrollable `Column`, never a
+  `LazyColumn`): the humanized tool name plus the call's bounded `WaveToolDetail` input/output
+  as selectable monospaced plain text with explicit truncation notices — complete parseable
+  JSON is re-indented for reading, everything else shows exactly as it crossed the boundary,
+  never as markdown, and raw call/run ids never reach the sheet.
 - Every completed assistant turn carries the Wave-owned action row (`turn-action-row.tsx`):
   time-ago timestamp plus icon-only Branch / Copy / Read-aloud / Refresh. The complete visible row
   is one native Expo UI `Host`: `row.android.tsx` owns a direct Jetpack Compose tree and

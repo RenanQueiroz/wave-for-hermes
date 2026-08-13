@@ -16,8 +16,8 @@ import {
   Alert,
   AlertTriangleIcon,
   Button,
+  CheckCircleIcon,
   ChevronRightIcon,
-  CircleIcon,
   FileIcon,
   LinkIcon,
   Marker,
@@ -45,7 +45,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { Animated, Platform, View } from 'react-native';
+import { Animated, Platform, Pressable, View } from 'react-native';
 import { useKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
@@ -66,8 +66,11 @@ import { ChatComposer } from '@/features/chat/composer';
 import { composerKeyboardBottomInset } from '@/features/chat/composer/dock';
 import {
   deriveToolAction,
+  formatToolName,
   toolActionLabel,
 } from '@/features/chat/tool-actions';
+import { ToolDetailSheet } from '@/features/chat/tool-detail-sheet';
+import type { WaveToolCallDetail } from '@/features/chat/tool-detail-sheet.shared';
 import {
   branchCount,
   collectPrunedEntryIds,
@@ -519,6 +522,11 @@ function ConnectedChatScreen({
 
   const [turnActionError, setTurnActionError] = useState<string>();
 
+  // A tapped tool Marker presents this call's bounded input/output in the
+  // native detail sheet; the row snapshot is captured at press time.
+  const [toolDetail, setToolDetail] = useState<WaveToolCallDetail>();
+  const dismissToolDetail = useCallback(() => setToolDetail(undefined), []);
+
   // Branch: copy this conversation (up to the tapped turn) into a new chat
   // and open it. One non-retrying call; the drawer list refetch reconciles.
   const branchTurn = useCallback(
@@ -615,6 +623,7 @@ function ConnectedChatScreen({
         onBranch={gatewayClient ? branchTurn : undefined}
         onPlay={canSpeak ? playback.play : undefined}
         onRegenerate={regenerateTurn}
+        onShowToolDetail={setToolDetail}
       />
     ),
     [
@@ -804,6 +813,7 @@ function ConnectedChatScreen({
           turnActionError={turnActionError}
         />
       </View>
+      <ToolDetailSheet detail={toolDetail} onDismiss={dismissToolDetail} />
     </View>
   );
 }
@@ -858,6 +868,7 @@ const ChatTurn = memo(
     onBranch,
     onPlay,
     onRegenerate,
+    onShowToolDetail,
     playbackStatus,
   }: {
     busy: boolean;
@@ -866,6 +877,7 @@ const ChatTurn = memo(
     onBranch?: (messageId: string) => void;
     onPlay?: (messageId: string, text: string) => void;
     onRegenerate?: (messageId: string) => void;
+    onShowToolDetail: (detail: WaveToolCallDetail) => void;
     playbackStatus: 'idle' | 'loading' | 'playing' | 'error';
   }) {
     if (message.role === 'user') {
@@ -917,7 +929,11 @@ const ChatTurn = memo(
               {group.part.text}
             </Response>
           ) : (
-            <ChatToolRun key={group.key} parts={group.parts} />
+            <ChatToolRun
+              key={group.key}
+              parts={group.parts}
+              onShowDetail={onShowToolDetail}
+            />
           ),
         )}
         {isStreaming && message.parts.length === 0 ? (
@@ -1019,14 +1035,16 @@ function ChatReasoning({
  * there is deliberately no disclosure affordance.
  */
 function ChatToolRun({
+  onShowDetail,
   parts,
 }: {
+  onShowDetail: (detail: WaveToolCallDetail) => void;
   parts: Extract<WaveChatPart, { type: 'task' }>[];
 }) {
   return (
     <View className="gap-1">
       {parts.map((part) => (
-        <ChatToolMarker key={part.id} part={part} />
+        <ChatToolMarker key={part.id} part={part} onShowDetail={onShowDetail} />
       ))}
     </View>
   );
@@ -1050,13 +1068,15 @@ function toolActionIcon(verb: string) {
     case 'Asked Hermes':
       return <SparklesIcon size={14} />;
     default:
-      return <CircleIcon size={14} />;
+      return <CheckCircleIcon size={14} />;
   }
 }
 
 function ChatToolMarker({
+  onShowDetail,
   part,
 }: {
+  onShowDetail: (detail: WaveToolCallDetail) => void;
   part: Extract<WaveChatPart, { type: 'task' }>;
 }) {
   const action = deriveToolAction(part);
@@ -1064,25 +1084,42 @@ function ChatToolMarker({
   const failed = part.status === 'error';
   const destructive = useCSSVariable('--color-destructive');
   return (
-    <Marker
+    <Pressable
+      accessibilityHint="Shows the call's input and output"
       accessibilityLabel={`${label}. ${toolStatusDescription(part.status)}`}
-      testID={`chat-task-${part.id}`}>
-      <Marker.Icon>
-        {failed ? (
-          <AlertTriangleIcon
-            color={typeof destructive === 'string' ? destructive : undefined}
-            size={14}
-          />
-        ) : (
-          toolActionIcon(action.verb)
-        )}
-      </Marker.Icon>
-      <Marker.Content
-        className={failed ? 'text-destructive' : undefined}
-        shimmer={part.status === 'running'}>
-        {failed ? `${label} — failed` : label}
-      </Marker.Content>
-    </Marker>
+      accessibilityRole="button"
+      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      onPress={() =>
+        onShowDetail({
+          input: part.input,
+          output: part.output,
+          outputIsPreview: Boolean(part.outputIsPreview),
+          status: part.status,
+          // Handoffs keep their action verb; every other row shows the
+          // humanized tool name. Raw ids never reach the sheet.
+          title: part.id.endsWith('-handoff')
+            ? 'Asked Hermes'
+            : formatToolName(part.title),
+        })
+      }>
+      <Marker testID={`chat-task-${part.id}`}>
+        <Marker.Icon>
+          {failed ? (
+            <AlertTriangleIcon
+              color={typeof destructive === 'string' ? destructive : undefined}
+              size={14}
+            />
+          ) : (
+            toolActionIcon(action.verb)
+          )}
+        </Marker.Icon>
+        <Marker.Content
+          className={failed ? 'text-destructive' : undefined}
+          shimmer={part.status === 'running'}>
+          {failed ? `${label} — failed` : label}
+        </Marker.Content>
+      </Marker>
+    </Pressable>
   );
 }
 

@@ -206,6 +206,106 @@ test('normalizes message rows into timeline entries with stable ids', () => {
   );
 });
 
+test('correlates assistant tool_calls arguments onto stored tool rows', () => {
+  const entries = normalizeTimelineEntries({
+    messages: [
+      {
+        id: 1,
+        role: 'assistant',
+        content: 'Checking both.',
+        tool_calls: [
+          {
+            id: 'call-a',
+            type: 'function',
+            function: { name: 'search', arguments: '{"query":"tides"}' },
+          },
+          // Flat variant with object arguments, no id: matched by name order.
+          { name: 'search', arguments: { query: 'currents' } },
+        ],
+      },
+      {
+        id: 2,
+        role: 'tool',
+        content: 'first result',
+        tool_call_id: 'call-a',
+        tool_name: 'search',
+      },
+      { id: 3, role: 'tool', content: 'second result', tool_name: 'search' },
+      // No pending call left: the row keeps no input rather than guessing.
+      { id: 4, role: 'tool', content: 'orphan', tool_name: 'search' },
+    ],
+  });
+  assert.deepEqual(entries[1].message.toolInput, {
+    text: '{"query":"tides"}',
+    truncated: false,
+  });
+  assert.deepEqual(entries[2].message.toolInput, {
+    text: '{"query":"currents"}',
+    truncated: false,
+  });
+  assert.equal(entries[3].message.toolInput, undefined);
+});
+
+test('tool_calls correlation resets per calling row and survives strings', () => {
+  const entries = normalizeTimelineEntries({
+    messages: [
+      {
+        id: 1,
+        role: 'assistant',
+        content: 'One.',
+        // Unanswered call: must not leak onto later turns' rows.
+        tool_calls: [{ name: 'search', arguments: '{"query":"stale"}' }],
+      },
+      {
+        id: 10,
+        role: 'assistant',
+        content: '',
+        // Renders nothing itself (no content, no reasoning) but still owns
+        // its results' inputs.
+        tool_calls: [
+          {
+            id: 'call-b',
+            function: { name: 'browse', arguments: '{"url":"https://x"}' },
+          },
+        ],
+      },
+      {
+        id: 11,
+        role: 'tool',
+        content: 'page',
+        tool_call_id: 'call-b',
+        tool_name: 'browse',
+      },
+      {
+        id: 2,
+        role: 'assistant',
+        content: 'Two.',
+        // Serialized JSON variant of the whole array still parses.
+        tool_calls: JSON.stringify([
+          { function: { name: 'search', arguments: '{"query":"fresh"}' } },
+        ]),
+      },
+      { id: 3, role: 'tool', content: 'result', tool_name: 'search' },
+      { id: 4, role: 'tool', content: 'extra', tool_name: 'search' },
+    ],
+  });
+  // The tool_calls-only assistant row renders no entry of its own…
+  assert.deepEqual(
+    entries.map((entry) => entry.id),
+    ['msg-1', 'msg-11', 'msg-2', 'msg-3', 'msg-4'],
+  );
+  // …but its arguments still reach its result row.
+  assert.deepEqual(entries[1].message.toolInput, {
+    text: '{"url":"https://x"}',
+    truncated: false,
+  });
+  assert.deepEqual(entries[3].message.toolInput, {
+    text: '{"query":"fresh"}',
+    truncated: false,
+  });
+  assert.equal(entries[4].message.toolInput, undefined);
+});
+
 test('folds gateway image annotations out of user messages', () => {
   // Content captured live on 0.19.0: one annotation pair per attached image,
   // each followed by a blank line, then the typed text.

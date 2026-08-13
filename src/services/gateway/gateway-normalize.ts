@@ -14,6 +14,7 @@ import {
   type WaveSessionSource,
   type WaveSessionSummary,
   type WaveTimelineEntry,
+  type WaveToolDetail,
 } from '@wave/contracts';
 
 /** Session row from `GET /api/sessions` (many columns; we take a few). */
@@ -323,12 +324,70 @@ export function normalizeMessageRow(
   };
 }
 
+const MAX_CORRELATED_TOOL_CALLS = 32;
+const MAX_TOOL_CALL_ID_CHARS = 200;
+
+interface CorrelatedToolCall {
+  id?: string;
+  input: WaveToolDetail;
+  name?: string;
+}
+
+/**
+ * The arguments of one assistant row's `tool_calls`, parsed defensively.
+ * Entries follow the OpenAI-style layout (`{ id, function: { name,
+ * arguments } }`) with flat `name`/`arguments` variants tolerated; anything
+ * unrecognized simply yields no correlation rather than a guess.
+ */
+function parseAssistantToolCalls(value: unknown): CorrelatedToolCall[] {
+  let calls: unknown = value;
+  if (typeof calls === 'string') {
+    try {
+      calls = JSON.parse(calls);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(calls)) return [];
+  const parsed: CorrelatedToolCall[] = [];
+  for (const entry of calls.slice(0, MAX_CORRELATED_TOOL_CALLS)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const fn =
+      record.function && typeof record.function === 'object'
+        ? (record.function as Record<string, unknown>)
+        : undefined;
+    const input = toToolDetail(
+      fn?.arguments ?? record.arguments ?? record.args ?? record.input,
+    );
+    if (!input) continue;
+    const id = text(record.id, MAX_TOOL_CALL_ID_CHARS);
+    const name = text(
+      fn?.name ?? record.tool_name ?? record.name,
+      MAX_TOOL_NAME_CHARS,
+    );
+    parsed.push({
+      ...(id ? { id } : {}),
+      input,
+      ...(name ? { name } : {}),
+    });
+  }
+  return parsed;
+}
+
 /**
  * Gateway message rows → Wave timeline entries. The gateway has no handoff
  * concept (that was the companion's ledger), so every entry is a message.
  * Entry ids must be stable: the timeline uses them as list keys, so when a
  * row carries no id the fallback uses the row's absolute offset in the full
  * history (`indexBase` + position) rather than its position within one page.
+ *
+ * Hermes stores a call's arguments on the assistant row's `tool_calls` and
+ * the result on the following tool rows (OpenAI-style history), so the walk
+ * correlates them — by `tool_call_id` when both sides carry ids, else by
+ * tool name in order — and the stored timeline keeps the same bounded input
+ * the live stream carried in `tool.start`. Ids are consumed here and never
+ * cross the boundary.
  */
 export function normalizeTimelineEntries(
   value: unknown,
@@ -338,9 +397,40 @@ export function normalizeTimelineEntries(
     ? ((value as { messages: unknown[] }).messages as GatewayMessageRow[])
     : [];
   const entries: WaveTimelineEntry[] = [];
+  let pendingCalls: (CorrelatedToolCall & { consumed: boolean })[] = [];
   rows.forEach((row, index) => {
-    const message = normalizeMessageRow(row ?? {});
+    // The calling row's arguments are collected before the render check: an
+    // assistant row carrying only tool_calls (no content, no reasoning)
+    // renders nothing itself but still owns its results' inputs.
+    if (normalizeRole(row?.role) === 'assistant') {
+      const calls = parseAssistantToolCalls(row?.tool_calls);
+      if (calls.length > 0) {
+        // A fresh calling row supersedes leftovers from calls whose results
+        // never arrived, so name-order matching cannot drift across turns.
+        pendingCalls = calls.map((call) => ({ ...call, consumed: false }));
+      }
+    }
+    let message = normalizeMessageRow(row ?? {});
     if (!message) return;
+    if (message.role === 'tool' && !message.toolInput) {
+      // One pending list with consumption: an id match must also retire the
+      // call from name-order matching, or the same arguments would deliver
+      // twice.
+      const callId = text(row?.tool_call_id, MAX_TOOL_CALL_ID_CHARS);
+      const match =
+        (callId
+          ? pendingCalls.find((call) => !call.consumed && call.id === callId)
+          : undefined) ??
+        (message.toolName
+          ? pendingCalls.find(
+              (call) => !call.consumed && call.name === message?.toolName,
+            )
+          : undefined);
+      if (match) {
+        match.consumed = true;
+        message = { ...message, toolInput: match.input };
+      }
+    }
     const rawId = row?.id;
     const id =
       typeof rawId === 'number' || typeof rawId === 'string'

@@ -80,6 +80,12 @@ absent or malformed.
   reasoning structures never cross. Codex providers additionally narrate progress on a commentary
   channel (`show_commentary`, default on): completed commentary arrives as ordinary
   `message.interim` segments, so the reasoning trace holds only private reasoning.
+- **Stored tool arguments**: history rows follow the OpenAI-style layout — the assistant row
+  carries `tool_calls` (ids, names, arguments) and the following `tool` rows carry only
+  `tool_name`, `tool_call_id`, and the result. Timeline normalization correlates them (by
+  `tool_call_id`, else by tool name in order, each call consumed once) so stored tool rows keep
+  the same bounded `toolInput` the live stream carries in `tool.start`; the raw call ids are
+  consumed inside the normalizer and never cross the boundary.
 - **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed
   final can replace that segment once without duplicating it. `tool.progress` updates the existing
   named tool row with one bounded preview. Only reviewed compaction, goal, process, and ready
