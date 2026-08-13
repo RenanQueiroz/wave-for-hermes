@@ -39,6 +39,35 @@ administration to Hermes itself.
 - Use native SwiftUI and Jetpack Compose controls where platform behavior matters, with PanelUI for
   shared React Native surfaces.
 
+## Screenshots
+
+<table>
+  <thead>
+    <tr>
+      <th align="center">iOS</th>
+      <th align="center">Android</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td colspan="2" align="center"><strong>Browse conversations</strong></td>
+    </tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-conversations.png" width="320" alt="Wave conversation drawer on iOS" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-conversations.png" width="320" alt="Wave conversation drawer on Android" /></td>
+    </tr>
+    <tr>
+      <td colspan="2" align="center"><strong>Continue a chat</strong></td>
+    </tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-chat.png" width="320" alt="Wave chat on iOS" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-chat.png" width="320" alt="Wave chat with a structured Markdown response on Android" /></td>
+    </tr>
+  </tbody>
+</table>
+
+Screenshots use privacy-safe fixture conversations served by the repository's local test gateway.
+
 ## How it works
 
 ```text
