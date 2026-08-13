@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { Soundwave } from 'panelui-native';
 import {
   useCallback,
   useEffect,
@@ -27,6 +26,7 @@ import {
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import { useVoiceKeepAwake } from '@/features/voice/use-voice-keep-awake';
 import { VoiceActions } from '@/features/voice/voice-actions';
+import { VoiceAmbientGlow } from '@/features/voice/voice-ambient-glow';
 import { VoiceCallControls } from '@/features/voice/voice-call-controls';
 import { VoiceNotice } from '@/features/voice/voice-notice';
 import type {
@@ -366,7 +366,7 @@ function ConnectedVoiceScreen({
       ? [
           {
             accessibilityLabel: 'Start voice',
-            glyph: 'microphone' as const,
+            glyph: 'wave' as const,
             key: 'start',
             label: 'Start voice',
             onPress: start,
@@ -413,14 +413,11 @@ function ConnectedVoiceScreen({
       {/* Decorative conversation glow behind the content: one bloom breathing
           on whichever party is louder. Missing native stats leave the level
           undefined so the phase animation carries it; the phase title and
-          description remain the accessible status. The glow stays PanelUI —
-          it has no native counterpart — while the rest of the screen renders
-          platform-native chrome. */}
-      <Soundwave
+          description remain the accessible status. */}
+      <VoiceAmbientGlow
         level={ambientLevel}
         state={ambientVoiceState(state.phase)}
         testID="voice-ambient-glow"
-        variant="ambient"
       />
       <ScrollView
         className="flex-1"

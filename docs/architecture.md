@@ -113,9 +113,11 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   plain-text transcript blocks, notice cards, and controls are shared SwiftUI/Compose
   components under `src/features/voice/` (`voice-status`, `voice-transcript`, `voice-notice`,
   `voice-actions`, `voice-call-controls` behind `voice-screen-ui.types.ts`), while the chat
-  `PromptCard` and the assistant reply's `Response` markdown block stay React Native. Call
-  clusters follow each platform's system call UI — captioned circular glyph buttons, with the
-  end control as iOS's red circle in the row and Android's wide destructive pill below it — and
+  `PromptCard` and the assistant reply's `Response` markdown block stay React Native, with the
+  ambient glow's ink themed per mode (`voice-ambient-glow.tsx`: same alpha ramp in both themes,
+  deeper blue on light, brighter on dark). Call clusters follow each platform's system call UI —
+  captioned glyph buttons, circles on iOS with the red hang-up circle in the row, equal
+  width-filling pills on Android with a full-width destructive pill beneath — and
   both screens hold an `expo-keep-awake` lock only while a call or loop is active so the device
   cannot auto-lock mid-conversation. The affordances
   are gated on a cached probe of what the server actually has configured, and disable with honest

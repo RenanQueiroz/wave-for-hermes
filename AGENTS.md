@@ -211,10 +211,15 @@ documentation before implementing UI.
   `voice-transcript`, `voice-notice`, `voice-actions`, and `voice-call-controls` are
   intrinsic-height SwiftUI/Compose Hosts, while the PanelUI `Soundwave` ambient glow, the shared
   chat `PromptCard`, and the gateway assistant reply's `Response` markdown block deliberately stay
-  React Native. Call clusters (start/close and the in-call controls) render through
-  `voice-call-controls`, which mimics each platform's system call UI: circular glyph buttons with
-  captions beneath, an active (muted) control filled with primary, and the end control as iOS's
-  red circle in the row versus Android's wide destructive pill below it. `voice-actions` remains
+  React Native — with the ambient ink themed per mode through `voice-ambient-glow.tsx` (same
+  alpha ramp in both themes; deeper blue on light, brighter on dark, since the default info-token
+  ink vanishes on a white page). Call clusters (start/close and the in-call controls) render
+  through `voice-call-controls`, which mimics each platform's system call UI: captioned glyph
+  buttons — circles on iOS with the end control as the red hang-up circle in the row; on Android
+  equal pills splitting the full content width with the end control as a full-width destructive
+  pill beneath, every button at one shared height (fixed-width pills would strand space at the
+  edges with only two supporting controls). An active (muted) control fills with primary, and
+  Start uses the composer's live-voice wave glyph. `voice-actions` remains
   for utility rows (settings links, retry) — single-button rows full width, multi-button rows
   split evenly. Content on a destructive fill is always white: PanelUI's destructive-foreground
   token is the on-surface red and disappears on the red container (its own destructive Button

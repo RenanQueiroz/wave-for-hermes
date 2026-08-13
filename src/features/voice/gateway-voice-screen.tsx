@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Response, Soundwave, Typography } from 'panelui-native';
+import { Response, Typography } from 'panelui-native';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, ScrollView, View } from 'react-native';
 
@@ -16,6 +16,7 @@ import {
 import { useGatewayVoice } from '@/features/voice/use-gateway-voice';
 import { useVoiceKeepAwake } from '@/features/voice/use-voice-keep-awake';
 import { VoiceActions } from '@/features/voice/voice-actions';
+import { VoiceAmbientGlow } from '@/features/voice/voice-ambient-glow';
 import { VoiceCallControls } from '@/features/voice/voice-call-controls';
 import { VoiceNotice } from '@/features/voice/voice-notice';
 import type {
@@ -199,7 +200,7 @@ export function GatewayVoiceScreen({
         {
           accessibilityLabel: 'Start voice mode',
           disabled: !canListen || !canSpeak,
-          glyph: 'microphone',
+          glyph: 'wave',
           key: 'start',
           label: 'Start voice',
           onPress: () => void start(),
@@ -258,14 +259,11 @@ export function GatewayVoiceScreen({
     <View className="flex-1 bg-background">
       {/* Decorative conversation glow behind the content. Voice mode is
           half-duplex, so the glow naturally follows one party at a time;
-          the phase title and description remain the accessible status. The
-          glow stays PanelUI — it has no native counterpart — while the rest
-          of the screen renders platform-native chrome. */}
-      <Soundwave
+          the phase title and description remain the accessible status. */}
+      <VoiceAmbientGlow
         level={voice.state.muted ? undefined : ambientLevel}
         state={voice.state.muted ? 'idle' : ambientVoiceState(phase)}
         testID="gateway-voice-ambient-glow"
-        variant="ambient"
       />
       <ScrollView
         className="flex-1"

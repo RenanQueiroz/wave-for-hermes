@@ -15,6 +15,7 @@ export type VoiceCallGlyph =
   | 'microphone-off'
   | 'send'
   | 'skip'
+  | 'wave'
   | 'working';
 
 export interface VoiceCallControlSpec {

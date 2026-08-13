@@ -34,6 +34,9 @@ const VOICE_CALL_SYMBOLS = {
   'microphone-off': 'mic.slash.fill',
   send: 'arrow.up',
   skip: 'chevron.right',
+  // The composer's live-voice glyph, so starting voice reads as the same
+  // action it does in chat.
+  wave: 'waveform',
   working: 'hourglass',
 } as const satisfies Record<VoiceCallGlyph, SFSymbol>;
 

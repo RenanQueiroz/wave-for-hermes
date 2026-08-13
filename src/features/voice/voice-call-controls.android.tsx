@@ -16,8 +16,8 @@ import {
 import {
   fillMaxWidth,
   height,
-  size,
   testID as testIDModifier,
+  weight,
 } from '@expo/ui/jetpack-compose/modifiers';
 
 import type {
@@ -34,10 +34,18 @@ const VOICE_CALL_ICONS: Record<VoiceCallGlyph, number> = {
   'microphone-off': require('@expo/material-symbols/mic_off.xml'),
   send: require('@expo/material-symbols/arrow_upward.xml'),
   skip: require('@expo/material-symbols/chevron_right.xml'),
+  // The composer's live-voice glyph, so starting voice reads as the same
+  // action it does in chat.
+  wave: require('@expo/material-symbols/graphic_eq.xml'),
   working: require('@expo/material-symbols/hourglass_empty.xml'),
 };
 
-const CIRCLE_SIZE = 64;
+// Google Phone's pill language, adapted to Wave's two supporting controls:
+// with only two (not the Phone app's four) fixed-width pills would leave dead
+// space at the edges, so the supporting row splits the full content width
+// evenly and the hang-up pill spans all of it. Every button shares one height.
+const PILL_HEIGHT = 64;
+const PILL_GAP = 12;
 
 // PanelUI has no on-destructive token (destructive-foreground is the
 // on-surface red). Its destructive Button hardcodes white content because the
@@ -59,12 +67,15 @@ export function VoiceCallControls({ controls }: VoiceCallControlsProps) {
       style={{ width: '100%' }}>
       <Column
         horizontalAlignment="center"
-        verticalArrangement={{ spacedBy: 20 }}
+        verticalArrangement={{ spacedBy: 16 }}
         modifiers={[fillMaxWidth()]}>
         {circleControls.length > 0 ? (
-          <Row horizontalArrangement={{ spacedBy: 28 }} verticalAlignment="top">
+          <Row
+            horizontalArrangement={{ spacedBy: PILL_GAP }}
+            verticalAlignment="top"
+            modifiers={[fillMaxWidth()]}>
             {circleControls.map((control) => (
-              <VoiceCallCircle control={control} key={control.key} />
+              <VoiceCallPill control={control} key={control.key} />
             ))}
           </Row>
         ) : null}
@@ -78,8 +89,8 @@ export function VoiceCallControls({ controls }: VoiceCallControlsProps) {
             }}
             enabled={!endControl.disabled}
             modifiers={[
-              fillMaxWidth(0.62),
-              height(56),
+              fillMaxWidth(),
+              height(PILL_HEIGHT),
               testIDModifier(endControl.testID),
             ]}
             onClick={endControl.onPress}>
@@ -95,13 +106,16 @@ export function VoiceCallControls({ controls }: VoiceCallControlsProps) {
   );
 }
 
-function VoiceCallCircle({ control }: { control: VoiceCallControlSpec }) {
+function VoiceCallPill({ control }: { control: VoiceCallControlSpec }) {
   const theme = useTheme();
   const prominent =
     control.role === 'start' || (control.active ?? false) === true;
 
   return (
-    <Column horizontalAlignment="center" verticalArrangement={{ spacedBy: 8 }}>
+    <Column
+      horizontalAlignment="center"
+      verticalArrangement={{ spacedBy: 8 }}
+      modifiers={[weight(1)]}>
       <FilledIconButton
         colors={{
           containerColor: prominent ? theme.primary : theme.backgroundElement,
@@ -111,7 +125,8 @@ function VoiceCallCircle({ control }: { control: VoiceCallControlSpec }) {
         }}
         enabled={!control.disabled}
         modifiers={[
-          size(CIRCLE_SIZE, CIRCLE_SIZE),
+          fillMaxWidth(),
+          height(PILL_HEIGHT),
           testIDModifier(control.testID),
         ]}
         onClick={control.onPress}>
