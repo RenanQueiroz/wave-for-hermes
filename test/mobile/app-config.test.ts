@@ -4,7 +4,11 @@ import test from 'node:test';
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
-import configureApp, { resolveAppVariant } from '../../app.config.ts';
+import configureApp, {
+  resolveAndroidVersionCode,
+  resolveAppVariant,
+  resolveVersionName,
+} from '../../app.config.ts';
 
 const staticConfig = (
   JSON.parse(
@@ -45,6 +49,42 @@ test('local Expo commands default to development and reject unknown variants', (
   assert.equal(resolveAppVariant(undefined), 'development');
   assert.throws(() => resolveAppVariant('staging'), /APP_VARIANT must be/);
   assert.throws(() => resolveAppVariant('toString'), /APP_VARIANT must be/);
+});
+
+test('the release workflow versionCode override is validated strictly', () => {
+  assert.equal(resolveAndroidVersionCode(undefined), undefined);
+  assert.equal(resolveAndroidVersionCode(''), undefined);
+  assert.equal(resolveAndroidVersionCode('233'), 233);
+  assert.equal(resolveAndroidVersionCode('2100000000'), 2_100_000_000);
+  for (const bad of ['0', '-3', '1.5', '2100000001', 'abc', '01']) {
+    assert.throws(
+      () => resolveAndroidVersionCode(bad),
+      /WAVE_ANDROID_VERSION_CODE must be/,
+    );
+  }
+});
+
+test('the version name is single-sourced from package.json and semver-shaped', () => {
+  assert.match(resolveVersionName(), /^\d+\.\d+\.\d+$/);
+  assert.equal(resolveVersionName('0.1.0'), '0.1.0');
+  for (const bad of ['1.0', 'v1.0.0', '1.0.0-beta', '']) {
+    assert.throws(() => resolveVersionName(bad), /must be a plain x\.y\.z/);
+  }
+});
+
+test('the resolved config carries the package.json version', () => {
+  const previous = process.env.APP_VARIANT;
+  process.env.APP_VARIANT = 'production';
+  try {
+    const config = configureApp({
+      config: structuredClone(staticConfig),
+    } as ConfigContext);
+    assert.match(config.version ?? '', /^\d+\.\d+\.\d+$/);
+    assert.equal(config.android?.versionCode, 1);
+  } finally {
+    if (previous === undefined) delete process.env.APP_VARIANT;
+    else process.env.APP_VARIANT = previous;
+  }
 });
 
 test('EAS profiles select their matching app variants', () => {

@@ -1,0 +1,112 @@
+# Builds a signed production APK on every push to main and publishes it as a
+# GitHub release (the feed Wave's Android in-app updater consumes).
+#
+# Security posture (do not weaken casually):
+# - Signing secrets live in the `release` environment, whose deployment branch
+#   policy allows only `main`; they are injected into exactly the two steps
+#   that need them. Never add `pull_request_target` to this repository.
+# - Third-party actions are pinned to full commit SHAs.
+# - The GITHUB_TOKEN starts with no permissions and the job elevates to
+#   `contents: write` only; checkout does not persist credentials.
+# - Never interpolate untrusted event data (commit messages, branch names)
+#   into run blocks.
+name: release-apk
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+  CI: '1'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the versionCode is the main-branch commit count
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17 # React Native 0.86 / AGP 8.12 recommendation
+
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared contracts
+        run: npm run build:contracts
+
+      - name: Run tests
+        run: npm test
+
+      - name: Compute release version
+        run: |
+          {
+            echo "APP_VARIANT=production"
+            echo "WAVE_ANDROID_VERSION_CODE=$(git rev-list --count HEAD)"
+            echo "WAVE_VERSION_NAME=$(node -p "require('./package.json').version")"
+          } >> "$GITHUB_ENV"
+
+      - name: Restore release keystore
+        env:
+          WAVE_ANDROID_KEYSTORE_B64: ${{ secrets.WAVE_ANDROID_KEYSTORE_B64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/wave-signing"
+          printf '%s' "$WAVE_ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wave-signing/release.keystore"
+
+      - name: Prebuild
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build release APK
+        working-directory: android
+        env:
+          WAVE_UPLOAD_STORE_FILE: ${{ runner.temp }}/wave-signing/release.keystore
+          WAVE_UPLOAD_STORE_PASSWORD: ${{ secrets.WAVE_ANDROID_KEYSTORE_PASSWORD }}
+          WAVE_UPLOAD_KEY_ALIAS: ${{ secrets.WAVE_ANDROID_KEY_ALIAS }}
+          WAVE_UPLOAD_KEY_PASSWORD: ${{ secrets.WAVE_ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease
+
+      - name: Verify release signature
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          CERTS="$("$APKSIGNER" verify --print-certs android/app/build/outputs/apk/release/app-release.apk)"
+          echo "$CERTS"
+          if printf '%s' "$CERTS" | grep -qi 'Android Debug'; then
+            echo 'Release APK is debug-signed; refusing to publish.' >&2
+            exit 1
+          fi
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="wave-$WAVE_VERSION_NAME.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          gh release create "v$WAVE_VERSION_NAME-$WAVE_ANDROID_VERSION_CODE" \
+            --target "$GITHUB_SHA" \
+            --title "Wave $WAVE_VERSION_NAME ($WAVE_ANDROID_VERSION_CODE)" \
+            --generate-notes \
+            --latest \
+            "$APK" "$APK.sha256"

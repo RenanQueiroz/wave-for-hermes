@@ -278,6 +278,19 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
 - The mobile production export is scanned for upstream keys, server-only imports, and forbidden
   protocol strings. Dependency alignment and workspace boundaries are automated, and the
   boundary check fails if a server-side Wave backend reappears.
+- Android release distribution is a GitHub Actions pipeline
+  (`.github/workflows/release-apk.yml`) that signs and publishes a production APK per `main`
+  push. Its controls: the signing keystore and passwords are environment-scoped secrets in the
+  `release` environment whose deployment-branch policy allows only `main` (GitHub never passes
+  secrets to fork-triggered workflows, and no workflow may ever use `pull_request_target`);
+  secrets are injected only into the keystore-restore and Gradle steps, after dependency
+  install and with `persist-credentials: false`, so package scripts never see them; the
+  workflow token is default-deny with `contents: write` on the release job only; third-party
+  actions are pinned to commit SHAs; and a publish gate rejects a debug-signed APK. The
+  keystore is the update trust root — Android refuses to install an update whose signing
+  certificate differs — so its custody (offline backup outside the repository) is a
+  release-security control; a compromised dependency running inside the signing job remains
+  the accepted residual risk, mitigated by the audited lockfile policy.
 
 ## Validation status
 

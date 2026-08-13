@@ -2,7 +2,6 @@
   "expo": {
     "name": "wave",
     "slug": "wave",
-    "version": "1.0.0",
     "platforms": ["ios", "android"],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -22,6 +21,7 @@
     },
     "android": {
       "package": "com.renanqueiroz.wave",
+      "versionCode": 1,
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.CHANGE_NETWORK_STATE",
@@ -94,7 +94,8 @@
           "disableFFmpeg": true,
           "disableStaticExternalLibs": true
         }
-      ]
+      ],
+      "./plugins/with-android-release-signing.js"
     ],
     "experiments": {
       "typedRoutes": true,

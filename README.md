@@ -167,6 +167,24 @@ npm run build:production:ios:local
 Generated native projects and build outputs are ignored. Do not commit signing credentials or
 local artifacts.
 
+### Android release pipeline
+
+Every push to `main` runs [`release-apk`](./.github/workflows/release-apk.yml) on GitHub
+Actions: it prebuilds the production variant, builds a signed, R8-optimized universal APK with
+Gradle (no EAS involvement), and publishes it as a GitHub release tagged
+`v<version>-<versionCode>` with a `.sha256` sidecar. The version name is single-sourced from
+`package.json` (`app.config.ts` injects it into the native build, the workflow reads it for the
+tag and APK name, and `app.json` deliberately has no version field — bump one file and it
+updates everywhere); the `versionCode` is the `main`-branch commit count, so every release
+installs over its predecessors.
+
+Release signing is injected at prebuild time by `plugins/with-android-release-signing.js` from
+`WAVE_UPLOAD_*` environment variables; when they are absent (every local development flow) the
+generated project keeps Expo's stock debug signing. The release keystore and its passwords
+exist only in the repository's `release` GitHub environment — restricted to `main`, unreachable
+from forks — and in the maintainer's offline backup. Losing the keystore orphans every
+installed copy; committing it is never acceptable.
+
 ## Development tools
 
 The repository includes two focused test systems:

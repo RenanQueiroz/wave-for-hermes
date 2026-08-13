@@ -59,6 +59,18 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   `production` keeps the store defaults. Every root package script that invokes `eas build` must
   pass `--local`; do not add cloud-build aliases or a generic EAS wrapper that can bypass this
   policy. Never commit EAS credentials or local build artifacts.
+- The Android release pipeline is `.github/workflows/release-apk.yml`: prebuild + Gradle on
+  GitHub runners with no EAS involvement. Release signing is injected at prebuild by
+  `plugins/with-android-release-signing.js` from `WAVE_UPLOAD_*` environment variables (absent
+  locally, so local flows keep debug signing; the plugin throws if the Gradle template drifts),
+  the versionCode is the `main` commit count via `WAVE_ANDROID_VERSION_CODE` (validated in
+  `app.config.ts`), and each push publishes one immutable release tagged
+  `v<version>-<versionCode>` with the APK and a sha256 sidecar. The human version is
+  single-sourced from `package.json` (plain `x.y.z`, validated): `app.config.ts` injects it
+  into the Expo config and `app.json` must not regain a `version` field. The signing secrets live only
+  in the `release` GitHub environment locked to `main`. Keep the workflow's security posture:
+  no `pull_request_target` anywhere, SHA-pinned third-party actions, default-deny token
+  permissions, step-scoped secrets, and the debug-signature publish gate.
 - The generated `ios/` and `android/` directories are ignored. Make durable native changes through
   app configuration or config plugins unless the project explicitly changes that policy.
 
