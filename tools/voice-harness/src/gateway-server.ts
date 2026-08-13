@@ -403,7 +403,7 @@ export async function startGatewayServer(
       id: session.storedId,
       message_count: session.messages.length,
       pinned: session.pinned,
-      source: 'gateway',
+      source: session.source,
       status: activeTurns.has(session.storedId) ? 'working' : 'idle',
       title: session.title,
       ...(lastUser ? { preview: lastUser.content } : {}),

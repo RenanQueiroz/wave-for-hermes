@@ -128,6 +128,16 @@ when drained.
 }
 ```
 
+For named, deterministic conversations, use `seedConversations`. Each entry accepts a `title`,
+optional `pinned`, raw gateway `source`, relative `ageHours`, and an ordered user/assistant
+`messages` array. The repository includes a privacy-safe README fixture:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8791/control/scenario \
+  -H 'content-type: application/json' \
+  --data-binary @tools/voice-harness/scenarios/readme-showcase.json
+```
+
 Defaults: transcripts fall back to a fixed harness sentence, turns echo the
 prompt (`You said: …`), redirects answer `redirected`, speech streams PCM.
 

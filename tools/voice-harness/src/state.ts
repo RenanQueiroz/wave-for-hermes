@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   DEFAULT_TRANSCRIPT,
+  type HarnessConversationSeed,
   type HarnessRealtimeScript,
   type HarnessRedirectScript,
   type HarnessScenario,
@@ -24,6 +25,7 @@ export interface HarnessSession {
   liveId: string;
   messages: HarnessMessageRow[];
   pinned: boolean;
+  source: string;
   storedId: string;
   title: string;
 }
@@ -43,6 +45,32 @@ export class HarnessState {
   loadScenario(scenario: HarnessScenario): void {
     this.scenario = scenario;
     if (scenario.seedSessions) this.seedSessions(scenario.seedSessions);
+    if (scenario.seedConversations) {
+      this.seedConversations(scenario.seedConversations);
+    }
+  }
+
+  /** Named, privacy-safe fixture conversations used by screenshots and demos. */
+  private seedConversations(seeds: HarnessConversationSeed[]): void {
+    const nowSeconds = Date.now() / 1_000;
+    for (const seed of seeds) {
+      const session = this.createSession();
+      session.title = seed.title;
+      session.pinned = seed.pinned === true;
+      session.source = seed.source ?? 'gateway';
+      const messages = seed.messages ?? [];
+      const newestTimestamp = nowSeconds - (seed.ageHours ?? 0) * 60 * 60;
+      const firstTimestamp = newestTimestamp - (messages.length - 1) * 2 * 60;
+      messages.forEach((message, index) => {
+        this.messageCounter += 1;
+        session.messages.push({
+          content: message.content,
+          id: this.messageCounter,
+          role: message.role,
+          timestamp: firstTimestamp + index * 2 * 60,
+        });
+      });
+    }
   }
 
   /**
@@ -124,6 +152,7 @@ export class HarnessState {
       liveId: `harness-live-${this.sessionCounter}`,
       messages: [],
       pinned: false,
+      source: 'gateway',
       storedId: `harness-stored-${this.sessionCounter}`,
       title: `Harness conversation ${this.sessionCounter}`,
     };

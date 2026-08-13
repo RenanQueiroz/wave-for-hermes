@@ -80,12 +80,29 @@ export interface HarnessScenario {
    * timestamps so date sections vary.
    */
   seedSessions?: HarnessSessionSeed;
+  /** Seed named conversations with deterministic history for UI showcases. */
+  seedConversations?: HarnessConversationSeed[];
   speech?: HarnessSpeechScript;
   transcribe?: HarnessTranscribeScript;
   /** FIFO of transcripts served by `/api/audio/transcribe`. */
   transcripts?: string[];
   /** FIFO of turn scripts consumed by `prompt.submit`. */
   turns?: HarnessTurnScript[];
+}
+
+export interface HarnessConversationMessageSeed {
+  content: string;
+  role: 'assistant' | 'user';
+}
+
+export interface HarnessConversationSeed {
+  /** Age of the conversation's newest message, relative to scenario load. */
+  ageHours?: number;
+  messages?: HarnessConversationMessageSeed[];
+  pinned?: boolean;
+  /** Raw gateway source identifier, such as `gateway`, `cron`, or `slack`. */
+  source?: string;
+  title: string;
 }
 
 export interface HarnessSessionSeed {
@@ -98,6 +115,8 @@ export interface HarnessSessionSeed {
 
 const MAX_SEEDED_SESSIONS = 1_000;
 const MAX_SEEDED_MESSAGES = 10;
+const MAX_SEEDED_CONVERSATION_MESSAGES = 100;
+const MAX_SEEDED_AGE_HOURS = 24 * 365 * 10;
 
 export const DEFAULT_TRANSCRIPT = 'Hello from the harness.';
 
@@ -120,6 +139,50 @@ function boundedDelay(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.min(Math.floor(value), MAX_DELAY_MS)
     : undefined;
+}
+
+function boundedNonnegativeNumber(
+  value: unknown,
+  max: number,
+): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.min(value, max)
+    : undefined;
+}
+
+function normalizeConversationSeed(
+  value: unknown,
+): HarnessConversationSeed | undefined {
+  const record = asRecord(value);
+  const title = boundedText(record?.title)?.trim();
+  if (!record || !title) return undefined;
+  const ageHours = boundedNonnegativeNumber(
+    record.ageHours,
+    MAX_SEEDED_AGE_HOURS,
+  );
+  const source = boundedText(record.source)?.trim();
+  const messages: HarnessConversationMessageSeed[] | undefined = Array.isArray(
+    record.messages,
+  )
+    ? record.messages
+        .slice(0, MAX_SEEDED_CONVERSATION_MESSAGES)
+        .flatMap((message) => {
+          const messageRecord = asRecord(message);
+          const content = boundedText(messageRecord?.content);
+          const role = messageRecord?.role;
+          return content !== undefined &&
+            (role === 'assistant' || role === 'user')
+            ? [{ content, role }]
+            : [];
+        })
+    : undefined;
+  return {
+    title: title.slice(0, 300),
+    ...(ageHours === undefined ? {} : { ageHours }),
+    ...(messages === undefined ? {} : { messages }),
+    ...(record.pinned === true ? { pinned: true } : {}),
+    ...(source ? { source: source.slice(0, 100) } : {}),
+  };
 }
 
 function normalizeFrame(value: unknown): HarnessTurnFrame | undefined {
@@ -288,6 +351,12 @@ export function normalizeScenario(value: unknown): HarnessScenario {
         ? { titlePrefix: seed.titlePrefix.slice(0, 100) }
         : {}),
     };
+  }
+
+  if (Array.isArray(record.seedConversations)) {
+    scenario.seedConversations = record.seedConversations
+      .slice(0, MAX_LIST_ENTRIES)
+      .flatMap((conversation) => normalizeConversationSeed(conversation) ?? []);
   }
 
   const speech = asRecord(record.speech);

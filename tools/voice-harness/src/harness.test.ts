@@ -564,6 +564,63 @@ test('control: seedSessions fixture populates the session list', async () => {
   }
 });
 
+test('control: seedConversations fixture builds named showcase history', async () => {
+  const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
+  try {
+    await loadScenario(harness, {
+      seedConversations: [
+        {
+          ageHours: 2,
+          messages: [
+            { content: 'Make a plan.', role: 'user' },
+            { content: 'Here is the plan.', role: 'assistant' },
+          ],
+          pinned: true,
+          source: 'cron',
+          title: 'Launch checklist',
+        },
+      ],
+    });
+    const jar = await signIn(harness);
+    const listed = await api(harness, jar, '/api/sessions');
+    assert.equal(listed.status, 200);
+    const listBody = (await listed.json()) as {
+      sessions: {
+        id: string;
+        pinned: boolean;
+        source: string;
+        title: string;
+      }[];
+    };
+    assert.equal(listBody.sessions.length, 1);
+    assert.equal(listBody.sessions[0]?.title, 'Launch checklist');
+    assert.equal(listBody.sessions[0]?.source, 'cron');
+    assert.equal(listBody.sessions[0]?.pinned, true);
+
+    const history = await api(
+      harness,
+      jar,
+      `/api/sessions/${listBody.sessions[0]?.id}/messages`,
+    );
+    assert.equal(history.status, 200);
+    const historyBody = (await history.json()) as {
+      messages: { content: string; role: string; timestamp: number }[];
+    };
+    assert.deepEqual(
+      historyBody.messages.map(({ content, role }) => ({ content, role })),
+      [
+        { content: 'Make a plan.', role: 'user' },
+        { content: 'Here is the plan.', role: 'assistant' },
+      ],
+    );
+    assert.ok(
+      historyBody.messages[1]!.timestamp > historyBody.messages[0]!.timestamp,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test('control: reset clears sessions, journal, and scenario', async () => {
   const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
   try {

@@ -1,0 +1,120 @@
+{
+  "seedConversations": [
+    {
+      "ageHours": 1,
+      "messages": [
+        {
+          "content": "Turn my launch notes into a focused plan for the team. Keep it practical and easy to scan.",
+          "role": "user"
+        },
+        {
+          "content": "Absolutely — here’s a clear plan for launch day:\n\n### Before launch\n- Run the final device checks\n- Confirm support coverage\n- Prepare the release notes\n\n### At launch\n- Publish the release\n- Watch the first user sessions\n- Keep one owner on feedback triage\n\n### After launch\n- Share a short status update\n- Group feedback by theme\n- Pick the next three improvements\n\n**Next milestone:** a calm, well-observed release with a small follow-up list.",
+          "role": "assistant"
+        }
+      ],
+      "pinned": true,
+      "title": "Shape the launch plan"
+    },
+    {
+      "ageHours": 3,
+      "messages": [
+        {
+          "content": "Can you turn these customer notes into themes and suggested next steps?",
+          "role": "user"
+        },
+        {
+          "content": "I grouped the feedback into onboarding, speed, and collaboration, then ranked the next steps by impact and effort.",
+          "role": "assistant"
+        }
+      ],
+      "pinned": true,
+      "title": "Synthesize customer feedback"
+    },
+    {
+      "ageHours": 8,
+      "messages": [
+        {
+          "content": "Help me plan a relaxed Saturday with coffee, one museum, and dinner. Keep travel light.",
+          "role": "user"
+        },
+        {
+          "content": "I made a three-stop itinerary with generous breaks and a backup option for each stop.",
+          "role": "assistant"
+        }
+      ],
+      "title": "Plan a slow Saturday"
+    },
+    {
+      "ageHours": 26,
+      "messages": [
+        {
+          "content": "Draft a warm follow-up after yesterday's design review.",
+          "role": "user"
+        },
+        {
+          "content": "I drafted a concise note that captures the decisions, thanks the group, and names the two open questions.",
+          "role": "assistant"
+        }
+      ],
+      "title": "Write a thoughtful follow-up"
+    },
+    {
+      "ageHours": 49,
+      "messages": [
+        {
+          "content": "Compare the three proposals and call out the tradeoffs.",
+          "role": "user"
+        },
+        {
+          "content": "I built a compact comparison around scope, effort, risk, and reversibility.",
+          "role": "assistant"
+        }
+      ],
+      "title": "Compare project proposals"
+    },
+    {
+      "ageHours": 80,
+      "messages": [
+        {
+          "content": "Build a simple meal plan for the workweek from my pantry list.",
+          "role": "user"
+        },
+        {
+          "content": "I planned five flexible meals that reuse ingredients and leave room for one easy leftover night.",
+          "role": "assistant"
+        }
+      ],
+      "title": "Make a weekly meal plan"
+    },
+    {
+      "ageHours": 5,
+      "messages": [
+        {
+          "content": "Prepare the morning project digest.",
+          "role": "user"
+        },
+        {
+          "content": "The morning digest is ready with updates, decisions, and blockers.",
+          "role": "assistant"
+        }
+      ],
+      "source": "cron",
+      "title": "Morning project digest"
+    },
+    {
+      "ageHours": 30,
+      "messages": [
+        {
+          "content": "Summarize the design channel discussion.",
+          "role": "user"
+        },
+        {
+          "content": "The team aligned on the smaller first release and kept two ideas for a later iteration.",
+          "role": "assistant"
+        }
+      ],
+      "source": "slack",
+      "title": "Design team sync"
+    }
+  ]
+}
