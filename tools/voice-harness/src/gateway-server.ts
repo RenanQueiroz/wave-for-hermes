@@ -21,6 +21,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { sinePcm, wavDataUrl } from './audio.js';
 import type { Journal } from './journal.js';
 import type { OpenAiRealtimeFake } from './openai-realtime-fake.js';
+import { DEFAULT_MODEL_CONFIG, DEFAULT_MODEL_OPTIONS } from './scenario.js';
 import type { HarnessSession, HarnessState } from './state.js';
 import { ActiveTurn, type FrameSink } from './turn-engine.js';
 
@@ -568,6 +569,23 @@ export async function startGatewayServer(
       }
       activeTurns.get(session.storedId)?.interrupt();
       respond({ ok: true });
+      return;
+    }
+
+    if (method === 'model.options') {
+      respond(state.modelScript().options ?? DEFAULT_MODEL_OPTIONS);
+      return;
+    }
+
+    if (method === 'config.get') {
+      const key = typeof params.key === 'string' ? params.key : '';
+      const config = { ...DEFAULT_MODEL_CONFIG, ...state.modelScript().config };
+      const value = config[key];
+      if (value === undefined) {
+        respondError(4000, `harness has no config value for ${key}`);
+        return;
+      }
+      respond({ key, value });
       return;
     }
 

@@ -108,6 +108,18 @@ when drained.
   "speech": { "mode": "stream", "sampleRate": 24000, "msPerChar": 15 },
   "transcribe": { "delayMs": 0, "failWith": 503 }, // fault injection
   "audioCapabilities": { "stt": true, "tts": true },
+  "models": {
+    // Optional overrides for the per-conversation model surface. Without
+    // them the harness serves a fixed two-provider catalog (current model
+    // `gpt-5.6-sol`) and `config.get` answers reasoning=xhigh, fast=normal,
+    // so the composer's model pill and picker render like a real gateway.
+    "options": {
+      "model": "gpt-5.6-sol",
+      "provider": "openai",
+      "providers": [],
+    },
+    "config": { "reasoning": "xhigh", "fast": "normal" },
+  },
   "realtimeCalls": [
     // one entry per Realtime sideband connection
     {

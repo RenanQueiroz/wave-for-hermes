@@ -41,32 +41,86 @@ administration to Hermes itself.
 
 ## Screenshots
 
+Every screen in both appearances, on both platforms.
+
 <table>
   <thead>
     <tr>
-      <th align="center">iOS</th>
-      <th align="center">Android</th>
+      <th align="center">iOS light</th>
+      <th align="center">iOS dark</th>
+      <th align="center">Android light</th>
+      <th align="center">Android dark</th>
     </tr>
   </thead>
   <tbody>
+    <tr><td colspan="4" align="center"><strong>Sign in to Hermes</strong></td></tr>
     <tr>
-      <td colspan="2" align="center"><strong>Browse conversations</strong></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-connect-light.png" width="200" alt="Wave sign-in screen on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-connect-dark.png" width="200" alt="Wave sign-in screen on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-connect-light.png" width="200" alt="Wave sign-in screen on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-connect-dark.png" width="200" alt="Wave sign-in screen on Android in dark appearance" /></td>
     </tr>
+    <tr><td colspan="4" align="center"><strong>Browse conversations</strong></td></tr>
     <tr>
-      <td align="center"><img src="./docs/images/screenshots/ios-conversations.png" width="320" alt="Wave conversation drawer on iOS" /></td>
-      <td align="center"><img src="./docs/images/screenshots/android-conversations.png" width="320" alt="Wave conversation drawer on Android" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-conversations-light.png" width="200" alt="Wave conversation drawer on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-conversations-dark.png" width="200" alt="Wave conversation drawer on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-conversations-light.png" width="200" alt="Wave conversation drawer on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-conversations-dark.png" width="200" alt="Wave conversation drawer on Android in dark appearance" /></td>
     </tr>
+    <tr><td colspan="4" align="center"><strong>Continue a chat</strong></td></tr>
     <tr>
-      <td colspan="2" align="center"><strong>Continue a chat</strong></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-chat-light.png" width="200" alt="Wave chat on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-chat-dark.png" width="200" alt="Wave chat on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-chat-light.png" width="200" alt="Wave chat on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-chat-dark.png" width="200" alt="Wave chat on Android in dark appearance" /></td>
     </tr>
+    <tr><td colspan="4" align="center"><strong>Search conversations</strong></td></tr>
     <tr>
-      <td align="center"><img src="./docs/images/screenshots/ios-chat.png" width="320" alt="Wave chat on iOS" /></td>
-      <td align="center"><img src="./docs/images/screenshots/android-chat.png" width="320" alt="Wave chat with a structured Markdown response on Android" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-search-light.png" width="200" alt="Wave conversation search on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-search-dark.png" width="200" alt="Wave conversation search on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-search-light.png" width="200" alt="Wave conversation search on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-search-dark.png" width="200" alt="Wave conversation search on Android in dark appearance" /></td>
+    </tr>
+    <tr><td colspan="4" align="center"><strong>Choose the model for one chat</strong></td></tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-model-picker-light.png" width="200" alt="Wave per-conversation model picker on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-model-picker-dark.png" width="200" alt="Wave per-conversation model picker on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-model-picker-light.png" width="200" alt="Wave per-conversation model picker on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-model-picker-dark.png" width="200" alt="Wave per-conversation model picker on Android in dark appearance" /></td>
+    </tr>
+    <tr><td colspan="4" align="center"><strong>Attach an image or file</strong></td></tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-attachments-light.png" width="200" alt="Wave composer attachment menu on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-attachments-dark.png" width="200" alt="Wave composer attachment menu on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-attachments-light.png" width="200" alt="Wave composer attachment menu on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-attachments-dark.png" width="200" alt="Wave composer attachment menu on Android in dark appearance" /></td>
+    </tr>
+    <tr><td colspan="4" align="center"><strong>Talk through Hermes (gateway voice)</strong></td></tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-voice-gateway-light.png" width="200" alt="Wave gateway voice mode on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-voice-gateway-dark.png" width="200" alt="Wave gateway voice mode on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-voice-gateway-light.png" width="200" alt="Wave gateway voice mode on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-voice-gateway-dark.png" width="200" alt="Wave gateway voice mode on Android in dark appearance" /></td>
+    </tr>
+    <tr><td colspan="4" align="center"><strong>Live voice with OpenAI Realtime</strong></td></tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-voice-realtime-light.png" width="200" alt="Wave Realtime live voice on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-voice-realtime-dark.png" width="200" alt="Wave Realtime live voice on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-voice-realtime-light.png" width="200" alt="Wave Realtime live voice on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-voice-realtime-dark.png" width="200" alt="Wave Realtime live voice on Android in dark appearance" /></td>
+    </tr>
+    <tr><td colspan="4" align="center"><strong>Settings</strong></td></tr>
+    <tr>
+      <td align="center"><img src="./docs/images/screenshots/ios-settings-light.png" width="200" alt="Wave settings on iOS in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/ios-settings-dark.png" width="200" alt="Wave settings on iOS in dark appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-settings-light.png" width="200" alt="Wave settings on Android in light appearance" /></td>
+      <td align="center"><img src="./docs/images/screenshots/android-settings-dark.png" width="200" alt="Wave settings on Android in dark appearance" /></td>
     </tr>
   </tbody>
 </table>
 
-Screenshots use privacy-safe fixture conversations served by the repository's local test gateway.
+Screenshots use privacy-safe fixture conversations served by the repository's local test gateway,
+including its scripted voice scenarios for both voice modes.
 
 ## How it works
 

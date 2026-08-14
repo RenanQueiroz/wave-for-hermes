@@ -326,6 +326,47 @@ test('turns: default echo, scripted frames, interrupt, and history rows', async 
   }
 });
 
+test('models: default catalog, config values, and scenario overrides', async () => {
+  const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
+  try {
+    const jar = await signIn(harness);
+    const rpc = await openRpc(harness, jar);
+
+    const catalog = await rpc.call('model.options', { explicit_only: true });
+    assert.equal(catalog.model, 'gpt-5.6-sol');
+    const providers = catalog.providers as { models: string[] }[];
+    assert.deepEqual(providers[0]?.models, [
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+    ]);
+
+    const reasoning = await rpc.call('config.get', { key: 'reasoning' });
+    assert.equal(reasoning.value, 'xhigh');
+    const fast = await rpc.call('config.get', { key: 'fast' });
+    assert.equal(fast.value, 'normal');
+    const unknown = await rpc.callError('config.get', { key: 'nope' });
+    assert.equal(unknown.code, 4000);
+
+    await loadScenario(harness, {
+      models: {
+        config: { reasoning: 'medium' },
+        options: { model: 'scripted-model', providers: [] },
+      },
+    });
+    const overridden = await rpc.call('model.options', {});
+    assert.equal(overridden.model, 'scripted-model');
+    const overriddenReasoning = await rpc.call('config.get', {
+      key: 'reasoning',
+    });
+    assert.equal(overriddenReasoning.value, 'medium');
+
+    rpc.close();
+  } finally {
+    await harness.close();
+  }
+});
+
 test('redirects: scripted statuses, race error codes, and journal entries', async () => {
   const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
   try {

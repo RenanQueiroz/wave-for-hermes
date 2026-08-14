@@ -225,4 +225,8 @@ export class HarnessState {
   speechScript(): NonNullable<HarnessScenario['speech']> {
     return this.scenario.speech ?? {};
   }
+
+  modelScript(): NonNullable<HarnessScenario['models']> {
+    return this.scenario.models ?? {};
+  }
 }

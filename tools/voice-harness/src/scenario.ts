@@ -68,8 +68,17 @@ export interface HarnessRealtimeScript {
   script?: HarnessRealtimeStep[];
 }
 
+export interface HarnessModelScript {
+  /** `config.get` values by key (for example `reasoning`, `fast`). */
+  config?: Record<string, string>;
+  /** Raw `model.options` result payload, served verbatim. */
+  options?: Record<string, unknown>;
+}
+
 export interface HarnessScenario {
   audioCapabilities?: { stt: boolean; tts: boolean };
+  /** Overrides for the `model.options` catalog and `config.get` values. */
+  models?: HarnessModelScript;
   /** FIFO of scripted Realtime calls (one entry per sideband connection). */
   realtimeCalls?: HarnessRealtimeScript[];
   /** FIFO of `session.redirect` outcomes; default is `redirected`. */
@@ -119,6 +128,49 @@ const MAX_SEEDED_CONVERSATION_MESSAGES = 100;
 const MAX_SEEDED_AGE_HOURS = 24 * 365 * 10;
 
 export const DEFAULT_TRANSCRIPT = 'Hello from the harness.';
+
+/**
+ * Default `model.options` catalog, mirroring the deployed gateway's wire
+ * shape as consumed by `src/services/gateway/gateway-models.ts`. Scenarios
+ * override it with `models.options`.
+ */
+export const DEFAULT_MODEL_OPTIONS: Record<string, unknown> = {
+  model: 'gpt-5.6-sol',
+  provider: 'openai',
+  providers: [
+    {
+      authenticated: true,
+      capabilities: {
+        'gpt-5.6-luna': { reasoning: true },
+        'gpt-5.6-sol': { reasoning: true },
+        'gpt-5.6-terra': { reasoning: true },
+      },
+      featured_models: ['gpt-5.6-sol'],
+      is_current: true,
+      models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+      name: 'OpenAI',
+      slug: 'openai',
+    },
+    {
+      authenticated: true,
+      capabilities: {
+        'claude-opus-5': { reasoning: true },
+        'claude-sonnet-5': { reasoning: true },
+      },
+      featured_models: ['claude-opus-5'],
+      is_current: false,
+      models: ['claude-opus-5', 'claude-sonnet-5'],
+      name: 'Anthropic',
+      slug: 'anthropic',
+    },
+  ],
+};
+
+/** Default `config.get` values; scenarios override with `models.config`. */
+export const DEFAULT_MODEL_CONFIG: Record<string, string> = {
+  fast: 'normal',
+  reasoning: 'xhigh',
+};
 
 const MAX_TEXT_CHARS = 32_000;
 const MAX_LIST_ENTRIES = 256;
@@ -329,6 +381,24 @@ export function normalizeScenario(value: unknown): HarnessScenario {
     scenario.realtimeCalls = record.realtimeCalls
       .slice(0, MAX_LIST_ENTRIES)
       .map(normalizeRealtimeScript);
+  }
+
+  const models = asRecord(record.models);
+  if (models) {
+    const options = asRecord(models.options);
+    const configRecord = asRecord(models.config);
+    const config = configRecord
+      ? Object.fromEntries(
+          Object.entries(configRecord).flatMap(([key, value]) => {
+            const bounded = boundedText(value);
+            return bounded === undefined ? [] : [[key.slice(0, 100), bounded]];
+          }),
+        )
+      : undefined;
+    scenario.models = {
+      ...(config === undefined ? {} : { config }),
+      ...(options === undefined ? {} : { options }),
+    };
   }
 
   const seed = asRecord(record.seedSessions);
