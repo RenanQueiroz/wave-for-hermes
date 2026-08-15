@@ -107,13 +107,41 @@ export const WavePromptRequestEventSchema = z
     command: WaveToolDetailSchema.optional(),
     /** Short human description (approval pattern, e.g. "delete in root path"). */
     description: z.string().trim().min(1).max(300).optional(),
-    kind: z.enum(['approval', 'clarify', 'secret', 'sudo']),
+    kind: z.enum(['approval', 'clarify', 'mcp-setup', 'secret', 'sudo']),
     messageId: WaveIdentifierSchema.optional(),
+    /** Bounded MCP catalog/config name needed only to decline setup safely. */
+    server: z.string().trim().min(1).max(200).optional(),
     /** Correlates the response; opaque to screens. */
     promptId: z.string().trim().min(1).max(128),
     /** The question being asked (clarify). */
     question: z.string().trim().min(1).max(2_000).optional(),
     type: z.literal('prompt.request'),
+  })
+  .strict()
+  .superRefine((event, context) => {
+    if (event.kind === 'mcp-setup' && !event.server) {
+      context.addIssue({
+        code: 'custom',
+        message: 'MCP setup prompts require a bounded server name.',
+        path: ['server'],
+      });
+    }
+    if (event.kind !== 'mcp-setup' && event.server !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Only MCP setup prompts may carry a server name.',
+        path: ['server'],
+      });
+    }
+  });
+
+/** A live generated title for the durable conversation behind this turn. */
+export const WaveSessionTitleUpdatedEventSchema = z
+  .object({
+    ...WaveTurnEventBaseShape,
+    storedSessionId: WaveIdentifierSchema,
+    title: z.string().trim().min(1).max(300),
+    type: z.literal('session.title.updated'),
   })
   .strict();
 
@@ -170,6 +198,7 @@ export const WaveTurnEventSchema = z.discriminatedUnion('type', [
   WaveToolStatusEventSchema,
   WavePromptRequestEventSchema,
   WavePromptResolvedEventSchema,
+  WaveSessionTitleUpdatedEventSchema,
   WaveActivityStatusEventSchema,
   WaveAssistantCompletedEventSchema,
   WaveTurnCompletedEventSchema,

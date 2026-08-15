@@ -16,6 +16,7 @@ import {
 import {
   GatewayClient,
   isGatewaySessionActive,
+  normalizeSurvivorUserRowIds,
   normalizeGatewayCompatibilityStatus,
   normalizeGatewaySessionLiveState,
   TurnEventQueue,
@@ -134,6 +135,7 @@ test('normalizes gateway session rows and drops unusable ones', () => {
 test('normalizes open-ended sources without leaking raw identifiers', () => {
   assert.equal(normalizeSessionSource(undefined), 'chat');
   assert.equal(normalizeSessionSource('gateway'), 'chat');
+  assert.equal(normalizeSessionSource('wave'), 'chat');
   assert.equal(normalizeSessionSource('cron'), 'automation');
   assert.equal(normalizeSessionSource('a2a'), 'external');
   assert.equal(normalizeSessionSource('telegram'), 'external');
@@ -189,6 +191,7 @@ test('normalizes message rows into timeline entries with stable ids', () => {
   assert.equal(entries[0].source, 'hermes');
   assert.equal(entries[0].type, 'message');
   assert.equal(entries[0].message.role, 'user');
+  assert.equal(entries[0].rowId, 1);
   assert.match(entries[0].message.createdAt ?? '', /^2026-/);
   assert.equal(entries[2].message.toolName, 'search');
   assert.deepEqual(entries[2].message.toolOutput, {
@@ -197,6 +200,15 @@ test('normalizes message rows into timeline entries with stable ids', () => {
   });
   // Unknown roles degrade rather than disappear.
   assert.equal(entries[3].message.role, 'unknown');
+
+  const invalidRowIds = normalizeTimelineEntries({
+    messages: [
+      { content: 'negative', id: -1, role: 'user' },
+      { content: 'string', id: 'legacy-id', role: 'user' },
+    ],
+  });
+  assert.equal(invalidRowIds[0]?.rowId, undefined);
+  assert.equal(invalidRowIds[1]?.rowId, undefined);
 
   assert.deepEqual(normalizeTimelineEntries({ messages: 'nope' }), []);
   // A row with no content and no tool identity carries nothing to render.
@@ -703,7 +715,9 @@ test('a new conversation keeps its route while its real session is created', asy
   await client.updateSession(created.session.id, { title: 'Renamed' });
   await client.deleteSession(created.session.id);
   assert.deepEqual(requests, [
-    // First timeline page: the detail row supplies the count, then the rows.
+    // The unconfirmed latest-order attempt degrades to the legacy detail +
+    // oldest-offset path.
+    'GET /api/sessions/20260802_000000_abcdef/messages',
     'GET /api/sessions/20260802_000000_abcdef',
     'GET /api/sessions/20260802_000000_abcdef/messages',
     'PATCH /api/sessions/20260802_000000_abcdef',
@@ -847,6 +861,110 @@ function timelineFixtureClient(
   return { client, requests };
 }
 
+function latestTimelineFixtureClient(rowCount: number) {
+  const rows = Array.from({ length: rowCount }, (_, index) => ({
+    content: `message ${index + 1}`,
+    id: index + 1,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+  }));
+  const requests: string[] = [];
+  const fetchImpl = (async (url: string | URL) => {
+    const parsed = new URL(String(url));
+    requests.push(`${parsed.pathname}${parsed.search}`);
+    assert.equal(parsed.searchParams.get('order'), 'latest');
+    const limit = Number(parsed.searchParams.get('limit') ?? '500');
+    const offset = Number(parsed.searchParams.get('offset') ?? '0');
+    const end = Math.max(rows.length - offset, 0);
+    const start = Math.max(end - limit, 0);
+    const page = rows.slice(start, end);
+    return jsonResponse({
+      data: page,
+      pagination: { limit, offset, order: 'latest', returned: page.length },
+    });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+  return { client, requests };
+}
+
+test('uses the v0.20.1 newest-relative message contract when proven', async () => {
+  const { client, requests } = latestTimelineFixtureClient(7);
+  const first = await client.getSessionTimeline('s1', { limit: 3 });
+  assert.deepEqual(
+    first.entries.map((entry) => entry.id),
+    ['msg-5', 'msg-6', 'msg-7'],
+  );
+  assert.equal(first.nextCursor, 'latest:3');
+
+  const second = await client.getSessionTimeline('s1', {
+    before: first.nextCursor,
+    limit: 3,
+  });
+  assert.deepEqual(
+    second.entries.map((entry) => entry.id),
+    ['msg-2', 'msg-3', 'msg-4'],
+  );
+  assert.equal(second.nextCursor, 'latest:6');
+
+  const third = await client.getSessionTimeline('s1', {
+    before: second.nextCursor,
+    limit: 3,
+  });
+  assert.deepEqual(
+    third.entries.map((entry) => entry.id),
+    ['msg-1'],
+  );
+  assert.equal(third.hasMore, false);
+  assert.equal(third.nextCursor, undefined);
+  assert.deepEqual(requests, [
+    '/api/sessions/s1/messages?limit=4&offset=0&order=latest',
+    '/api/sessions/s1/messages?limit=4&offset=3&order=latest',
+    '/api/sessions/s1/messages?limit=4&offset=6&order=latest',
+  ]);
+});
+
+test('latest paging terminates on an exact page multiple', async () => {
+  const { client, requests } = latestTimelineFixtureClient(6);
+  const first = await client.getSessionTimeline('s1', { limit: 3 });
+  const second = await client.getSessionTimeline('s1', {
+    before: first.nextCursor,
+    limit: 3,
+  });
+  assert.deepEqual(
+    second.entries.map((entry) => entry.id),
+    ['msg-1', 'msg-2', 'msg-3'],
+  );
+  assert.equal(second.hasMore, false);
+  assert.equal(requests.length, 2);
+});
+
+test('a latest-order transport failure is not treated as unsupported', async () => {
+  let requests = 0;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: (async () => {
+      requests += 1;
+      throw new Error('offline');
+    }) as unknown as typeof globalThis.fetch,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+  await assert.rejects(client.getSessionTimeline('s1'), (error: unknown) => {
+    assert.ok(error instanceof WaveBackendError);
+    assert.equal(error.kind, 'network');
+    return true;
+  });
+  assert.equal(requests, 1);
+});
+
 test('pages the timeline from the newest end', async () => {
   // Regression: `/messages?limit=N` keeps the OLDEST N rows (verified live on
   // 0.19.0), so a naive capped fetch hides the newest messages of a long
@@ -899,7 +1017,9 @@ test('recovers when the reported message count overshoots the rows', async () =>
     request.includes('/messages'),
   );
   assert.ok(messageRequests.length >= 3);
-  for (const request of messageRequests.slice(1, -1)) {
+  for (const request of messageRequests.filter((entry) =>
+    entry.includes('limit=1&'),
+  )) {
     assert.match(
       request,
       /limit=1&/,
@@ -921,7 +1041,9 @@ test('the first page stays bounded when the count probe fails', async () => {
   assert.equal(page.nextCursor, '1100');
   // Every row request either probes a single row or fetches the final window
   // from deep in the history; nothing pulls the conversation from offset 0.
-  for (const request of requests.filter((r) => r.includes('/messages'))) {
+  for (const request of requests.filter(
+    (entry) => entry.includes('/messages') && !entry.includes('order=latest'),
+  )) {
     assert.ok(
       /limit=1&/.test(request) || /offset=1100$/.test(request),
       `unbounded request: ${request}`,
@@ -942,6 +1064,7 @@ test('a short history with a failed count probe takes one bounded fetch', async 
   assert.deepEqual(
     requests.filter((request) => request.includes('/messages')),
     [
+      '/api/sessions/s1/messages?limit=4&offset=0&order=latest',
       '/api/sessions/s1/messages?limit=1&offset=499',
       '/api/sessions/s1/messages?limit=500&offset=0',
     ],
@@ -1043,6 +1166,7 @@ function makeTurnFixtureClient(options: {
   redirectError?: { code: number; message: string };
   redirectStatus?: 'queued' | 'redirected' | 'rejected' | 'unknown';
   submitResult?: { code: number; message: string };
+  submitSuccessResult?: Record<string, unknown>;
 }) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   class FakeTurnSocket {
@@ -1105,7 +1229,7 @@ function makeTurnFixtureClient(options: {
           reply({ error: options.submitResult });
           return;
         }
-        reply({ result: { ok: true } });
+        reply({ result: options.submitSuccessResult ?? { ok: true } });
         emit('message.delta', { text: 'reply text' });
         emit('message.complete', { text: 'reply text' });
         return;
@@ -1166,11 +1290,108 @@ test('attaches images to the live session before submitting the turn', async () 
     ['session.create', 'image.attach_bytes', 'prompt.submit'],
   );
   const attach = calls[1];
+  assert.equal(calls[0].params.source, 'wave');
   assert.equal(attach.params.session_id, 'live-1');
   // The data-URL prefix is stripped; the gateway gets bare base64.
   assert.equal(attach.params.content_base64, 'aWs=');
   assert.equal(attach.params.filename, 'tiny.png');
   assert.equal(calls[2].params.session_id, 'live-1');
+  assert.equal(calls[2].params.confirm_truncate, undefined);
+});
+
+test('v0.20.1 regenerate confirms truncation and targets a durable row', async () => {
+  const { calls, client } = makeTurnFixtureClient({
+    submitSuccessResult: { survivor_user_row_ids: [101, null, 303] },
+  });
+  (
+    client as unknown as {
+      latestMessageOrderSupport: 'supported';
+    }
+  ).latestMessageOrderSupport = 'supported';
+  const created = await client.createSession();
+  let survivors: readonly (number | null)[] | undefined;
+  for await (const _event of client.streamTurn(
+    created.session.id,
+    'Replay this turn',
+    undefined,
+    {
+      onTruncationCommitted: (ids) => {
+        survivors = ids;
+      },
+      truncateBeforeRowId: 777,
+      truncateBeforeUserOrdinal: 4,
+    },
+  )) {
+    // Drain the fixture turn.
+  }
+  const submit = calls.find((call) => call.method === 'prompt.submit');
+  assert.deepEqual(submit?.params, {
+    confirm_truncate: true,
+    session_id: 'live-1',
+    text: 'Replay this turn',
+    truncate_before_row_id: 777,
+  });
+  assert.deepEqual(survivors, [101, null, 303]);
+});
+
+test('legacy regenerate keeps ordinal targeting with explicit consent', async () => {
+  const { calls, client } = makeTurnFixtureClient({});
+  const created = await client.createSession();
+  for await (const _event of client.streamTurn(
+    created.session.id,
+    'Replay the first turn',
+    undefined,
+    {
+      truncateBeforeRowId: 777,
+      truncateBeforeUserOrdinal: 0,
+    },
+  )) {
+    // Drain the fixture turn.
+  }
+  const submit = calls.find((call) => call.method === 'prompt.submit');
+  assert.deepEqual(submit?.params, {
+    confirm_empty_truncate: true,
+    confirm_truncate: true,
+    session_id: 'live-1',
+    text: 'Replay the first turn',
+    truncate_before_user_ordinal: 0,
+  });
+});
+
+test('normalizes survivor row ids without retaining invalid addresses', () => {
+  assert.equal(normalizeSurvivorUserRowIds(undefined), undefined);
+  assert.deepEqual(normalizeSurvivorUserRowIds([1, null, '2', -3, 4.5, 6]), [
+    1,
+    null,
+    null,
+    null,
+    null,
+    6,
+  ]);
+});
+
+test('tags every stored-session resume as a Wave client', async () => {
+  const streamed = makeTurnFixtureClient({});
+  for await (const _event of streamed.client.streamTurn('stored-9', 'hello')) {
+    // Drain the fixture turn.
+  }
+  assert.deepEqual(streamed.calls[0], {
+    method: 'session.resume',
+    params: { session_id: 'stored-9', source: 'wave' },
+  });
+
+  const reattached = makeTurnFixtureClient({});
+  for await (const _event of reattached.client.resumeTurnStream(
+    'stored-9',
+    'turn-9',
+    -1,
+  )) {
+    // The gateway has no replay frames on this path.
+  }
+  assert.deepEqual(reattached.calls[0], {
+    method: 'session.resume',
+    params: { session_id: 'stored-9', source: 'wave' },
+  });
 });
 
 test('surfaces the gateway reason when an attachment is rejected', async () => {
@@ -1471,6 +1692,57 @@ test('translates approval and clarify prompts and resolves them on progress', ()
   assert.equal(secret[0].question, 'API key for svc');
 });
 
+test('normalizes live titles and unexpected MCP setup as decline-only input', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-v0201',
+    sessionId: 'stored-v0201',
+    turnId: 'turn-v0201',
+  });
+  translator.start();
+  const title = translator.translate({
+    payload: {
+      session_id: 'stored-v0201',
+      title: `  ${'Generated title '.repeat(30)}  `,
+    },
+    type: 'session.title',
+  });
+  assert.equal(title[0]?.type, 'session.title.updated');
+  assert.equal(title[0]?.storedSessionId, 'stored-v0201');
+  assert.equal(title[0]?.title.length, 300);
+  assert.deepEqual(
+    translator.translate({
+      payload: { session_id: 'bad/session', title: 'Ignored' },
+      type: 'session.title',
+    }),
+    [],
+  );
+
+  const setup = translator.translate({
+    payload: {
+      action: 'authorize',
+      reason: 'Access the repository requested in this conversation.',
+      request_id: 'mcp-request-1',
+      server: 'github',
+    },
+    type: 'mcp.setup.request',
+  });
+  assert.equal(setup[0]?.type, 'prompt.request');
+  assert.equal(setup[0]?.kind, 'mcp-setup');
+  assert.equal(setup[0]?.server, 'github');
+  assert.equal(setup[0]?.allowsFreeText, false);
+  assert.deepEqual(setup[0]?.choices, []);
+  assert.match(setup[0]?.description ?? '', /authorize.*github/i);
+  assert.match(setup[0]?.description ?? '', /repository requested/i);
+  assert.equal(setup[0]?.question, undefined);
+
+  const expired = translator.translate({
+    payload: { request_id: 'mcp-request-1' },
+    type: 'mcp.setup.expire',
+  });
+  assert.equal(expired[0]?.type, 'prompt.resolved');
+  assert.equal(expired[0]?.promptId, 'mcp-request-1');
+});
+
 test('routes prompt responses through the active turn socket', async () => {
   const { calls, client } = makeTurnFixtureClient({});
   const created = await client.createSession();
@@ -1526,6 +1798,11 @@ test('routes prompt responses through the active turn socket', async () => {
     promptId: 'req-77',
   });
   await client.respondToPrompt('stored-1', {
+    kind: 'mcp-setup',
+    promptId: 'req-mcp',
+    server: 'github',
+  });
+  await client.respondToPrompt('stored-1', {
     kind: 'secret',
     promptId: 'req-88',
   });
@@ -1541,6 +1818,14 @@ test('routes prompt responses through the active turn socket', async () => {
     {
       method: 'clarify.respond',
       params: { answer: 'alpha', request_id: 'req-77', session_id: 'live-1' },
+    },
+    {
+      method: 'mcp.setup.respond',
+      params: {
+        request_id: 'req-mcp',
+        result: '{"server":"github","status":"declined"}',
+        session_id: 'live-1',
+      },
     },
     {
       method: 'secret.respond',

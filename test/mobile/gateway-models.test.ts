@@ -446,5 +446,6 @@ test('a pending conversation stores the pick locally and sends it on create', as
     model: 'hermes-4-405b',
     provider: 'nous',
     reasoning_effort: 'ultra',
+    source: 'wave',
   });
 });

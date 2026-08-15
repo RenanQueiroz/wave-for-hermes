@@ -284,9 +284,9 @@ test('turns: default echo, scripted frames, interrupt, and history rows', async 
     );
     const rows = (
       (await messages.json()) as {
-        messages: { content: string; role: string }[];
+        data: { content: string; role: string }[];
       }
-    ).messages;
+    ).data;
     assert.deepEqual(
       rows.map((row) => [row.role, row.content]),
       [
@@ -645,18 +645,16 @@ test('control: seedConversations fixture builds named showcase history', async (
     );
     assert.equal(history.status, 200);
     const historyBody = (await history.json()) as {
-      messages: { content: string; role: string; timestamp: number }[];
+      data: { content: string; role: string; timestamp: number }[];
     };
     assert.deepEqual(
-      historyBody.messages.map(({ content, role }) => ({ content, role })),
+      historyBody.data.map(({ content, role }) => ({ content, role })),
       [
         { content: 'Make a plan.', role: 'user' },
         { content: 'Here is the plan.', role: 'assistant' },
       ],
     );
-    assert.ok(
-      historyBody.messages[1]!.timestamp > historyBody.messages[0]!.timestamp,
-    );
+    assert.ok(historyBody.data[1]!.timestamp > historyBody.data[0]!.timestamp);
   } finally {
     await harness.close();
   }

@@ -8,6 +8,7 @@ import {
 import {
   branchCount,
   collectPrunedEntryIds,
+  rebindTimelineSurvivorRowIds,
   regenerateTarget,
 } from '../../src/features/chat/turn-action-targets.ts';
 
@@ -33,7 +34,11 @@ test('absolute time collapses to Today/Yesterday and dates beyond', () => {
 function userEntry(
   id: string,
   content: string,
-  options: { ordinalExempt?: boolean; source?: 'hermes' | 'wave' } = {},
+  options: {
+    ordinalExempt?: boolean;
+    rowId?: number;
+    source?: 'hermes' | 'wave';
+  } = {},
 ) {
   return {
     id,
@@ -42,6 +47,7 @@ function userEntry(
       role: 'user' as const,
       ...(options.ordinalExempt ? { ordinalExempt: true } : {}),
     },
+    ...(options.rowId === undefined ? {} : { rowId: options.rowId }),
     source: options.source ?? ('hermes' as const),
     turnId: `turn-${id}`,
     type: 'message' as const,
@@ -59,11 +65,11 @@ function assistantEntry(id: string, content: string) {
 }
 
 const ENTRIES = [
-  userEntry('u0', 'first question'),
+  userEntry('u0', 'first question', { rowId: 10 }),
   assistantEntry('a0', 'first answer'),
   userEntry('banner', 'session banner', { ordinalExempt: true }),
   userEntry('wave-correction-1', 'steer it', { source: 'wave' }),
-  userEntry('u1', 'second question'),
+  userEntry('u1', 'second question', { rowId: 20 }),
   assistantEntry('a1', 'second answer'),
 ];
 
@@ -72,20 +78,41 @@ test('regenerate targets the nearest user turn in the gateway ordinal space', ()
   assert.deepEqual(regenerateTarget(ENTRIES, 'a1'), {
     entryId: 'u1',
     ordinal: 1,
+    rowId: 20,
     text: 'second question',
   });
   assert.deepEqual(regenerateTarget(ENTRIES, 'a0'), {
     entryId: 'u0',
     ordinal: 0,
+    rowId: 10,
     text: 'first question',
   });
   // An id the timeline does not know is a just-completed live turn: the tail.
   assert.deepEqual(regenerateTarget(ENTRIES, 'assistant-local-9'), {
     entryId: 'u1',
     ordinal: 1,
+    rowId: 20,
     text: 'second question',
   });
   assert.equal(regenerateTarget([], 'a1'), undefined);
+});
+
+test('surviving user rows rebind from the loaded suffix after a rewrite', () => {
+  const rebound = rebindTimelineSurvivorRowIds(ENTRIES, [101, 202]);
+  assert.equal(rebound.find((entry) => entry.id === 'u0')?.rowId, 101);
+  assert.equal(rebound.find((entry) => entry.id === 'u1')?.rowId, 202);
+  assert.equal(
+    rebound.find((entry) => entry.id === 'wave-correction-1')?.rowId,
+    undefined,
+  );
+
+  // When older pages are not loaded, the visible user is the newest suffix
+  // of the server's full survivor list — align from the end.
+  const suffix = rebindTimelineSurvivorRowIds(ENTRIES.slice(-2), [101, 202]);
+  assert.equal(suffix[0]?.rowId, 202);
+
+  const cleared = rebindTimelineSurvivorRowIds(ENTRIES.slice(0, 2), [null]);
+  assert.equal(cleared[0]?.rowId, undefined);
 });
 
 test('pruning collects the replayed row and everything after it', () => {

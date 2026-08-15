@@ -24,6 +24,9 @@ const MAX_PROMPT_DESCRIPTION_CHARS = 300;
 const MAX_PROMPT_QUESTION_CHARS = 2_000;
 const MAX_PROMPT_CHOICES = 8;
 const MAX_PROMPT_CHOICE_CHARS = 100;
+const MAX_MCP_SERVER_CHARS = 200;
+const MAX_SESSION_ID_CHARS = 256;
+const MAX_SESSION_TITLE_CHARS = 300;
 
 /** The gateway's canonical approval responses when a frame omits them. */
 const DEFAULT_APPROVAL_CHOICES = ['once', 'session', 'always', 'deny'];
@@ -43,6 +46,16 @@ export interface GatewayTurnTranslatorOptions {
 function stringField(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+function boundedIdentifier(value: unknown, max = MAX_SESSION_ID_CHARS) {
+  if (typeof value !== 'string') return undefined;
+  const bounded = value.trim();
+  return bounded &&
+    bounded.length <= max &&
+    !/[\u0000-\u001f\u007f/?#\\]/.test(bounded)
+    ? bounded
+    : undefined;
 }
 
 /**
@@ -258,6 +271,70 @@ export class GatewayTurnTranslator {
         } as WaveTurnEvent);
         return events;
       }
+      case 'mcp.setup.request': {
+        // Desktop can install/enable/authorize the requested server. Wave is
+        // deliberately not a Hermes administration surface, so this becomes
+        // a bounded decline-only prompt. `source: wave` should prevent the
+        // tool from being offered; this path keeps an unexpected request from
+        // parking the turn for its ten-minute timeout.
+        const requestId = boundedIdentifier(frame.payload.request_id, 128);
+        const server = stringField(frame.payload, 'server')
+          ?.trim()
+          .slice(0, MAX_MCP_SERVER_CHARS);
+        if (!requestId || !server) return [];
+        const events = this.resolvePendingPrompt();
+        this.pendingPromptId = requestId;
+        const rawAction = stringField(frame.payload, 'action');
+        const action =
+          rawAction === 'authorize' ||
+          rawAction === 'enable' ||
+          rawAction === 'install'
+            ? rawAction
+            : 'configure';
+        const reason = stringField(frame.payload, 'reason')?.trim();
+        const description = [
+          `Hermes wants to ${action} the ${server} MCP server.`,
+          reason,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .slice(0, MAX_PROMPT_DESCRIPTION_CHARS);
+        events.push({
+          ...this.base('prompt.request'),
+          allowsFreeText: false,
+          choices: [],
+          description,
+          kind: 'mcp-setup',
+          messageId: this.messageId,
+          promptId: requestId,
+          server,
+          type: 'prompt.request',
+        } as WaveTurnEvent);
+        return events;
+      }
+      case 'clarify.expire':
+      case 'mcp.setup.expire':
+      case 'secret.expire':
+      case 'sudo.expire': {
+        const requestId = boundedIdentifier(frame.payload.request_id, 128);
+        return requestId && requestId === this.pendingPromptId
+          ? this.resolvePendingPrompt()
+          : [];
+      }
+      case 'session.title': {
+        const storedSessionId = boundedIdentifier(frame.payload.session_id);
+        const title = stringField(frame.payload, 'title')
+          ?.trim()
+          .slice(0, MAX_SESSION_TITLE_CHARS);
+        if (!storedSessionId || !title) return [];
+        return [
+          {
+            ...this.base('session.title.updated'),
+            storedSessionId,
+            title,
+          } as WaveTurnEvent,
+        ];
+      }
       case 'message.complete': {
         const content = stringField(frame.payload, 'text');
         const previewWasFinalized = frame.payload.response_previewed === true;
@@ -309,8 +386,8 @@ export class GatewayTurnTranslator {
         ];
       }
       default:
-        // session.info (including tools/skills), session.title, and any
-        // future frame have no transcript projection.
+        // session.info (including tools/skills) and future frames have no
+        // transcript projection.
         return [];
     }
   }

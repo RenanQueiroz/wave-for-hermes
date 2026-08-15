@@ -51,9 +51,10 @@ export interface WaveChatPrompt {
   choices: string[];
   command?: WaveToolDetail;
   description?: string;
-  kind: 'approval' | 'clarify' | 'secret' | 'sudo';
+  kind: 'approval' | 'clarify' | 'mcp-setup' | 'secret' | 'sudo';
   promptId: string;
   question?: string;
+  server?: string;
   turnId: string;
 }
 
@@ -499,6 +500,7 @@ function applyEvent(
           kind: event.kind,
           promptId: event.promptId,
           ...(event.question ? { question: event.question } : {}),
+          ...(event.server ? { server: event.server } : {}),
           turnId: event.turnId,
         },
         lastActivityAt: event.timestamp,
@@ -522,6 +524,9 @@ function applyEvent(
         liveStatus: state.activePrompt ? 'waiting' : 'working',
         status: 'streaming',
       };
+    case 'session.title.updated':
+      // Metadata is consumed by `useWaveChat` before transcript dispatch.
+      return state;
     case 'turn.completed':
       return {
         ...state,

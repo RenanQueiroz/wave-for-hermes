@@ -2,7 +2,7 @@
  * Hermes v0.20 clause-streamed speech: one per-reply WebSocket session.
  *
  * Protocol (verified against the upstream `speak_stream_ws` handler at
- * `v2026.8.3`): the client opens `/api/audio/speak-stream?ticket=<single-use>`
+ * `v2026.8.13`): the client opens `/api/audio/speak-stream?ticket=<single-use>`
  * and sends `{"text": "..."}` frames as assistant narration arrives,
  * `{"done": true}` when the reply is complete, and `{"stop": true}` (or a
  * plain disconnect) as barge-in. The server answers either

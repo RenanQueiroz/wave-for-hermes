@@ -27,3 +27,23 @@ export function setWaveSessionPinnedInPages(
   });
   return changed ? { ...data, pages } : data;
 }
+
+export function setWaveSessionTitleInPages(
+  data: InfiniteData<WaveSessionPage> | undefined,
+  sessionId: string,
+  title: string,
+): InfiniteData<WaveSessionPage> | undefined {
+  if (!data) return data;
+  let changed = false;
+  const pages = data.pages.map((page) => {
+    let pageChanged = false;
+    const sessions = page.sessions.map((session) => {
+      if (session.id !== sessionId || session.title === title) return session;
+      changed = true;
+      pageChanged = true;
+      return { ...session, title };
+    });
+    return pageChanged ? { ...page, sessions } : page;
+  });
+  return changed ? { ...data, pages } : data;
+}

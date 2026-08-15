@@ -1,6 +1,6 @@
 /**
  * The fake Hermes gateway: HTTP + WebSocket on one listener, protocol pinned
- * to the Hermes Agent `v2026.8.3` baseline as consumed by Wave's
+ * to the Hermes Agent `v2026.8.13` / `0.20.1` baseline as consumed by Wave's
  * `src/services/gateway` (cookie auth with rotation on every response,
  * single-use WS tickets, JSON-RPC turns on `/api/ws`, clause-streamed speech
  * on `/api/audio/speak-stream`).
@@ -226,7 +226,7 @@ export async function startGatewayServer(
       return;
     }
     if (method === 'GET' && path === '/api/status') {
-      reply(200, { release_date: 'harness', version: '0.20.0' }, false);
+      reply(200, { release_date: 'harness', version: '0.20.1' }, false);
       return;
     }
     if (method === 'POST' && path === '/auth/password-login') {
@@ -354,19 +354,36 @@ export async function startGatewayServer(
         return;
       }
       if (sessionMatch[2] === '/messages' && method === 'GET') {
-        const limit = boundedQueryInt(url, 'limit', 100, 1, 1_000);
+        const limit = boundedQueryInt(url, 'limit', 500, 0, 500);
         const offset = boundedQueryInt(url, 'offset', 0, 0, 1_000_000);
+        const order = url.searchParams.get('order');
+        if (order !== null && order !== 'latest' && order !== 'oldest') {
+          reply(400, { error: 'invalid pagination order' }, true);
+          return;
+        }
+        const latest =
+          order === 'latest' ||
+          (order === null && !url.searchParams.has('limit'));
+        const end = latest
+          ? Math.max(session.messages.length - offset, 0)
+          : Math.min(offset + limit, session.messages.length);
+        const start = latest ? Math.max(end - limit, 0) : offset;
+        const messages = session.messages.slice(start, end).map((row) => ({
+          content: row.content,
+          id: row.id,
+          role: row.role,
+          timestamp: row.timestamp,
+        }));
         reply(
           200,
           {
-            messages: session.messages
-              .slice(offset, offset + limit)
-              .map((row) => ({
-                content: row.content,
-                id: row.id,
-                role: row.role,
-                timestamp: row.timestamp,
-              })),
+            data: messages,
+            pagination: {
+              limit,
+              offset,
+              order: order ?? (latest ? 'latest' : 'oldest'),
+              returned: messages.length,
+            },
           },
           true,
         );
@@ -480,7 +497,9 @@ export async function startGatewayServer(
       typeof params.session_id === 'string' ? params.session_id : '';
 
     if (method === 'session.create') {
-      const session = state.createSession();
+      const session = state.createSession(
+        typeof params.source === 'string' ? params.source : undefined,
+      );
       respond({
         session_id: session.liveId,
         stored_session_id: session.storedId,
@@ -493,6 +512,9 @@ export async function startGatewayServer(
       if (!session) {
         respondError(4001, 'session not found');
         return;
+      }
+      if (typeof params.source === 'string' && params.source) {
+        session.source = params.source;
       }
       respond({ resumed: true, session_id: session.liveId });
       return;

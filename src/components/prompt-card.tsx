@@ -19,6 +19,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import type { WaveChatPrompt } from '@/features/chat/chat-state';
+import { promptChoicePresentation } from '@/features/chat/prompt-choice';
 
 export type PromptCardResponse =
   | { choice: string; kind: 'approval' }
@@ -38,6 +39,8 @@ function promptTitle(kind: WaveChatPrompt['kind']): string {
       return 'Hermes needs your approval';
     case 'clarify':
       return 'Hermes has a question';
+    case 'mcp-setup':
+      return 'Hermes proposed an integration';
     case 'secret':
       return 'Hermes asked for a secret';
     case 'sudo':
@@ -58,7 +61,10 @@ export function PromptCard({
 }) {
   const [answer, setAnswer] = useState('');
   const [answerFocused, setAnswerFocused] = useState(false);
-  const declineOnly = prompt.kind === 'secret' || prompt.kind === 'sudo';
+  const declineOnly =
+    prompt.kind === 'mcp-setup' ||
+    prompt.kind === 'secret' ||
+    prompt.kind === 'sudo';
 
   return (
     <Alert testID="chat-prompt-card">
@@ -72,8 +78,9 @@ export function PromptCard({
         ) : null}
         {declineOnly ? (
           <Alert.Description>
-            Wave never enters secrets from the phone. Decline and provide it
-            through a trusted Hermes surface instead.
+            {prompt.kind === 'mcp-setup'
+              ? 'Wave does not install, enable, or authorize Hermes integrations. Decline and manage it through Hermes Desktop instead.'
+              : 'Wave never enters secrets from the phone. Decline and provide it through a trusted Hermes surface instead.'}
           </Alert.Description>
         ) : null}
 
@@ -116,20 +123,25 @@ export function PromptCard({
           <View className="mt-3 w-full gap-2">
             {prompt.choices.length > 0 ? (
               <View className="flex-row flex-wrap gap-2">
-                {prompt.choices.map((choice) => (
-                  <Button
-                    key={choice}
-                    size="sm"
-                    accessibilityLabel={`Answer: ${choice}`}
-                    disabled={busy}
-                    testID={`chat-prompt-choice-${choice}`}
-                    variant="outline"
-                    onPress={() =>
-                      onRespond({ answer: choice, kind: 'clarify' })
-                    }>
-                    {choice}
-                  </Button>
-                ))}
+                {prompt.choices.map((choice) => {
+                  const presentation = promptChoicePresentation(choice);
+                  return (
+                    <Button
+                      key={choice}
+                      size="sm"
+                      accessibilityLabel={`Answer: ${presentation.label}${presentation.recommended ? ', recommended' : ''}`}
+                      disabled={busy}
+                      testID={`chat-prompt-choice-${choice}`}
+                      variant={presentation.recommended ? 'primary' : 'outline'}
+                      onPress={() =>
+                        onRespond({ answer: choice, kind: 'clarify' })
+                      }>
+                      {presentation.recommended
+                        ? `${presentation.label} · Recommended`
+                        : presentation.label}
+                    </Button>
+                  );
+                })}
               </View>
             ) : null}
             {/* Stacked rather than side-by-side: inside Alert.Content a

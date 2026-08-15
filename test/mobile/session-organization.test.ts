@@ -7,6 +7,7 @@ import type { WaveSessionSummary } from '@wave/contracts';
 import {
   nextWaveSessionPageOffset,
   setWaveSessionPinnedInPages,
+  setWaveSessionTitleInPages,
 } from '../../src/features/sessions/session-page-cache.ts';
 import { organizeWaveSessions } from '../../src/features/sessions/session-organization.ts';
 import type { WaveSessionPage } from '../../src/services/wave/wave-chat-client.ts';
@@ -120,6 +121,25 @@ test('optimistic pinning updates duplicate server-backed rows immutably', () => 
   assert.equal(updated?.pages[1].sessions[0].pinned, true);
   assert.equal(data.pages[0].sessions[0].pinned, false);
   assert.equal(setWaveSessionPinnedInPages(updated, 'missing', true), updated);
+});
+
+test('live titles update matching cached conversation rows immutably', () => {
+  const first = session('s1');
+  const data: InfiniteData<WaveSessionPage> = {
+    pageParams: [0, 50],
+    pages: [
+      { hasMore: true, limit: 50, offset: 0, sessions: [first] },
+      { hasMore: false, limit: 50, offset: 50, sessions: [first] },
+    ],
+  };
+  const updated = setWaveSessionTitleInPages(data, 's1', 'Generated title');
+  assert.equal(updated?.pages[0].sessions[0].title, 'Generated title');
+  assert.equal(updated?.pages[1].sessions[0].title, 'Generated title');
+  assert.equal(data.pages[0].sessions[0].title, undefined);
+  assert.equal(
+    setWaveSessionTitleInPages(updated, 'missing', 'No match'),
+    updated,
+  );
 });
 
 test('pagination advances by server limit, not pin-backfilled row count', () => {

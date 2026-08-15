@@ -7,12 +7,12 @@ protocol shapes never leave it, and screens consume only normalized Wave contrac
 
 ## Current compatibility baseline
 
-The shipping transport was validated live against the private Homelab gateway running `0.20.0`
-on 2026-08-03 from the existing Radon-managed iOS and Android development runtimes. The
-compatibility floor remains the sanitized `0.19.0` protocol fixture and the behavior Wave already
-shipped against that release. Wave does not branch product behavior on a version string: optional
-methods and fields are attempted only by features that need them and must degrade safely when
-absent or malformed.
+The current implementation baseline is the tagged Hermes Agent `v0.20.1` / `v2026.8.13`
+gateway contract, validated live on 2026-08-14 from the Radon-managed iOS development runtime.
+The compatibility floor remains the sanitized `0.19.0` protocol fixture and the behavior Wave
+already shipped against that release. Wave does not branch product behavior on a version string:
+optional methods and fields are attempted only by features that need them and must degrade safely
+when absent or malformed.
 
 - **Sign-in**: `POST /auth/password-login` with `{provider: 'basic', username, password}`. The
   response carries an access/refresh token pair. Tokens rotate: responses can carry a refreshed
@@ -21,7 +21,7 @@ absent or malformed.
 - **Tokens are stateless and signed.** Logout cannot revoke them server-side; they die at
   expiry or when the gateway's signing secret rotates (for example on restart), which signs out
   every client at once. Wave's Disconnect is therefore local token deletion and says so.
-- **Compatibility diagnostics**: `/api/status` currently reports `0.20.0`. Development builds
+- **Compatibility diagnostics**: `/api/status` reports the deployed gateway version. Development builds
   project only that bounded public version into the repository-local mobile state bridge. It is
   evidence for live validation, not a feature flag, and no other status/configuration metadata is
   normalized.
@@ -31,6 +31,10 @@ absent or malformed.
   `change_events: true`; Wave treats that field as optional. The client normalizes only reviewed
   frames into the strict Wave turn-event union and synthesizes the monotonic sequence numbers the
   chat reducer expects.
+- **Client identity**: every `session.create` and `session.resume` carries the open-ended source
+  value `wave`. Hermes uses `source: 'desktop'` to attach Desktop-only preview, window, terminal,
+  and MCP setup bridges; Wave must not inherit those capabilities implicitly. Stored `wave`
+  sessions normalize into Wave's ordinary `chat` presentation family.
 - **Resilience**: an in-flight turn runs to completion through a disconnect and can be
   reattached by session with full history; only idle sessions are reaped (about 20 seconds).
   Reattaching is a read of the same execution — the prompt itself is never re-sent.
@@ -45,10 +49,17 @@ absent or malformed.
 - **REST**: paginated session list, `/messages` history, pin/unpin, rename, delete, and full-text
   search.
   Search covers message content only — the gateway does not index titles, so Wave layers title
-  matching client-side. `/messages?limit=` keeps the _oldest_ rows, so the timeline pages from
-  the newest end with bounded probes when the count is unknown. v0.20 caps session pages at 100
-  rows and message pages at 500; Wave uses the shared 100-row session limit and keeps its
-  200-row timeline window bounded across both releases.
+  matching client-side. v0.20.1 supports
+  `/messages?order=latest&limit=<N>&offset=<newest-relative>` and proves the mode with
+  `pagination.order: 'latest'`; the returned `data` or `messages` block remains chronological (the
+  live v0.20.1 deployment returned `messages`). Wave requests one look-ahead row so exact page
+  multiples terminate without an empty fetch, then walks older pages with opaque
+  `latest:<offset>` cursors. A gateway that omits that exact proof stays on the legacy behavior,
+  where `/messages?limit=` keeps the _oldest_ rows and Wave locates the newest end through the
+  session count or bounded probes. Network/auth/timeout failures never masquerade as an
+  unsupported capability. v0.20 caps session pages at 100 rows and message pages at 500; Wave
+  uses the shared 100-row session limit and keeps its 200-row timeline window bounded across all
+  supported releases.
 - **Deletes are not guarded upstream**: the gateway accepts deleting a session with a running
   turn and lets the conversation reappear. Wave refuses the delete client-side while the turn's
   RPC channel is registered or `session.active_list` reports any known active phase.
@@ -86,6 +97,10 @@ absent or malformed.
   `tool_call_id`, else by tool name in order, each call consumed once) so stored tool rows keep
   the same bounded `toolInput` the live stream carries in `tool.start`; the raw call ids are
   consumed inside the normalizer and never cross the boundary.
+- **Durable message identity**: a positive numeric REST message `id` crosses as the normalized
+  timeline entry's internal `rowId`. It is never rendered or treated as content; Wave uses it only
+  as the fail-closed durable address for v0.20.1 history rewinds. String, fractional, zero, and
+  negative ids remain presentation keys at most and never become rewind authority.
 - **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed
   final can replace that segment once without duplicating it. `tool.progress` updates the existing
   named tool row with one bounded preview. Only reviewed compaction, goal, process, and ready
@@ -117,20 +132,38 @@ absent or malformed.
   `commands.catalog` degrades honestly — Wave's own registry commands still run, and an
   unrecognized leading-slash submit gets a bounded "commands aren't available on this server"
   notice instead of silently becoming a chat turn.
-- **Branch and regenerate (v0.20)**: `session.branch {session_id: <live sid>, count?}` copies
+- **Branch and regenerate (v0.20/v0.20.1)**: `session.branch {session_id: <live sid>, count?}` copies
   the live session's history (all of it when `count` is omitted — Wave's exact newest-turn
   case) into a new stored session and returns `stored_session_id` + `title`. Regenerate is
-  `prompt.submit` with `truncate_before_user_ordinal` (plus `confirm_empty_truncate` at ordinal
-  0): the gateway validates the ordinal against user rows without `display_kind` (Wave
-  normalizes that flag as `ordinalExempt` and excludes such rows plus its own journal rows from
-  ordinal math), persists the truncation before running, and re-expands stored skill
-  invocations for replay. Both are one-shot, never retried, and refused client-side while a
-  turn runs.
+  `prompt.submit` with explicit `confirm_truncate: true`; ordinal zero additionally carries
+  `confirm_empty_truncate: true`. On v0.20.1 Wave prefers the target user's durable
+  `truncate_before_row_id` without attaching a potentially partial loaded-page ordinal. The
+  proved legacy path keeps `truncate_before_user_ordinal`. The gateway validates ordinals against
+  user rows without `display_kind` (Wave normalizes that flag as `ordinalExempt` and excludes such
+  rows plus its own journal rows from ordinal math), rejects stale row identities without an
+  ordinal fallback, persists the truncation before running, and re-expands stored skill
+  invocations for replay. A successful durable rewrite may return `survivor_user_row_ids`; Wave
+  strictly normalizes those values and rebinds the loaded surviving user suffix from the end of
+  the server's full survivor list, clearing missing ids instead of retaining stale authority.
+  The authoritative post-turn timeline refetch still reconciles everything. Branch and
+  regenerate are both one-shot, never retried, and refused client-side while a turn runs.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from
   another client, or server-side expiry). `secret`/`sudo` prompts are declined with copy that
-  says why; Wave never collects credentials on the phone.
+  says why; Wave never collects credentials on the phone. `source: 'wave'` prevents the
+  Desktop-only `setup_mcp` tool from being advertised. As defense in depth, an unexpected bounded
+  `mcp.setup.request` becomes a decline-only prompt and Wave sends exactly one
+  `mcp.setup.respond` containing a serialized `{status: 'declined', server}` result on the trusted
+  active-turn socket. It never calls setup/install/enable/authorize/OAuth endpoints.
+- **Live generated titles (v0.20.1)**: `session.title` carries a bounded durable session id and
+  generated title while a turn is live. Wave projects it as metadata (not transcript content),
+  updates matching TanStack session-list rows immediately, and keeps a screen-local title so a
+  first-turn route still keyed by its pending placeholder updates its native header. The normal
+  post-turn list invalidation remains authoritative.
+- **Recommended clarification choices (v0.20.1)**: a terminal ` (Recommended)` marker is parsed
+  for visual and accessibility emphasis only. The exact original choice string is retained as the
+  `clarify.respond` value.
 - **Attachments**: `image.attach_bytes` (`content_base64`, `filename`) queues an image on the
   live sid before `prompt.submit` consumes it. The gateway prepends its own annotation block to
   the stored user message for each image; Wave folds the exactly-matching annotation pairs into
@@ -210,9 +243,10 @@ npm test
 ```
 
 `test/mobile/gateway-protocol.test.ts` covers sign-in, token rotation, framing, normalization,
-reattachment, cancellation, active-state handling, and error mapping against sanitized v0.19 and
-v0.20 protocol shapes. A gateway compatibility change is incomplete until the fixtures, live
-behavior, and this document agree.
+reattachment, cancellation, active-state handling, newest-order detection/fallback, truncation
+consent, durable row rebinding, Wave source tagging, live titles, MCP refusal, and error mapping
+against sanitized v0.19, v0.20, and v0.20.1 protocol shapes. A gateway compatibility change is
+incomplete until the fixtures, live behavior, and this document agree.
 
 For the two Radon runtimes, bind the mobile doctor to each platform's own Metro server rather than
 letting target discovery choose between them:

@@ -14,6 +14,8 @@ export const WaveTimelineMessageEntrySchema = z
   .object({
     id: WaveIdentifierSchema,
     message: WaveConversationMessageSchema.omit({ id: true }),
+    /** Durable Hermes message-row address used only for safe rewinds. */
+    rowId: z.number().int().positive().optional(),
     source: z.enum(['hermes', 'wave']),
     turnId: WaveIdentifierSchema,
     type: z.literal('message'),

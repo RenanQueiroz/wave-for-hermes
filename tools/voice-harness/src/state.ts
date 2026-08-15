@@ -146,13 +146,13 @@ export class HarnessState {
 
   // ---- sessions -----------------------------------------------------------
 
-  createSession(): HarnessSession {
+  createSession(source = 'gateway'): HarnessSession {
     this.sessionCounter += 1;
     const session: HarnessSession = {
       liveId: `harness-live-${this.sessionCounter}`,
       messages: [],
       pinned: false,
-      source: 'gateway',
+      source,
       storedId: `harness-stored-${this.sessionCounter}`,
       title: `Harness conversation ${this.sessionCounter}`,
     };

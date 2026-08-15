@@ -54,7 +54,7 @@ const MAX_CONTENT_CHARS = 1_000_000;
 const MAX_TOOL_NAME_CHARS = 100;
 const MAX_TOOL_DETAIL_CHARS = 4_000;
 
-// Mirrors the source families in Hermes Desktop v2026.8.3, but collapses
+// Mirrors the source families in Hermes Desktop v2026.8.13, but collapses
 // them into stable Wave-owned presentation categories. The upstream field is
 // deliberately open-ended; unknown future sources stay reachable as `other`.
 const CHAT_SESSION_SOURCES = new Set([
@@ -64,6 +64,7 @@ const CHAT_SESSION_SOURCES = new Set([
   'gateway',
   'local',
   'tui',
+  'wave',
 ]);
 const AUTOMATION_SESSION_SOURCES = new Set(['cron', 'kanban']);
 const EXTERNAL_SESSION_SOURCES = new Set([
@@ -386,8 +387,9 @@ function parseAssistantToolCalls(value: unknown): CorrelatedToolCall[] {
  * the result on the following tool rows (OpenAI-style history), so the walk
  * correlates them — by `tool_call_id` when both sides carry ids, else by
  * tool name in order — and the stored timeline keeps the same bounded input
- * the live stream carried in `tool.start`. Ids are consumed here and never
- * cross the boundary.
+ * the live stream carried in `tool.start`. Tool-call ids are consumed here
+ * and never cross the boundary. A positive numeric message-row id crosses
+ * separately as Wave's internal durable rewind address; it is never rendered.
  */
 export function normalizeTimelineEntries(
   value: unknown,
@@ -432,6 +434,10 @@ export function normalizeTimelineEntries(
       }
     }
     const rawId = row?.id;
+    const rowId =
+      typeof rawId === 'number' && Number.isInteger(rawId) && rawId > 0
+        ? rawId
+        : undefined;
     const id =
       typeof rawId === 'number' || typeof rawId === 'string'
         ? `msg-${String(rawId)}`
@@ -439,6 +445,7 @@ export function normalizeTimelineEntries(
     entries.push({
       id,
       message,
+      ...(rowId === undefined ? {} : { rowId }),
       source: 'hermes',
       // The gateway does not group rows into turns; each message carries its
       // own synthetic turn id and the chat grouping works from roles alone.

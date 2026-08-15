@@ -8,7 +8,10 @@ import {
 } from './chat-state';
 import { calculateBoundedRetryDelay } from '@/services/query/retry-policy';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
-import type { WaveChatClient } from '@/services/wave/wave-chat-client';
+import type {
+  WaveChatClient,
+  WaveStreamTurnOptions,
+} from '@/services/wave/wave-chat-client';
 
 const DELTA_FLUSH_MS = 50;
 // Reattaching is a read of the same execution (never a re-dispatch of the
@@ -24,6 +27,7 @@ export interface WaveCorrectionResult {
 interface UseWaveChatOptions {
   client: WaveChatClient;
   getCorrectionAnchor(): string | undefined;
+  onSessionTitle?(storedSessionId: string, title: string): void;
   persistCorrection(input: {
     anchorText: string;
     createdAt: string;
@@ -38,6 +42,7 @@ interface UseWaveChatOptions {
 export function useWaveChat({
   client,
   getCorrectionAnchor,
+  onSessionTitle,
   persistCorrection,
   reconcileTimeline,
   sessionId,
@@ -101,6 +106,10 @@ export function useWaveChat({
               tracking.lastSequence = event.sequence;
               if (event.type === 'turn.started') {
                 turnIdRef.current = event.turnId;
+              }
+              if (event.type === 'session.title.updated') {
+                onSessionTitle?.(event.storedSessionId, event.title);
+                continue;
               }
               if (event.type === 'assistant.delta') {
                 pendingDelta += event.delta;
@@ -205,14 +214,14 @@ export function useWaveChat({
         }
       }
     },
-    [client, reconcileTimeline, sessionId],
+    [client, onSessionTitle, reconcileTimeline, sessionId],
   );
 
   const send = useCallback(
     async (
       input: WaveTurnInput,
       optimisticText?: string,
-      options: { truncateBeforeUserOrdinal?: number } = {},
+      options: WaveStreamTurnOptions = {},
     ) => {
       const displayText =
         optimisticText?.trim() ??

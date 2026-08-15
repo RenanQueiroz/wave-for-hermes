@@ -44,6 +44,20 @@ export interface WaveSessionPage {
   sessions: WaveSessionListResponse['sessions'];
 }
 
+/** Fresh durable ids for user rows that survived a Hermes history rewrite. */
+export type WaveTruncationSurvivorRowIds = readonly (number | null)[];
+
+export interface WaveStreamTurnOptions {
+  /** Apply fresh durable ids after Hermes rewrites the surviving prefix. */
+  onTruncationCommitted?: (
+    survivorUserRowIds: WaveTruncationSurvivorRowIds,
+  ) => void;
+  /** Regenerate: truncate before this visible user ordinal, then replay. */
+  truncateBeforeUserOrdinal?: number;
+  /** Preferred durable address for that same visible user turn. */
+  truncateBeforeRowId?: number;
+}
+
 export interface WaveChatClient {
   readonly baseUrl: string;
   cancelTurn(
@@ -104,10 +118,7 @@ export interface WaveChatClient {
     sessionId: string,
     input: WaveTurnInput,
     signal?: AbortSignal,
-    options?: {
-      /** Regenerate: truncate before this visible user ordinal, then replay. */
-      truncateBeforeUserOrdinal?: number;
-    },
+    options?: WaveStreamTurnOptions,
   ): AsyncGenerator<WaveTurnEvent>;
   updateSession(
     sessionId: string,

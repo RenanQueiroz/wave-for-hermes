@@ -7,7 +7,7 @@ buffered and clause-streamed speech — and plays scripted scenarios while
 journaling everything it observed. It is a test double: no inference, no
 outbound networking, no audio capture.
 
-Protocol baseline: Hermes Agent `v2026.8.3` (the deployed gateway image), as
+Protocol baseline: Hermes Agent `v2026.8.13` / `0.20.1`, as
 consumed by Wave. A Hermes upgrade that changes wire shapes must update this
 package together with `src/services/gateway`.
 

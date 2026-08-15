@@ -75,6 +75,8 @@ import { WaveBackendError } from '../wave/wave-backend-error.ts';
 import {
   isPendingSessionId,
   PENDING_SESSION_PREFIX,
+  type WaveStreamTurnOptions,
+  type WaveTruncationSurvivorRowIds,
 } from '../wave/wave-chat-client.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -109,6 +111,7 @@ const AUDIO_REQUEST_TIMEOUT_MS = 90_000;
 const SPEECH_STREAM_FALLBACK_CACHE_MS = 5 * 60_000;
 const MAX_SEARCH_SNIPPET_CHARS = 300;
 const MAX_GATEWAY_VERSION_CHARS = 64;
+const MAX_SURVIVOR_USER_ROW_IDS = 10_000;
 const ACTIVE_GATEWAY_SESSION_STATUSES = new Set([
   'starting',
   'waiting',
@@ -118,6 +121,14 @@ const ACTIVE_GATEWAY_SESSION_STATUSES = new Set([
 ]);
 const REDIRECT_RACE_CODES = new Set([4001, 4007, 4009, 4010]);
 const REDIRECT_STATUSES = new Set(['queued', 'redirected', 'rejected']);
+const WAVE_GATEWAY_SESSION_SOURCE = 'wave';
+
+type LatestMessageOrderSupport = 'supported' | 'unknown' | 'unsupported';
+
+interface GatewayMessagePage {
+  order?: 'latest' | 'oldest';
+  rows: unknown[];
+}
 
 export interface GatewayTokenSink {
   (tokens: GatewayTokens): void;
@@ -277,6 +288,8 @@ export class GatewayClient {
     string,
     { fastMode?: boolean; reasoningEffort?: WaveReasoningEffort }
   >();
+  /** Capability proof for newest-relative `/messages` paging. */
+  private latestMessageOrderSupport: LatestMessageOrderSupport = 'unknown';
 
   constructor(options: GatewayClientOptions) {
     this.baseUrl = normalizeGatewayBaseUrl(options.baseUrl, {
@@ -420,13 +433,56 @@ export class GatewayClient {
         sessionId,
       };
     }
-    // The gateway pages by numeric offset from the OLDEST message, while Wave
-    // pages backwards from the newest with an opaque cursor. `before` carries
-    // the offset (in raw gateway rows) of the oldest row already held.
     const limit = Math.min(
       Math.max(input.limit ?? 100, 1),
       TIMELINE_PAGE_LIMIT,
     );
+    const latestOffset = parseLatestTimelineCursor(input.before);
+    if (latestOffset !== undefined) {
+      const page = await this.fetchLatestTimelinePage(
+        sessionId,
+        limit,
+        latestOffset,
+        signal,
+      );
+      if (!page) {
+        throw new WaveBackendError(
+          'Hermes stopped supporting the active conversation cursor.',
+          { kind: 'upstream_incompatible' },
+        );
+      }
+      return page;
+    }
+
+    if (
+      input.before === undefined &&
+      this.latestMessageOrderSupport !== 'unsupported'
+    ) {
+      try {
+        const page = await this.fetchLatestTimelinePage(
+          sessionId,
+          limit,
+          0,
+          signal,
+        );
+        if (page) return page;
+        this.latestMessageOrderSupport = 'unsupported';
+      } catch (error) {
+        // Older gateways may reject the new query parameter. A transport,
+        // authentication, cancellation, timeout, or server failure is not a
+        // capability answer and must remain visible to the caller.
+        if (!(
+          error instanceof WaveBackendError && error.kind === 'bad_request'
+        )) {
+          throw error;
+        }
+        this.latestMessageOrderSupport = 'unsupported';
+      }
+    }
+
+    // Legacy compatibility: these gateways page by numeric offset from the
+    // OLDEST message, while Wave pages backwards from the newest. `before`
+    // carries the offset of the oldest row already held.
     const before = Number.parseInt(input.before ?? '', 10);
 
     if (Number.isFinite(before)) {
@@ -492,19 +548,86 @@ export class GatewayClient {
     };
   }
 
+  /**
+   * One v0.20.1 newest-relative page. `limit + 1` asks for one extra older
+   * row, so exact page multiples terminate without an empty follow-up fetch.
+   * Hermes returns the selected block in chronological order; dropping the
+   * first row preserves that order and leaves it for the next offset.
+   *
+   * `undefined` means the response did not explicitly prove support. This is
+   * intentionally response-shaped detection, not a version-number gate.
+   */
+  private async fetchLatestTimelinePage(
+    sessionId: string,
+    limit: number,
+    offset: number,
+    signal?: AbortSignal,
+  ): Promise<WaveTimelineResponse | undefined> {
+    const page = await this.fetchMessagePage(
+      sessionId,
+      limit + 1,
+      offset,
+      'latest',
+      signal,
+    );
+    if (page.order !== 'latest') return undefined;
+    this.latestMessageOrderSupport = 'supported';
+    const hasMore = page.rows.length > limit;
+    const rows = hasMore ? page.rows.slice(-limit) : page.rows;
+    const nextOffset = offset + rows.length;
+    return {
+      apiVersion: 'v1',
+      entries: normalizeTimelineEntries(
+        { messages: rows },
+        -(offset + rows.length),
+      ),
+      hasMore,
+      limit,
+      ...(hasMore ? { nextCursor: `latest:${nextOffset}` } : {}),
+      sessionId,
+    };
+  }
+
   private async fetchMessageRows(
     sessionId: string,
     limit: number,
     offset: number,
     signal?: AbortSignal,
   ): Promise<unknown[]> {
-    if (limit <= 0) return [];
+    return (
+      await this.fetchMessagePage(sessionId, limit, offset, undefined, signal)
+    ).rows;
+  }
+
+  private async fetchMessagePage(
+    sessionId: string,
+    limit: number,
+    offset: number,
+    order?: 'latest',
+    signal?: AbortSignal,
+  ): Promise<GatewayMessagePage> {
+    if (limit <= 0) return { rows: [] };
     const body = await this.request(
-      `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}`,
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}${order ? `&order=${order}` : ''}`,
       { signal },
     );
-    const rows = (body as { messages?: unknown } | null)?.messages;
-    return Array.isArray(rows) ? rows : [];
+    const response = body as {
+      data?: unknown;
+      messages?: unknown;
+      pagination?: { order?: unknown };
+    } | null;
+    const rows = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response?.messages)
+        ? response.messages
+        : [];
+    const responseOrder = response?.pagination?.order;
+    return {
+      ...(responseOrder === 'latest' || responseOrder === 'oldest'
+        ? { order: responseOrder }
+        : {}),
+      rows,
+    };
   }
 
   /**
@@ -737,7 +860,7 @@ export class GatewayClient {
     sessionId: string,
     input: WaveTurnInput,
     signal?: AbortSignal,
-    options: {
+    options: WaveStreamTurnOptions & {
       /**
        * Consulted after each completed turn. The gateway drains
        * server-queued follow-up text (a build-window `session.redirect`)
@@ -752,7 +875,6 @@ export class GatewayClient {
        * and refuses stale ones with a clear error). Ordinal 0 explicitly
        * confirms the empty truncation, matching Desktop.
        */
-      truncateBeforeUserOrdinal?: number;
     } = {},
   ): AsyncGenerator<WaveTurnEvent> {
     const text = turnInputToText(input);
@@ -792,18 +914,52 @@ export class GatewayClient {
       });
       yield translator.start();
       let submitFailure: WaveBackendError | undefined;
+      // v0.20.1's newest-order response is our capability proof for its
+      // durable rewind contract. Prefer row id alone there: a visible ordinal
+      // computed from only the loaded suffix is not necessarily absolute and
+      // Hermes correctly refuses a mismatch. Older gateways keep the ordinal
+      // path they already support.
+      const durableTruncateRowId =
+        this.latestMessageOrderSupport === 'supported'
+          ? options.truncateBeforeRowId
+          : undefined;
+      const truncateUserOrdinal =
+        durableTruncateRowId === undefined
+          ? options.truncateBeforeUserOrdinal
+          : undefined;
       void rpc
         .call('prompt.submit', {
           session_id: liveSessionId,
           text,
-          ...(options.truncateBeforeUserOrdinal !== undefined
+          ...(truncateUserOrdinal !== undefined ||
+          durableTruncateRowId !== undefined
             ? {
-                truncate_before_user_ordinal: options.truncateBeforeUserOrdinal,
+                confirm_truncate: true,
+                ...(truncateUserOrdinal !== undefined
+                  ? {
+                      truncate_before_user_ordinal: truncateUserOrdinal,
+                    }
+                  : {}),
+                ...(durableTruncateRowId !== undefined
+                  ? { truncate_before_row_id: durableTruncateRowId }
+                  : {}),
                 ...(options.truncateBeforeUserOrdinal === 0
                   ? { confirm_empty_truncate: true }
                   : {}),
               }
             : {}),
+        })
+        .then((result) => {
+          const survivorUserRowIds = normalizeSurvivorUserRowIds(
+            result.survivor_user_row_ids,
+          );
+          if (!survivorUserRowIds || !options.onTruncationCommitted) return;
+          try {
+            options.onTruncationCommitted(survivorUserRowIds);
+          } catch {
+            // Hermes already accepted the destructive mutation. A local cache
+            // update failure must not turn that success into a retryable send.
+          }
         })
         .catch((error: unknown) => {
           submitFailure = toWaveError(error);
@@ -854,6 +1010,7 @@ export class GatewayClient {
     input:
       | { choice: string; kind: 'approval' }
       | { answer: string; kind: 'clarify'; promptId: string }
+      | { kind: 'mcp-setup'; promptId: string; server: string }
       | { kind: 'secret' | 'sudo'; promptId: string },
   ): Promise<void> {
     sessionId = this.resolveSessionId(sessionId);
@@ -873,6 +1030,15 @@ export class GatewayClient {
         await active.rpc.call('clarify.respond', {
           answer: input.answer,
           request_id: input.promptId,
+          session_id: active.liveSessionId,
+        });
+      } else if (input.kind === 'mcp-setup') {
+        await active.rpc.call('mcp.setup.respond', {
+          request_id: input.promptId,
+          result: JSON.stringify({
+            server: input.server,
+            status: 'declined',
+          }),
           session_id: active.liveSessionId,
         });
       } else if (input.kind === 'secret') {
@@ -964,7 +1130,10 @@ export class GatewayClient {
     void _after;
     const connection = await this.openSocket(signal);
     try {
-      await connection.rpc.call('session.resume', { session_id: sessionId });
+      await connection.rpc.call('session.resume', {
+        session_id: sessionId,
+        source: WAVE_GATEWAY_SESSION_SOURCE,
+      });
     } catch (error) {
       throw toWaveError(error);
     } finally {
@@ -1567,6 +1736,7 @@ export class GatewayClient {
       const pick = this.pendingModelPicks.get(sessionId);
       const options = this.pendingSessionOptions.get(sessionId);
       const created = await rpc.call('session.create', {
+        source: WAVE_GATEWAY_SESSION_SOURCE,
         ...(pick ? { model: pick.model, provider: pick.provider } : {}),
         ...(options?.reasoningEffort !== undefined
           ? { reasoning_effort: options.reasoningEffort }
@@ -1592,6 +1762,7 @@ export class GatewayClient {
     }
     const resumed = await rpc.call('session.resume', {
       session_id: sessionId,
+      source: WAVE_GATEWAY_SESSION_SOURCE,
     });
     const live = resumed.session_id;
     if (typeof live === 'string' && live) {
@@ -1938,6 +2109,26 @@ function turnInputToText(input: WaveTurnInput): string {
           : [],
     )
     .join('\n\n');
+}
+
+function parseLatestTimelineCursor(value: string | undefined) {
+  const match = /^latest:(\d+)$/.exec(value ?? '');
+  if (!match) return undefined;
+  const offset = Number(match[1]);
+  return Number.isSafeInteger(offset) ? offset : undefined;
+}
+
+export function normalizeSurvivorUserRowIds(
+  value: unknown,
+): WaveTruncationSurvivorRowIds | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .slice(0, MAX_SURVIVOR_USER_ROW_IDS)
+    .map((rowId) =>
+      typeof rowId === 'number' && Number.isInteger(rowId) && rowId > 0
+        ? rowId
+        : null,
+    );
 }
 
 function turnInputAttachments(input: WaveTurnInput) {

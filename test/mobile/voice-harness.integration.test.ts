@@ -130,7 +130,7 @@ test(
       assert.equal(identity.userId, 'harness-user');
       assert.ok(rotations() >= 1, 'the rotated cookie pair must be harvested');
       const baseline = await client.getCompatibilityBaseline();
-      assert.equal(baseline.version, '0.20.0');
+      assert.equal(baseline.version, '0.20.1');
     } finally {
       await harness.close();
     }

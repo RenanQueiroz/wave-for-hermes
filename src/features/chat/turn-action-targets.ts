@@ -29,6 +29,8 @@ export interface RegenerateTarget {
   entryId: string;
   /** The visible user ordinal in the gateway's own counting space. */
   ordinal: number;
+  /** Durable Hermes row address, preferred when the gateway supports it. */
+  rowId?: number;
   /** The exact user text to re-send. */
   text: string;
 }
@@ -50,10 +52,44 @@ export function regenerateTarget(
     if (!qualifiesForOrdinal(entry)) continue;
     ordinal += 1;
     if (entry.type === 'message') {
-      target = { entryId: entry.id, ordinal, text: entry.message.content };
+      target = {
+        entryId: entry.id,
+        ordinal,
+        ...(entry.rowId === undefined ? {} : { rowId: entry.rowId }),
+        text: entry.message.content,
+      };
     }
   }
   return target;
+}
+
+/**
+ * Rebind the loaded surviving user suffix after Hermes rewrites the durable
+ * prefix. The server returns ids for every survivor from the start of the
+ * conversation, while Wave may hold only its newest pages, so alignment is
+ * intentionally from the end rather than from ordinal zero.
+ */
+export function rebindTimelineSurvivorRowIds(
+  displayOrderedEntries: readonly WaveTimelineEntry[],
+  survivorUserRowIds: readonly (number | null)[],
+): WaveTimelineEntry[] {
+  const loadedUsers = displayOrderedEntries.filter(qualifiesForOrdinal);
+  const survivorStart = Math.max(
+    survivorUserRowIds.length - loadedUsers.length,
+    0,
+  );
+  const rebound = new Map<string, number | undefined>();
+  loadedUsers.forEach((entry, index) => {
+    const rowId = survivorUserRowIds[survivorStart + index];
+    rebound.set(entry.id, typeof rowId === 'number' ? rowId : undefined);
+  });
+  return displayOrderedEntries.map((entry) => {
+    if (!rebound.has(entry.id) || entry.type !== 'message') return entry;
+    const rowId = rebound.get(entry.id);
+    if (rowId === entry.rowId) return entry;
+    const { rowId: _staleRowId, ...rest } = entry;
+    return rowId === undefined ? rest : { ...rest, rowId };
+  });
 }
 
 /**

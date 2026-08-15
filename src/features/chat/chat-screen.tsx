@@ -74,6 +74,7 @@ import type { WaveToolCallDetail } from '@/features/chat/tool-detail-sheet.share
 import {
   branchCount,
   collectPrunedEntryIds,
+  rebindTimelineSurvivorRowIds,
   regenerateTarget,
 } from '@/features/chat/turn-action-targets';
 import { TurnActionRow } from '@/features/chat/turn-action-row';
@@ -91,6 +92,7 @@ import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
+import { setWaveSessionTitleInPages } from '@/features/sessions/session-page-cache';
 import {
   waveSessionQueryKey,
   waveTimelineQueryKey,
@@ -102,6 +104,7 @@ import type { GatewayClient } from '@/services/gateway/gateway-client';
 import {
   isPendingSessionId,
   type WaveChatClient,
+  type WaveSessionPage,
 } from '@/services/wave/wave-chat-client';
 
 interface ChatScreenProps {
@@ -162,6 +165,11 @@ function ConnectedChatScreen({
   const insets = useSafeAreaInsets();
   const [composerBottomOffset, setComposerBottomOffset] = useState(0);
   const [composerRestingOffset, setComposerRestingOffset] = useState(0);
+  const [liveSessionTitle, setLiveSessionTitle] = useState<{
+    routeSessionId: string;
+    storedSessionId: string;
+    title: string;
+  }>();
   const queryClient = useQueryClient();
   const transcriptBottomPadding = Math.max(composerBottomOffset + 12, 12);
 
@@ -256,9 +264,28 @@ function ConnectedChatScreen({
     },
     [baseUrl, connectionId, queryClient],
   );
+  const onSessionTitle = useCallback(
+    (storedSessionId: string, title: string) => {
+      // The first title can arrive while this screen is still addressed by
+      // its pending placeholder. Keep both identities so the same title
+      // survives Expo Router replacing the route with the durable id.
+      setLiveSessionTitle({
+        routeSessionId: sessionId,
+        storedSessionId,
+        title,
+      });
+      queryClient.setQueryData<InfiniteData<WaveSessionPage>>(
+        waveSessionQueryKey(connectionId, baseUrl),
+        (data) =>
+          setWaveSessionTitleInPages(data, storedSessionId, title) ?? data,
+      );
+    },
+    [baseUrl, connectionId, queryClient, sessionId],
+  );
   const chat = useWaveChat({
     client,
     getCorrectionAnchor,
+    onSessionTitle,
     persistCorrection,
     reconcileTimeline,
     sessionId,
@@ -412,6 +439,13 @@ function ConnectedChatScreen({
   // sessions list the drawer already caches.
   const sessions = useWaveSessions({ baseUrl, client, connectionId });
   const headerTitle = useMemo(() => {
+    if (
+      liveSessionTitle &&
+      (liveSessionTitle.routeSessionId === sessionId ||
+        liveSessionTitle.storedSessionId === sessionId)
+    ) {
+      return liveSessionTitle.title;
+    }
     const summary = flattenWaveSessions(sessions.data).find(
       (session) => session.id === sessionId,
     );
@@ -422,6 +456,7 @@ function ConnectedChatScreen({
       : 'Untitled chat';
   }, [
     messages.length,
+    liveSessionTitle,
     pendingSession,
     sessionId,
     sessions.data,
@@ -487,22 +522,32 @@ function ConnectedChatScreen({
     (response: PromptCardResponse) => {
       const prompt = chat.state.activePrompt;
       if (!prompt || !gatewayClient) return;
-      const input =
-        response.kind === 'approval'
-          ? { choice: response.choice, kind: 'approval' as const }
-          : response.kind === 'clarify'
-            ? {
-                answer: response.answer,
-                kind: 'clarify' as const,
-                promptId: prompt.promptId,
-              }
-            : {
-                kind:
-                  prompt.kind === 'sudo'
-                    ? ('sudo' as const)
-                    : ('secret' as const),
-                promptId: prompt.promptId,
-              };
+      const input = (() => {
+        if (response.kind === 'approval') {
+          return { choice: response.choice, kind: 'approval' as const };
+        }
+        if (response.kind === 'clarify') {
+          return {
+            answer: response.answer,
+            kind: 'clarify' as const,
+            promptId: prompt.promptId,
+          };
+        }
+        if (prompt.kind === 'mcp-setup') {
+          if (!prompt.server) return undefined;
+          return {
+            kind: 'mcp-setup' as const,
+            promptId: prompt.promptId,
+            server: prompt.server,
+          };
+        }
+        return {
+          kind:
+            prompt.kind === 'sudo' ? ('sudo' as const) : ('secret' as const),
+          promptId: prompt.promptId,
+        };
+      })();
+      if (!input) return;
       setPromptStatus({ busy: true, promptId: prompt.promptId });
       void gatewayClient
         .respondToPrompt(sessionId, input)
@@ -603,7 +648,35 @@ function ConnectedChatScreen({
             : data,
       );
       void chat.send(target.text, target.text, {
+        onTruncationCommitted: (survivorUserRowIds) => {
+          queryClient.setQueryData<InfiniteData<WaveTimelineResponse>>(
+            timelineKey,
+            (data) => {
+              if (!data) return data;
+              const displayOrdered = [...data.pages]
+                .reverse()
+                .flatMap((page) => page.entries);
+              const rebound = rebindTimelineSurvivorRowIds(
+                displayOrdered,
+                survivorUserRowIds,
+              );
+              const byId = new Map(rebound.map((entry) => [entry.id, entry]));
+              return {
+                ...data,
+                pages: data.pages.map((page) => ({
+                  ...page,
+                  entries: page.entries.map(
+                    (entry) => byId.get(entry.id) ?? entry,
+                  ),
+                })),
+              };
+            },
+          );
+        },
         truncateBeforeUserOrdinal: target.ordinal,
+        ...(target.rowId === undefined
+          ? {}
+          : { truncateBeforeRowId: target.rowId }),
       });
     },
     [busy, chat, composerBlocked, queryClient, timelineEntries, timelineKey],

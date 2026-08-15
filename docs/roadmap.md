@@ -9,7 +9,7 @@ security, and WebRTC documents; this roadmap tracks only work that remains.
 
 ## Now: improve voice latency
 
-[Hermes Agent v0.20](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) also adds
+[Hermes Agent v0.20.1](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.13) also adds
 clause-streamed speech and conversation capabilities Wave can adopt without becoming a Hermes
 administration console.
 

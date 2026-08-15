@@ -93,6 +93,14 @@ test('accepts only bounded Wave-owned unified timeline entries', () => {
         turnId: 'wave-turn-1',
         type: 'handoff',
       },
+      {
+        id: 'message-41',
+        message: { content: 'Safe rewind target', role: 'user' },
+        rowId: 41,
+        source: 'hermes',
+        turnId: 'message-41',
+        type: 'message',
+      },
     ],
     hasMore: false,
     limit: 100,
@@ -100,6 +108,13 @@ test('accepts only bounded Wave-owned unified timeline entries', () => {
   });
 
   assert.equal(response.entries[0]?.type, 'handoff');
+  assert.equal(response.entries[1]?.type, 'message');
+  assert.equal(
+    response.entries[1]?.type === 'message'
+      ? response.entries[1].rowId
+      : undefined,
+    41,
+  );
   assert.equal(
     WaveTimelineResponseSchema.safeParse({
       ...response,
@@ -107,6 +122,22 @@ test('accepts only bounded Wave-owned unified timeline entries', () => {
         {
           ...response.entries[0],
           providerCallId: 'must-not-cross-the-boundary',
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveTimelineResponseSchema.safeParse({
+      ...response,
+      entries: [
+        {
+          id: 'message-invalid',
+          message: { content: 'Unsafe rewind target', role: 'user' },
+          rowId: -1,
+          source: 'hermes',
+          turnId: 'message-invalid',
+          type: 'message',
         },
       ],
     }).success,
@@ -345,6 +376,38 @@ test('validates bounded v0.20 stream projections and live state', () => {
       content: 'x'.repeat(1_000_001),
       messageId: 'message-v020',
       type: 'assistant.interim',
+    }).success,
+    false,
+  );
+  assert.equal(
+    WaveTurnEventSchema.parse({
+      ...base,
+      storedSessionId: 'stored-v0201',
+      title: 'Generated while streaming',
+      type: 'session.title.updated',
+    }).type,
+    'session.title.updated',
+  );
+  assert.equal(
+    WaveTurnEventSchema.parse({
+      ...base,
+      allowsFreeText: false,
+      choices: [],
+      kind: 'mcp-setup',
+      promptId: 'mcp-request-1',
+      server: 'github',
+      type: 'prompt.request',
+    }).type,
+    'prompt.request',
+  );
+  assert.equal(
+    WaveTurnEventSchema.safeParse({
+      ...base,
+      allowsFreeText: false,
+      choices: [],
+      kind: 'mcp-setup',
+      promptId: 'mcp-request-1',
+      type: 'prompt.request',
     }).success,
     false,
   );
