@@ -23,21 +23,21 @@ const easConfig = JSON.parse(
 
 test('app variants have distinct names, native identities, and schemes', () => {
   assert.deepEqual(identityFor('development'), {
-    name: 'wave (Dev)',
+    name: 'Wave (Dev)',
     scheme: 'wave-dev',
     iosBundleIdentifier: 'com.renanqueiroz.wave.dev',
     androidPackage: 'com.renanqueiroz.wave.dev',
     addGeneratedScheme: true,
   });
   assert.deepEqual(identityFor('preview'), {
-    name: 'wave (Preview)',
+    name: 'Wave (Preview)',
     scheme: 'wave-preview',
     iosBundleIdentifier: 'com.renanqueiroz.wave.preview',
     androidPackage: 'com.renanqueiroz.wave.preview',
     addGeneratedScheme: false,
   });
   assert.deepEqual(identityFor('production'), {
-    name: 'wave',
+    name: 'Wave',
     scheme: 'wave',
     iosBundleIdentifier: 'com.renanqueiroz.wave',
     androidPackage: 'com.renanqueiroz.wave',

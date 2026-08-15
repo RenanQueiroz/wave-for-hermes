@@ -205,9 +205,9 @@ distinct native identities so they can be installed side by side:
 
 | Variant       | Display name     | Native identifier               | URL scheme     |
 | ------------- | ---------------- | ------------------------------- | -------------- |
-| `development` | `wave (Dev)`     | `com.renanqueiroz.wave.dev`     | `wave-dev`     |
-| `preview`     | `wave (Preview)` | `com.renanqueiroz.wave.preview` | `wave-preview` |
-| `production`  | `wave`           | `com.renanqueiroz.wave`         | `wave`         |
+| `development` | `Wave (Dev)`     | `com.renanqueiroz.wave.dev`     | `wave-dev`     |
+| `preview`     | `Wave (Preview)` | `com.renanqueiroz.wave.preview` | `wave-preview` |
+| `production`  | `Wave`           | `com.renanqueiroz.wave`         | `wave`         |
 
 Development is the safe default for local Expo commands. The repository's EAS scripts are
 deliberately local-only:

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "wave",
+    "name": "Wave",
     "slug": "wave",
     "platforms": ["ios", "android"],
     "orientation": "portrait",
