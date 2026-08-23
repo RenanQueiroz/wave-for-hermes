@@ -8,14 +8,17 @@ import { join } from 'node:path';
 import type { MobileAgentConfig } from './config.js';
 import { runCommand } from './process.js';
 
+// Checksums of the prebuilt simulator runner published for the
+// `appium-webdriveragent` release the installed `appium-xcuitest-driver`
+// nests (12.7.0 → WebDriverAgent v16.5.1). Re-pin both when the driver moves.
 const WDA_ASSETS = {
   arm64: {
     filename: 'WebDriverAgentRunner-Build-Sim-arm64.zip',
-    sha256: '75d111f1358ab7d944561c4debbe686d4ea96fcc494412efc89f4af416d9df89',
+    sha256: '40104c4b16e87658dc0c0757186c67ee7d0d160843e14550ad23c1f0078890f3',
   },
   x64: {
     filename: 'WebDriverAgentRunner-Build-Sim-x86_64.zip',
-    sha256: 'c8abb110fccfa0ccef69676518572878c4445e8bce5bfb1e8dbe6bf7d9262785',
+    sha256: '04e1bef5ef489c9ca2bfd6c73c8de0432e4173da0d186482a4002c635511f8c6',
   },
 } as const;
 

@@ -27,9 +27,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "@opentelemetry/api": "1.9.1",
-    "@xmldom/xmldom": "0.9.11",
-    "appium-mcp": "1.92.2",
-    "appium-xcuitest-driver": "12.3.2",
+    "@xmldom/xmldom": "0.9.12",
+    "appium-mcp": "1.92.5",
+    "appium-xcuitest-driver": "12.7.0",
     "ws": "8.21.3",
     "zod": "4.4.3"
   },

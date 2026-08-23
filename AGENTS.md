@@ -120,15 +120,29 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
 - PanelUI tracks npm `latest` at install or upgrade time. Never pin an exact application-level
   version and never adopt beta/next/canary builds; the lockfile records the validated build, the
   manifest records the policy.
-- `react-native-gesture-handler` 3.1 is a deliberate SDK 57 compatibility exception: Expo's
-  bundled dependency map still recommends 2.32 even though Wave deliberately uses the stable 3.1
-  line and clean iOS and Android builds pass. Keep it listed in `expo.install.exclude`, re-run
-  drawer, swipe-back, and gesture flows after changing it, and remove the exclusion once Expo's
-  supported version catches up.
-- `react-native-keyboard-controller` 1.22.3 is a deliberate SDK 57 compatibility exception: Expo's
-  bundled dependency map still recommends 1.21.9, so keep the exact application version listed in
+- `react-native-gesture-handler` 3.2 is a deliberate SDK 57 compatibility exception: Expo's
+  bundled dependency map still recommends 2.32 even though Wave deliberately uses the stable 3.2
+  line (3.2.0 bumped the library's own example to React Native 0.87, but 3.2.1 compiles cleanly
+  against RN 0.86 from a clean Prebuild on both platforms). Keep it listed in
+  `expo.install.exclude`, re-run drawer, swipe-back, and gesture flows after changing it, and
+  remove the exclusion once Expo's supported version catches up.
+- `react-native-keyboard-controller` 1.22.4 is a deliberate SDK 57 compatibility exception: Expo's
+  bundled dependency map still recommends 1.21.9, so keep the application version listed in
   `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
   and remove the exclusion once Expo's supported version catches up.
+- `expo-modules-core` is pinned to 57.0.11 through the npm `overrides` entry in `package.json`
+  even though `expo` 57.0.15 asks for `~57.0.12`. 57.0.12's
+  per-turn budget on synchronous SwiftUI Host size commits (expo/expo#48059) leaves every
+  `matchContents` Host in Wave laid out at its padding-only height — the drawer header and footer
+  collapse to 9pt with their rows drawn over the status bar, the composer island overflows, and the
+  overflowing content cannot be hit-tested — reproduced on the iOS 26.5 simulator from a clean
+  Prebuild on 2026-08-22 and gone on 57.0.11 with everything else unchanged. The package is
+  consumed as Expo's prebuilt binary, so a source patch cannot carry a fix. Never add it as a
+  direct dependency (Expo Doctor rejects that); after any install, confirm the package still
+  resolves at `node_modules/expo-modules-core` rather than nested under `expo`, because every
+  other Expo module imports it from the root and Metro cannot find a nested copy. Re-verify the
+  drawer, composer, and Settings Hosts on the simulator after touching it, and drop the pin once
+  an `expo-modules-core` release fixes the sizing.
 - `react-native-audio-api` 0.13.2 is the exact device-validated playback foundation. Keep the
   application version exact until an upgrade passes clean native builds and repeated physical
   listening on both platforms. Wave uses the package's stock Android output settings: the final
