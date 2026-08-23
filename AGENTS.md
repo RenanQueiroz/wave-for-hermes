@@ -140,9 +140,15 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   consumed as Expo's prebuilt binary, so a source patch cannot carry a fix. Never add it as a
   direct dependency (Expo Doctor rejects that); after any install, confirm the package still
   resolves at `node_modules/expo-modules-core` rather than nested under `expo`, because every
-  other Expo module imports it from the root and Metro cannot find a nested copy. Re-verify the
-  drawer, composer, and Settings Hosts on the simulator after touching it, and drop the pin once
-  an `expo-modules-core` release fixes the sizing.
+  other Expo module imports it from the root and Metro cannot find a nested copy. The upstream fix
+  is expo/expo#49211 ("Yoga node holding old styles after props style update"), merged to `main`
+  on 2026-08-21 and cherry-picked to `sdk-57`, but unpublished as of 2026-08-23 — the next SDK 57
+  patch of `expo-modules-core` (57.0.13 or later) should carry it. Lifting the pin is a
+  verification task, not a version bump: follow the recipe in `docs/dependency-security.md`
+  ("Lifting the expo-modules-core pin") and keep the pin if the drawer or composer Hosts regress
+  again. Every future dependency upgrade must treat a collapsed drawer header, an overflowing
+  composer island, or untappable SwiftUI content as this bug class first — a `matchContents` Host
+  measuring only its padding — before suspecting gesture-handler, keyboard-controller, or PanelUI.
 - `react-native-audio-api` 0.13.2 is the exact device-validated playback foundation. Keep the
   application version exact until an upgrade passes clean native builds and repeated physical
   listening on both platforms. Wave uses the package's stock Android output settings: the final

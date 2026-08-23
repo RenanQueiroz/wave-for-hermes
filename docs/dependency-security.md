@@ -102,8 +102,45 @@ toolchain when its upstream dependencies move to fixed releases.
 - Keep `react-native-audio-api` exact until an upgrade passes clean native builds and repeated
   physical listening on both platforms.
 
+## Lifting the expo-modules-core pin
+
+The `overrides` pin to `expo-modules-core` 57.0.11 exists only because 57.0.12 (the version `expo`
+57.0.15 pulls) breaks `matchContents` SwiftUI Host sizing; the upstream fix,
+[expo/expo#49211](https://github.com/expo/expo/pull/49211), was merged on 2026-08-21 and
+cherry-picked onto the `sdk-57` branch but had not been published as of 2026-08-23 (the newest
+`expo-modules-core` on npm was still 57.0.12, published the day before the fix merged). It should
+ship in the next SDK 57 patch publish. On the next dependency pass:
+
+1. Check whether a newer SDK 57 release exists: `npm view expo-modules-core versions --json`, and
+   confirm its `CHANGELOG.md` lists #49211 (the entry reads "Fixed `matchContents` hosts
+   sometimes being laid out at a stale size. Regression from #48059").
+2. Remove the `overrides` entry from `package.json`, run `npm install`, and confirm the package
+   resolves at `node_modules/expo-modules-core` (never nested under `expo` — a nested copy breaks
+   Metro resolution for every other Expo module). Do not add it as a direct dependency; Expo
+   Doctor rejects that.
+3. Refresh the pods, which otherwise keep the pinned binary:
+   `cd ios && pod update ExpoModulesCore ExpoModulesWorklets ExpoModulesWorkletsAdapter
+--no-repo-update` (or a clean Prebuild), and rebuild both platforms.
+4. Verify on the iOS simulator before trusting the lift — the bug is visual and does not fail any
+   automated check: open the drawer (the "Wave" title, the New conversation / Search rows, and the
+   Settings footer must sit in place, with the empty state below the filter), confirm the composer
+   island contains both the input and its button row, and tap a SwiftUI control (Settings row,
+   composer send). The broken state looks like a header collapsed to ~9pt with rows drawn over the
+   status bar and SwiftUI content that ignores taps, because the content overflows a Host that
+   measured only its padding. `npx expo install --check` and Expo Doctor pass either way, so they
+   prove nothing here.
+5. If the Hosts regress again, restore the pin and record the new version in this section and the
+   `AGENTS.md` exception; if they are correct, delete this section and that exception.
+
+Note for bisecting this class of problem: on SDK 57 the iOS pod links Expo's prebuilt
+`ExpoModulesCore.xcframework` (the "added 2 script phases" CocoaPods warning is the download), so
+editing files under `node_modules/expo-modules-core/ios` changes nothing in the build. Bisect by
+version pin plus the pod update above, not by source edits.
+
 ## Accepted residual work
 
+- Lift the `expo-modules-core` pin once a published SDK 57 release carries expo/expo#49211, using
+  the checklist above.
 - Take Expo's supported Metro/`image-size` and `xcode`/`uuid` updates when they enter SDK 57 or
   during a deliberate SDK upgrade.
 - Take the upstream Appium/Webdriver archive-extraction fix when it is available without a toolchain
