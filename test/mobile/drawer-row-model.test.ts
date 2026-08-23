@@ -6,6 +6,7 @@ import type { WaveSessionSummary } from '@wave/contracts';
 import {
   DRAWER_COPY,
   drawerErrorMessage,
+  drawerReadStateAction,
   drawerRowAccessibilityLabel,
   drawerRowGlyph,
   emptySessionFilterMessage,
@@ -95,4 +96,44 @@ test('titles, empty copy, and error copy stay bounded and honest', () => {
     /“Trip”/,
   );
   assert.match(DRAWER_COPY.deleteMessage(undefined), /permanently deleted/);
+});
+
+test('an unread reply marks idle rows, loses to live status, and hides on the open row', () => {
+  const unread = session('s1', { title: 'Trip', unread: true });
+  assert.deepEqual(drawerRowGlyph(unread, 'chats'), {
+    kind: 'unread',
+    label: 'Unread reply',
+  });
+  // Unread outranks the source symbol in the activity filter.
+  assert.deepEqual(
+    drawerRowGlyph(
+      session('s2', { source: 'automation', unread: true }),
+      'activity',
+    ),
+    { kind: 'unread', label: 'Unread reply' },
+  );
+  // A running turn is the louder fact.
+  assert.equal(
+    drawerRowGlyph(
+      session('s3', { liveStatus: 'working', unread: true }),
+      'chats',
+    ).kind,
+    'live',
+  );
+  // The conversation being read never flashes its own unread mark.
+  assert.deepEqual(drawerRowGlyph(unread, 'chats', { selected: true }), {
+    kind: 'none',
+  });
+  assert.equal(
+    drawerRowAccessibilityLabel(unread, drawerRowGlyph(unread, 'chats')),
+    'Open conversation Trip, Unread reply',
+  );
+  assert.deepEqual(drawerReadStateAction(unread), {
+    label: 'Mark as read',
+    unread: false,
+  });
+  assert.deepEqual(drawerReadStateAction(session('s4')), {
+    label: 'Mark as unread',
+    unread: true,
+  });
 });

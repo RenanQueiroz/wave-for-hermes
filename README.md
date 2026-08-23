@@ -27,7 +27,8 @@ administration to Hermes itself.
 ## Highlights
 
 - Stream conversations from the Hermes gateway and resume work after disconnects or app restarts.
-- Browse, search, pin, rename, delete, branch, and continue the account's top-level conversations.
+- Browse, search, pin, mark read or unread, rename, delete, branch, and continue the account's
+  top-level conversations.
 - Send bounded images and text-based files, steer an active response, and answer inline Hermes
   prompts.
 - Talk through Hermes's gateway speech endpoints with no additional client credential.

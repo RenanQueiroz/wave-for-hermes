@@ -29,6 +29,7 @@ import { useRecyclingState } from '@legendapp/list/react-native';
 import { OfflineNotice } from '@/components/offline-notice';
 import {
   DRAWER_COPY,
+  drawerReadStateAction,
   drawerRowGlyph,
   emptySessionFilterMessage,
   SESSION_FILTERS,
@@ -119,30 +120,37 @@ function ConnectedWaveDrawerContent({
     startDelete,
     startRename,
     toggleSessionPin,
+    toggleSessionUnread,
   } = drawer;
   const renderItem = useCallback(
-    (item: DrawerSessionListItem) =>
-      item.kind === 'section' ? (
-        <SectionHeaderHost
-          colors={colors}
-          label={item.label}
-          mode={theme.mode}
-          sectionId={item.sectionId}
-        />
-      ) : (
+    (item: DrawerSessionListItem) => {
+      if (item.kind === 'section') {
+        return (
+          <SectionHeaderHost
+            colors={colors}
+            label={item.label}
+            mode={theme.mode}
+            sectionId={item.sectionId}
+          />
+        );
+      }
+      const selected = pathname.includes(item.session.id);
+      return (
         <SessionRowHost
           colors={colors}
-          glyph={drawerRowGlyph(item.session, sessionFilter)}
+          glyph={drawerRowGlyph(item.session, sessionFilter, { selected })}
           mode={theme.mode}
           pinning={pinningSessionId === item.session.id}
-          selected={pathname.includes(item.session.id)}
+          selected={selected}
           session={item.session}
           onDelete={startDelete}
           onOpen={openSession}
           onPin={toggleSessionPin}
           onRename={startRename}
+          onToggleUnread={toggleSessionUnread}
         />
-      ),
+      );
+    },
     [
       colors,
       openSession,
@@ -153,6 +161,7 @@ function ConnectedWaveDrawerContent({
       startRename,
       theme.mode,
       toggleSessionPin,
+      toggleSessionUnread,
     ],
   );
 
@@ -476,6 +485,7 @@ const SessionRowHost = memo(function SessionRowHost({
   onOpen,
   onPin,
   onRename,
+  onToggleUnread,
 }: {
   colors: DrawerColors;
   glyph: DrawerRowGlyph;
@@ -487,10 +497,12 @@ const SessionRowHost = memo(function SessionRowHost({
   onOpen(sessionId: string): Promise<void>;
   onPin(session: WaveSessionSummary): void;
   onRename(session: WaveSessionSummary): void;
+  onToggleUnread(session: WaveSessionSummary): void;
 }) {
   // Resets when the recycled row is reused for another session, so an open
   // menu never carries over.
   const [menuOpen, setMenuOpen] = useRecyclingState(false);
+  const readState = drawerReadStateAction(session);
 
   return (
     <Host
@@ -503,14 +515,17 @@ const SessionRowHost = memo(function SessionRowHost({
         menuOpen={menuOpen}
         pinDisabled={pinning}
         pinned={session.pinned}
+        readStateLabel={readState.label}
         selected={selected}
         sessionId={session.id}
         title={sessionTitle(session)}
+        unread={session.unread}
         onDelete={() => onDelete(session)}
         onMenuOpenChange={setMenuOpen}
         onOpen={() => void onOpen(session.id)}
         onPin={() => onPin(session)}
         onRename={() => onRename(session)}
+        onToggleUnread={() => onToggleUnread(session)}
       />
     </Host>
   );

@@ -91,6 +91,35 @@ export const WaveAssistantCompletedEventSchema = z
   })
   .strict();
 
+export const WAVE_PROMPT_MAX_CHOICES = 8;
+export const WAVE_PROMPT_MAX_QUESTIONS = 16;
+
+const WavePromptChoicesSchema = z
+  .array(z.string().trim().min(1).max(100))
+  .max(WAVE_PROMPT_MAX_CHOICES);
+
+/**
+ * One question of a batched (multi-question) clarify prompt. Hermes v0.20.5
+ * asks several independent questions in one `clarify.request` and keys each
+ * answer by the server-generated question id.
+ */
+export const WavePromptQuestionSchema = z
+  .object({
+    /** A previously accepted answer replayed on reconnect, if any. */
+    answer: z.string().max(2_000).optional(),
+    choices: WavePromptChoicesSchema,
+    /** Several choices may be selected at once; only meaningful with choices. */
+    multiSelect: z.boolean(),
+    question: z.string().trim().min(1).max(2_000),
+    /** Server-generated wire id; opaque to screens. */
+    questionId: z.string().trim().min(1).max(128),
+  })
+  .strict()
+  .refine((question) => !question.multiSelect || question.choices.length > 0, {
+    message: 'Multi-select questions require choices.',
+    path: ['multiSelect'],
+  });
+
 /**
  * A mid-turn prompt from the agent: it has paused the running turn and waits
  * for the user's decision (tool approval), an answer (clarify), or a
@@ -102,19 +131,30 @@ export const WavePromptRequestEventSchema = z
     /** Whether a free-text answer is accepted (clarify always accepts one). */
     allowsFreeText: z.boolean(),
     /** Selectable responses, in display order. May be empty for free text. */
-    choices: z.array(z.string().trim().min(1).max(100)).max(8),
+    choices: WavePromptChoicesSchema,
     /** The command awaiting approval, as a bounded inert detail. */
     command: WaveToolDetailSchema.optional(),
     /** Short human description (approval pattern, e.g. "delete in root path"). */
     description: z.string().trim().min(1).max(300).optional(),
     kind: z.enum(['approval', 'clarify', 'mcp-setup', 'secret', 'sudo']),
     messageId: WaveIdentifierSchema.optional(),
+    /** Several `choices` may be selected at once (single-question clarify). */
+    multiSelect: z.boolean().optional(),
     /** Bounded MCP catalog/config name needed only to decline setup safely. */
     server: z.string().trim().min(1).max(200).optional(),
     /** Correlates the response; opaque to screens. */
     promptId: z.string().trim().min(1).max(128),
-    /** The question being asked (clarify). */
+    /** The question being asked (single-question clarify). */
     question: z.string().trim().min(1).max(2_000).optional(),
+    /**
+     * Batched clarify: every question is answered together and each answer is
+     * keyed by its `questionId`. Replaces `question`/`choices` when present.
+     */
+    questions: z
+      .array(WavePromptQuestionSchema)
+      .min(1)
+      .max(WAVE_PROMPT_MAX_QUESTIONS)
+      .optional(),
     type: z.literal('prompt.request'),
   })
   .strict()
@@ -132,6 +172,44 @@ export const WavePromptRequestEventSchema = z
         message: 'Only MCP setup prompts may carry a server name.',
         path: ['server'],
       });
+    }
+    if (event.kind !== 'clarify' && event.questions !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Only clarify prompts may carry a question batch.',
+        path: ['questions'],
+      });
+    }
+    if (event.kind !== 'clarify' && event.multiSelect !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Only clarify prompts may be multi-select.',
+        path: ['multiSelect'],
+      });
+    }
+    if (event.multiSelect && event.choices.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Multi-select prompts require choices.',
+        path: ['multiSelect'],
+      });
+    }
+    if (event.questions !== undefined) {
+      if (event.question !== undefined || event.choices.length > 0) {
+        context.addIssue({
+          code: 'custom',
+          message: 'A question batch replaces the single question and choices.',
+          path: ['questions'],
+        });
+      }
+      const ids = new Set(event.questions.map((entry) => entry.questionId));
+      if (ids.size !== event.questions.length) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Question ids must be unique within a batch.',
+          path: ['questions'],
+        });
+      }
     }
   });
 
@@ -166,6 +244,7 @@ export const WaveActivityStatusEventSchema = z
       'goal-complete',
       'goal-continuing',
       'goal-paused',
+      'loop-running',
       'process-updated',
       'ready',
     ]),
@@ -206,3 +285,4 @@ export const WaveTurnEventSchema = z.discriminatedUnion('type', [
 ]);
 
 export type WaveTurnEvent = z.infer<typeof WaveTurnEventSchema>;
+export type WavePromptQuestion = z.infer<typeof WavePromptQuestionSchema>;

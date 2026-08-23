@@ -53,6 +53,12 @@ export const WaveSessionSummarySchema = z
     startedAt: WaveIsoDateTimeSchema.optional(),
     title: z.string().trim().min(1).max(300).optional(),
     toolCallCount: z.number().int().nonnegative().optional(),
+    /**
+     * Server-derived read state: activity postdates the conversation's read
+     * watermark, or it was explicitly marked unread. Absent upstream (older
+     * gateways, never-tracked rows) normalizes to read.
+     */
+    unread: z.boolean().default(false),
   })
   .strict();
 

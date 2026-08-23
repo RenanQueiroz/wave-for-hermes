@@ -140,7 +140,7 @@ test('/api/status keeps the fixture status shape', { skip }, async () => {
     for (const key of Object.keys(GATEWAY_V020_FIXTURE.status)) {
       assert.equal(typeof body[key], 'string', `status.${key} present`);
     }
-    assert.equal(body.version, '0.20.1');
+    assert.equal(body.version, '0.20.5');
   } finally {
     await harness.close();
   }

@@ -357,8 +357,10 @@ export function useGatewayVoice({
                   ? { description: event.description }
                   : {}),
                 kind: event.kind,
+                ...(event.multiSelect ? { multiSelect: true } : {}),
                 promptId: event.promptId,
                 ...(event.question ? { question: event.question } : {}),
+                ...(event.questions ? { questions: event.questions } : {}),
                 turnId: event.turnId,
               },
             }));

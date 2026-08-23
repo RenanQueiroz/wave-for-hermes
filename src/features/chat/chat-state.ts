@@ -1,4 +1,5 @@
 import type {
+  WavePromptQuestion,
   WaveTimelineEntry,
   WaveTimelineHandoffEntry,
   WaveTurnEvent,
@@ -52,8 +53,12 @@ export interface WaveChatPrompt {
   command?: WaveToolDetail;
   description?: string;
   kind: 'approval' | 'clarify' | 'mcp-setup' | 'secret' | 'sudo';
+  /** Several `choices` may be selected together (single-question clarify). */
+  multiSelect?: boolean;
   promptId: string;
   question?: string;
+  /** Batched clarify: answered together, each keyed by its question id. */
+  questions?: WavePromptQuestion[];
   server?: string;
   turnId: string;
 }
@@ -304,6 +309,8 @@ export function waveChatActivityLabel(state: WaveChatState) {
       return 'Goal continuing…';
     case 'goal-paused':
       return 'Goal paused';
+    case 'loop-running':
+      return 'Running a scheduled loop…';
     case 'process-updated':
       return 'Background work updated';
     case 'ready':
@@ -498,8 +505,10 @@ function applyEvent(
           ...(event.command ? { command: event.command } : {}),
           ...(event.description ? { description: event.description } : {}),
           kind: event.kind,
+          ...(event.multiSelect ? { multiSelect: true } : {}),
           promptId: event.promptId,
           ...(event.question ? { question: event.question } : {}),
+          ...(event.questions ? { questions: event.questions } : {}),
           ...(event.server ? { server: event.server } : {}),
           turnId: event.turnId,
         },

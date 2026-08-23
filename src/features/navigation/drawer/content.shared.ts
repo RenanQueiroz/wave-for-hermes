@@ -19,7 +19,10 @@ import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
-import { setWaveSessionPinnedInPages } from '@/features/sessions/session-page-cache';
+import {
+  setWaveSessionPinnedInPages,
+  setWaveSessionUnreadInPages,
+} from '@/features/sessions/session-page-cache';
 import {
   organizeWaveSessions,
   type WaveSessionFilter,
@@ -34,6 +37,7 @@ import type {
 export {
   DRAWER_COPY,
   drawerErrorMessage,
+  drawerReadStateAction,
   drawerRowAccessibilityLabel,
   drawerRowGlyph,
   emptySessionFilterMessage,
@@ -163,6 +167,42 @@ export function useWaveDrawerContent({
       mutatePin({ pinned: !session.pinned, sessionId: session.id }),
     [mutatePin],
   );
+  // Read state is the same ambiguous metadata PATCH as pinning: project it
+  // optimistically, send it once, roll back on failure, reconcile from the
+  // server either way.
+  const unreadMutation = useMutation({
+    mutationFn: ({
+      sessionId,
+      unread,
+    }: {
+      sessionId: string;
+      unread: boolean;
+    }) => client.setSessionUnread(sessionId, unread),
+    onMutate: async ({ sessionId, unread }) => {
+      await queryClient.cancelQueries({ queryKey: sessionsKey });
+      const previous =
+        queryClient.getQueryData<InfiniteData<WaveSessionPage>>(sessionsKey);
+      queryClient.setQueryData<InfiniteData<WaveSessionPage>>(
+        sessionsKey,
+        (current) => setWaveSessionUnreadInPages(current, sessionId, unread),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(sessionsKey, context.previous);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionsKey });
+    },
+  });
+  const mutateUnread = unreadMutation.mutate;
+  const toggleSessionUnread = useCallback(
+    (session: WaveSessionSummary) =>
+      mutateUnread({ sessionId: session.id, unread: !session.unread }),
+    [mutateUnread],
+  );
   const navigate = useCallback(
     (target: '/new' | '/search' | '/settings') => {
       closeDrawer();
@@ -203,7 +243,10 @@ export function useWaveDrawerContent({
   }, [sessionListItems.length, sessionsQuery]);
 
   const mutationError =
-    renameMutation.error ?? deleteMutation.error ?? pinMutation.error;
+    renameMutation.error ??
+    deleteMutation.error ??
+    pinMutation.error ??
+    unreadMutation.error;
   const errorMessage =
     localError ??
     (mutationError ? drawerErrorMessage(mutationError) : undefined);
@@ -256,5 +299,6 @@ export function useWaveDrawerContent({
     startDelete: setDeleteSession,
     startRename: setRenameSession,
     toggleSessionPin,
+    toggleSessionUnread,
   };
 }

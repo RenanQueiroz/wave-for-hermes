@@ -22,7 +22,10 @@ import {
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { isPendingSessionId } from '../../src/services/wave/wave-chat-client.ts';
-import { GatewayTurnTranslator } from '../../src/services/gateway/gateway-turn-events.ts';
+import {
+  GatewayTurnTranslator,
+  isLocalPromptId,
+} from '../../src/services/gateway/gateway-turn-events.ts';
 import { WaveBackendError } from '../../src/services/wave/wave-backend-error.ts';
 import {
   isCompleteTokenSet,
@@ -146,6 +149,7 @@ test('normalizes open-ended sources without leaking raw identifiers', () => {
       liveStatus: 'idle',
       pinned: false,
       source: 'chat',
+      unread: false,
     },
   ]);
 });
@@ -923,9 +927,9 @@ test('uses the v0.20.1 newest-relative message contract when proven', async () =
   assert.equal(third.hasMore, false);
   assert.equal(third.nextCursor, undefined);
   assert.deepEqual(requests, [
-    '/api/sessions/s1/messages?limit=4&offset=0&order=latest',
-    '/api/sessions/s1/messages?limit=4&offset=3&order=latest',
-    '/api/sessions/s1/messages?limit=4&offset=6&order=latest',
+    '/api/sessions/s1/messages?limit=4&offset=0&order=latest&include_compacted=true',
+    '/api/sessions/s1/messages?limit=4&offset=3&order=latest&include_compacted=true',
+    '/api/sessions/s1/messages?limit=4&offset=6&order=latest&include_compacted=true',
   ]);
 });
 
@@ -1045,7 +1049,7 @@ test('the first page stays bounded when the count probe fails', async () => {
     (entry) => entry.includes('/messages') && !entry.includes('order=latest'),
   )) {
     assert.ok(
-      /limit=1&/.test(request) || /offset=1100$/.test(request),
+      /limit=1&/.test(request) || /offset=1100(&|$)/.test(request),
       `unbounded request: ${request}`,
     );
   }
@@ -1064,9 +1068,9 @@ test('a short history with a failed count probe takes one bounded fetch', async 
   assert.deepEqual(
     requests.filter((request) => request.includes('/messages')),
     [
-      '/api/sessions/s1/messages?limit=4&offset=0&order=latest',
-      '/api/sessions/s1/messages?limit=1&offset=499',
-      '/api/sessions/s1/messages?limit=500&offset=0',
+      '/api/sessions/s1/messages?limit=4&offset=0&order=latest&include_compacted=true',
+      '/api/sessions/s1/messages?limit=1&offset=499&include_compacted=true',
+      '/api/sessions/s1/messages?limit=500&offset=0&include_compacted=true',
     ],
   );
 });
@@ -1997,4 +2001,617 @@ test('stored rows normalize plain-text reasoning with desktop precedence', () =>
   assert.ok(first?.type === 'message');
   assert.equal(first.message.reasoning?.truncated, true);
   assert.equal(first.message.reasoning?.text.length, 64_000);
+});
+
+test('v0.20.5 prompts: batch clarify, multi-select, approval ids, replay, and noise', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-v0205',
+    sessionId: 'stored-v0205',
+    turnId: 'turn-v0205',
+  });
+  translator.start();
+
+  // approval.request now carries the gateway's request_id, which becomes the
+  // prompt id so approval.respond can target exactly that request.
+  const approval = translator.translate({
+    payload: {
+      allow_permanent: true,
+      command: 'rm -rf build',
+      request_id: '1f3a9c0e5b7d4a2c8e6f0b1d2c3a4e5f',
+    },
+    type: 'approval.request',
+  });
+  assert.equal(approval[0].type, 'prompt.request');
+  assert.equal(approval[0].promptId, '1f3a9c0e5b7d4a2c8e6f0b1d2c3a4e5f');
+  assert.equal(isLocalPromptId(approval[0].promptId), false);
+  // Without one, the id stays Wave-minted and recognizably local.
+  const legacy = new GatewayTurnTranslator({
+    messageId: 'assistant-legacy',
+    sessionId: 'stored-legacy',
+    turnId: 'turn-legacy',
+  });
+  legacy.start();
+  const legacyApproval = legacy.translate({
+    payload: { command: 'ls' },
+    type: 'approval.request',
+  });
+  assert.equal(isLocalPromptId(legacyApproval[0].promptId), true);
+
+  // The batch form: qid-keyed questions, per-question choices and
+  // multi_select (honored only with choices), duplicates and unusable
+  // entries dropped, and replayed `answers` attached by id.
+  const batch = translator.translate({
+    payload: {
+      answers: { q1: 'already said yes', q9: 'unknown id ignored' },
+      questions: [
+        {
+          choices: ['alpha', 'beta', ''],
+          multi_select: true,
+          qid: 'q0',
+          question: 'Which flavors?',
+        },
+        { choices: [], multi_select: true, qid: 'q1', question: 'Proceed?' },
+        { qid: 'q0', question: 'duplicate id' },
+        { qid: '', question: 'no id' },
+        { qid: 'q2', question: '' },
+        'not an object',
+      ],
+      request_id: 'req-batch',
+    },
+    type: 'clarify.request',
+  });
+  assert.deepEqual(
+    batch.map((event) => event.type),
+    ['prompt.resolved', 'prompt.request'],
+  );
+  const prompt = batch[1];
+  assert.equal(prompt.type, 'prompt.request');
+  assert.equal(prompt.kind, 'clarify');
+  assert.equal(prompt.promptId, 'req-batch');
+  assert.equal(prompt.question, undefined);
+  assert.deepEqual(prompt.choices, []);
+  assert.deepEqual(prompt.questions, [
+    {
+      choices: ['alpha', 'beta'],
+      multiSelect: true,
+      question: 'Which flavors?',
+      questionId: 'q0',
+    },
+    {
+      answer: 'already said yes',
+      choices: [],
+      multiSelect: false,
+      question: 'Proceed?',
+      questionId: 'q1',
+    },
+  ]);
+
+  // A single question keeps the v0.20.1 shape plus the multi_select hint.
+  const multi = translator.translate({
+    payload: {
+      choices: ['alpha', 'beta'],
+      multi_select: true,
+      question: 'Which?',
+      request_id: 'req-multi',
+    },
+    type: 'clarify.request',
+  });
+  assert.equal(multi[1].type, 'prompt.request');
+  assert.equal(multi[1].multiSelect, true);
+  assert.equal(multi[1].questions, undefined);
+  // A bare multi_select flag without choices stays single-select.
+  const bare = translator.translate({
+    payload: { multi_select: true, question: 'Free?', request_id: 'req-bare' },
+    type: 'clarify.request',
+  });
+  assert.equal(bare[1].multiSelect, undefined);
+  // A batch with no usable question degrades to an answerable (skippable)
+  // single prompt rather than parking the turn for its full timeout.
+  const degraded = translator.translate({
+    payload: { questions: [{ qid: 'x' }], request_id: 'req-empty' },
+    type: 'clarify.request',
+  });
+  assert.equal(degraded[1].type, 'prompt.request');
+  assert.equal(degraded[1].questions, undefined);
+  assert.equal(degraded[1].question, undefined);
+
+  // Mid-turn usage ticks and loop narration: the former has no transcript
+  // projection, the latter is a reviewed activity label.
+  assert.deepEqual(
+    translator.translate({
+      payload: { usage: { calls: 3, input: 10, output: 4, total: 14 } },
+      type: 'session.usage',
+    }),
+    [],
+  );
+  assert.deepEqual(
+    translator.translate({
+      payload: { phase: 'history', status: 'loading' },
+      type: 'session.resume_progress',
+    }),
+    [],
+  );
+  const loop = translator.translate({
+    payload: { kind: 'loop', text: '↻ /loop wakeup #2 firing…' },
+    type: 'status.update',
+  });
+  assert.equal(loop[0].type, 'activity.status');
+  assert.equal(loop[0].status, 'loop-running');
+
+  // A resume payload replays the prompt the turn is still blocked on.
+  const replay = new GatewayTurnTranslator({
+    messageId: 'assistant-replay',
+    sessionId: 'stored-replay',
+    turnId: 'turn-replay',
+  });
+  replay.start();
+  const replayed = replay.replayPendingPrompts({
+    pending_clarify: {
+      answers: { q0: 'alpha' },
+      questions: [
+        { choices: ['alpha', 'beta'], qid: 'q0', question: 'Which?' },
+        { choices: [], qid: 'q1', question: 'Why?' },
+      ],
+      request_id: 'req-replayed',
+    },
+    running: true,
+  });
+  assert.equal(replayed.length, 1);
+  assert.equal(replayed[0].type, 'prompt.request');
+  assert.equal(replayed[0].promptId, 'req-replayed');
+  assert.equal(replayed[0].questions?.[0]?.answer, 'alpha');
+  assert.equal(replayed[0].questions?.[1]?.answer, undefined);
+  // Answering it proves the wait ended exactly like a live prompt.
+  assert.deepEqual(
+    replay
+      .translate({ payload: { text: 'ok' }, type: 'message.delta' })
+      .map((event) => event.type),
+    ['prompt.resolved', 'assistant.started', 'assistant.delta'],
+  );
+  assert.deepEqual(
+    replay.replayPendingPrompts({
+      pending_approval: { command: 'rm x', request_id: 'req-a' },
+    })[0].kind,
+    'approval',
+  );
+  assert.deepEqual(replay.replayPendingPrompts({ running: true }), []);
+  assert.deepEqual(
+    replay.replayPendingPrompts({ pending_clarify: { question: 'no id' } }),
+    [],
+  );
+});
+
+test('prompt responses carry gateway approval ids and lock batch answers in order', async () => {
+  const { client } = makeTurnFixtureClient({});
+  const recorded: { method: string; params: Record<string, unknown> }[] = [];
+  (
+    client as unknown as {
+      activeTurns: Map<string, { liveSessionId: string; rpc: unknown }>;
+    }
+  ).activeTurns.set('stored-1', {
+    liveSessionId: 'live-1',
+    rpc: {
+      call: (method: string, params: Record<string, unknown>) => {
+        recorded.push({ method, params });
+        return Promise.resolve({});
+      },
+    },
+  });
+  await client.respondToPrompt('stored-1', {
+    choice: 'once',
+    kind: 'approval',
+    promptId: '1f3a9c0e5b7d4a2c8e6f0b1d2c3a4e5f',
+  });
+  await client.respondToPrompt('stored-1', {
+    choice: 'deny',
+    kind: 'approval',
+    promptId: 'wave-approval-turn-1-3',
+  });
+  await client.respondToPrompt('stored-1', {
+    answers: [
+      { answer: '["alpha","beta"]', questionId: 'q0' },
+      { answer: '', questionId: 'q1' },
+    ],
+    kind: 'clarify-batch',
+    promptId: 'req-batch',
+  });
+  // An empty single answer is the gateway's skip.
+  await client.respondToPrompt('stored-1', {
+    answer: '',
+    kind: 'clarify',
+    promptId: 'req-skip',
+  });
+  assert.deepEqual(recorded, [
+    {
+      method: 'approval.respond',
+      params: {
+        choice: 'once',
+        request_id: '1f3a9c0e5b7d4a2c8e6f0b1d2c3a4e5f',
+        session_id: 'live-1',
+      },
+    },
+    {
+      method: 'approval.respond',
+      params: { choice: 'deny', session_id: 'live-1' },
+    },
+    {
+      method: 'clarify.respond',
+      params: {
+        answer: '["alpha","beta"]',
+        question_id: 'q0',
+        request_id: 'req-batch',
+        session_id: 'live-1',
+      },
+    },
+    {
+      method: 'clarify.respond',
+      params: {
+        answer: '',
+        question_id: 'q1',
+        request_id: 'req-batch',
+        session_id: 'live-1',
+      },
+    },
+    {
+      method: 'clarify.respond',
+      params: { answer: '', request_id: 'req-skip', session_id: 'live-1' },
+    },
+  ]);
+});
+
+function makeResumeFixtureClient(resumeResult: Record<string, unknown>) {
+  const calls: { method: string; params: Record<string, unknown> }[] = [];
+  let closed = 0;
+  class FakeResumeSocket {
+    onopen?: () => void;
+    onmessage?: (message: { data: string }) => void;
+    onerror?: () => void;
+    onclose?: () => void;
+    constructor() {
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(data: string): void {
+      const frame = JSON.parse(data) as {
+        id: number;
+        method: string;
+        params: Record<string, unknown>;
+      };
+      calls.push({ method: frame.method, params: frame.params });
+      const reply = (body: Record<string, unknown>) => {
+        setTimeout(() => {
+          this.onmessage?.({
+            data: JSON.stringify({ id: frame.id, jsonrpc: '2.0', ...body }),
+          });
+        }, 0);
+      };
+      const emit = (type: string, payload: Record<string, unknown>) => {
+        setTimeout(() => {
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'event',
+              params: { payload, type },
+            }),
+          });
+        }, 0);
+      };
+      if (frame.method === 'session.resume') {
+        reply({ result: resumeResult });
+        if (resumeResult.running === true) {
+          // The rest of the turn streams on this rebound socket.
+          emit('message.delta', { text: ' and done.' });
+          emit('message.complete', { text: 'Partial reply and done.' });
+        }
+        return;
+      }
+      reply({ result: {} });
+    }
+    close(): void {
+      closed += 1;
+    }
+  }
+  const fetchImpl = (async (url: string | URL) => {
+    if (String(url).endsWith('/api/auth/ws-ticket')) {
+      return jsonResponse({ ticket: 't-resume' });
+    }
+    throw new Error(`unexpected request: ${String(url)}`);
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => new FakeResumeSocket() as unknown as WebSocket,
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+  return { calls, client, closedCount: () => closed };
+}
+
+test('reattaching streams the rest of a running turn and replays its pending prompt', async () => {
+  const { calls, client, closedCount } = makeResumeFixtureClient({
+    inflight: { assistant: 'Partial reply', streaming: true, user: 'go' },
+    pending_clarify: {
+      choices: ['alpha', 'beta'],
+      question: 'Which?',
+      request_id: 'req-pending',
+    },
+    running: true,
+    session_id: 'live-9',
+  });
+  const events: WaveTurnEventSummary[] = [];
+  let promptChannelWhileWaiting: string[] = [];
+  for await (const event of client.resumeTurnStream(
+    'stored-9',
+    'gw-turn-1',
+    -1,
+  )) {
+    events.push({
+      ...(event.type === 'assistant.delta' ? { delta: event.delta } : {}),
+      ...(event.type === 'prompt.request' || event.type === 'prompt.resolved'
+        ? { promptId: event.promptId }
+        : {}),
+      ...(event.type === 'assistant.completed'
+        ? { content: event.content }
+        : {}),
+      type: event.type,
+    });
+    if (event.type === 'prompt.request') {
+      // The prompt channel is open while the replayed prompt is showing, so
+      // the answer rides the resume socket — exactly like a live prompt.
+      promptChannelWhileWaiting = [
+        ...(
+          client as unknown as { activeTurns: Map<string, unknown> }
+        ).activeTurns.keys(),
+      ];
+    }
+  }
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ['session.resume'],
+  );
+  assert.deepEqual(calls[0].params, {
+    session_id: 'stored-9',
+    source: 'wave',
+  });
+  assert.deepEqual(events, [
+    { type: 'turn.started' },
+    { type: 'assistant.started' },
+    // The snapshot streamed before the disconnect, then the live tail.
+    { delta: 'Partial reply', type: 'assistant.delta' },
+    { promptId: 'req-pending', type: 'prompt.request' },
+    { promptId: 'req-pending', type: 'prompt.resolved' },
+    { delta: ' and done.', type: 'assistant.delta' },
+    { content: 'Partial reply and done.', type: 'assistant.completed' },
+    { type: 'turn.completed' },
+  ]);
+  assert.deepEqual(promptChannelWhileWaiting, ['stored-9']);
+  // The channel closes with the turn.
+  assert.equal(
+    (client as unknown as { activeTurns: Map<string, unknown> }).activeTurns
+      .size,
+    0,
+  );
+  assert.equal(closedCount(), 1);
+
+  // An idle session yields nothing and never re-sends the prompt.
+  const idle = makeResumeFixtureClient({
+    running: false,
+    session_id: 'live-9',
+  });
+  const idleEvents: string[] = [];
+  for await (const event of idle.client.resumeTurnStream(
+    'stored-9',
+    'gw-turn-1',
+    -1,
+  )) {
+    idleEvents.push(event.type);
+  }
+  assert.deepEqual(idleEvents, []);
+  assert.deepEqual(
+    idle.calls.map((call) => call.method),
+    ['session.resume'],
+  );
+});
+
+interface WaveTurnEventSummary {
+  content?: string;
+  delta?: string;
+  promptId?: string;
+  type: string;
+}
+
+test('v0.20.5 regenerate refusals map to honest, non-retryable input errors', async () => {
+  const compressedAway = makeTurnFixtureClient({
+    submitResult: {
+      code: 4018,
+      data: {
+        ordinal: 3,
+        prefix_user_count: 5,
+        segment_ordinal: -2,
+        user_turn_count: 4,
+      },
+      message: 'target user message is no longer in session history',
+    } as { code: number; message: string },
+  });
+  (
+    compressedAway.client as unknown as {
+      latestMessageOrderSupport: 'supported';
+    }
+  ).latestMessageOrderSupport = 'supported';
+  await assert.rejects(
+    (async () => {
+      for await (const _event of compressedAway.client.streamTurn(
+        'stored-1',
+        'Replay',
+        undefined,
+        { truncateBeforeRowId: 7, truncateBeforeUserOrdinal: 3 },
+      )) {
+        // Drain until the refusal surfaces.
+      }
+    })(),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'bad_request');
+      assert.equal(error.retryable, false);
+      assert.match(error.message, /summarized out of this conversation/);
+      return true;
+    },
+  );
+
+  // A plain stale target keeps the gateway's own reason.
+  const stale = makeTurnFixtureClient({
+    submitResult: {
+      code: 4018,
+      data: {
+        ordinal: 3,
+        prefix_user_count: 0,
+        segment_ordinal: 3,
+        user_turn_count: 2,
+      },
+      message: 'target user message is no longer in session history',
+    } as { code: number; message: string },
+  });
+  await assert.rejects(
+    (async () => {
+      for await (const _event of stale.client.streamTurn(
+        'stored-1',
+        'Replay',
+        undefined,
+        {
+          truncateBeforeUserOrdinal: 3,
+        },
+      )) {
+        // Drain.
+      }
+    })(),
+    /no longer in session history/,
+  );
+
+  // The ordinal-only refusal for durable history (4004) is an input error
+  // with Wave-owned copy, never a retryable transport failure.
+  const ordinalOnly = makeTurnFixtureClient({
+    submitResult: {
+      code: 4004,
+      message:
+        'ordinal-only truncation is unsafe for durable session history; include truncate_before_row_id',
+    },
+  });
+  await assert.rejects(
+    (async () => {
+      for await (const _event of ordinalOnly.client.streamTurn(
+        'stored-1',
+        'Replay',
+        undefined,
+        {
+          truncateBeforeUserOrdinal: 1,
+        },
+      )) {
+        // Drain.
+      }
+    })(),
+    (error: unknown) => {
+      assert.ok(error instanceof WaveBackendError);
+      assert.equal(error.kind, 'bad_request');
+      assert.match(error.message, /Refresh the conversation/);
+      return true;
+    },
+  );
+
+  // Structured error data is preserved on the RPC error itself.
+  const rpcError = new GatewayRpcError('x', 4018, { segment_ordinal: -1 });
+  assert.deepEqual(rpcError.data, { segment_ordinal: -1 });
+});
+
+test('marks a conversation read or unread with one non-retrying PATCH', async () => {
+  const requests: { body?: string; method: string; path: string }[] = [];
+  const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+    requests.push({
+      body: typeof init?.body === 'string' ? init.body : undefined,
+      method: init?.method ?? 'GET',
+      path: new URL(String(url)).pathname,
+    });
+    return jsonResponse({ ok: true, title: '', unread: false });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new GatewayClient({
+    baseUrl: 'http://localhost:9119',
+    fetch: fetchImpl,
+    socketFactory: () => {
+      throw new Error('no socket needed');
+    },
+    tokens: { accessToken: 'a', provider: 'basic', refreshToken: 'r' },
+  });
+  const result = await client.setSessionUnread('session-1', false);
+  assert.deepEqual(result.session, { id: 'session-1', unread: false });
+  await client.setSessionUnread('session-1', true);
+  assert.deepEqual(requests, [
+    {
+      body: '{"unread":false}',
+      method: 'PATCH',
+      path: '/api/sessions/session-1',
+    },
+    {
+      body: '{"unread":true}',
+      method: 'PATCH',
+      path: '/api/sessions/session-1',
+    },
+  ]);
+  await assert.rejects(
+    client.setSessionUnread('wave-pending-1', false),
+    /Send a message before marking/,
+  );
+  assert.equal(requests.length, 2);
+});
+
+test('session rows carry the server read state and hidden rows never render', () => {
+  const rows = normalizeSessionRows({
+    sessions: [
+      { id: 'read', unread: false },
+      { id: 'unread', unread: true },
+      { id: 'legacy' },
+      { id: 'truthy-string', unread: 'yes' },
+    ],
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.id, row.unread]),
+    [
+      ['read', false],
+      ['unread', true],
+      ['legacy', false],
+      ['truthy-string', false],
+    ],
+  );
+  // display_kind: 'hidden' user rows are off-screen scaffolding the gateway
+  // persists for widget intents; no client renders them as a bubble.
+  assert.equal(
+    normalizeMessageRow({
+      content: 'Summarize the selected widget',
+      display_kind: 'hidden',
+      id: 4,
+      role: 'user',
+    }),
+    undefined,
+  );
+  assert.equal(
+    normalizeMessageRow({
+      content: 'visible',
+      display_kind: 'model_switch',
+      id: 5,
+      role: 'user',
+    })?.ordinalExempt,
+    true,
+  );
+  const entries = normalizeTimelineEntries(
+    {
+      messages: [
+        { content: 'shown', id: 1, role: 'user' },
+        { content: 'hidden send', display_kind: 'hidden', id: 2, role: 'user' },
+        { content: 'reply', id: 3, role: 'assistant' },
+      ],
+    },
+    0,
+  );
+  assert.deepEqual(
+    entries.map((entry) =>
+      entry.type === 'message' ? entry.message.content : '',
+    ),
+    ['shown', 'reply'],
+  );
 });

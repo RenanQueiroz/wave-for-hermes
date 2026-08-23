@@ -168,9 +168,17 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   policy).
 - Finite retryable reads retry at most twice with bounded exponential jitter; mutations and
   active streams never retry automatically after an ambiguous failure.
-- Pin/unpin is one fixed typed PATCH with a boolean body. The UI may project the choice
-  optimistically, but rolls it back on failure and reconciles from Hermes; it never retries an
-  ambiguous PATCH or treats the optimistic row as server confirmation.
+- Pin/unpin and read/unread are each one fixed typed PATCH with a boolean body. The UI may
+  project the choice optimistically, but rolls it back on failure and reconciles from Hermes; it
+  never retries an ambiguous PATCH or treats the optimistic row as server confirmation. The
+  automatic mark-read on opening a conversation fires at most once per newer activity the
+  cached list reports.
+- Mid-turn prompt payloads are untrusted gateway input: a batched clarify is bounded to 16
+  questions with bounded ids, text, and at most eight bounded choices each, duplicate ids are
+  dropped, and replayed answers are bounded strings attached only by known id. Answers leave the
+  phone only as the typed `clarify.respond`/`approval.respond` calls on the socket bound to the
+  turn's live session; a gateway approval `request_id` is echoed back verbatim and never
+  interpreted, and a Wave-minted local id is never sent to the gateway.
 
 ### Sensitive-data disclosure
 

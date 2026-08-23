@@ -71,6 +71,15 @@ function glyphImage(glyph: DrawerRowGlyph, colors: DrawerColors) {
       />
     );
   }
+  if (glyph.kind === 'unread') {
+    return (
+      <Image
+        color={colors.primary}
+        size={12}
+        systemName={DRAWER_ICONS.unread}
+      />
+    );
+  }
   return null;
 }
 
@@ -154,15 +163,21 @@ function SessionActionItems({
   onDelete,
   onPin,
   onRename,
+  onToggleUnread,
   pinned,
+  readStateLabel,
   sessionId,
+  unread,
   variant,
 }: {
   onDelete(): void;
   onPin(): void;
   onRename(): void;
+  onToggleUnread(): void;
   pinned: boolean;
+  readStateLabel: string;
   sessionId: string;
+  unread: boolean;
   variant: 'context' | 'menu';
 }) {
   // The same actions back the ellipsis menu and the long-press context menu;
@@ -192,6 +207,16 @@ function SessionActionItems({
         ]}
         onPress={onPin}
       />
+      <Button
+        label={readStateLabel}
+        systemImage={unread ? DRAWER_ICONS.markRead : DRAWER_ICONS.markUnread}
+        modifiers={[
+          accessibilityIdentifier(
+            `drawer-session-read-state-${sessionId}${idSuffix}`,
+          ),
+        ]}
+        onPress={onToggleUnread}
+      />
       {/* Action sheets have no separators; the divider is context-menu only. */}
       {variant === 'context' ? <Divider /> : null}
       <Button
@@ -218,11 +243,14 @@ export function DrawerSessionRow({
   onOpen,
   onPin,
   onRename,
+  onToggleUnread,
   pinned,
+  readStateLabel,
   rowAccessibilityLabel,
   selected,
   sessionId,
   title,
+  unread,
 }: {
   colors: DrawerColors;
   glyph: DrawerRowGlyph;
@@ -232,11 +260,14 @@ export function DrawerSessionRow({
   onOpen(): void;
   onPin(): void;
   onRename(): void;
+  onToggleUnread(): void;
   pinned: boolean;
+  readStateLabel: string;
   rowAccessibilityLabel: string;
   selected: boolean;
   sessionId: string;
   title: string;
+  unread: boolean;
 }) {
   // Close the sheet before dispatching, mirroring Android's DropdownMenu.
   const closeThen = (action: () => void) => () => {
@@ -247,8 +278,11 @@ export function DrawerSessionRow({
     onDelete: closeThen(onDelete),
     onPin: closeThen(onPin),
     onRename: closeThen(onRename),
+    onToggleUnread: closeThen(onToggleUnread),
     pinned,
+    readStateLabel,
     sessionId,
+    unread,
   };
   return (
     <ContextMenu>

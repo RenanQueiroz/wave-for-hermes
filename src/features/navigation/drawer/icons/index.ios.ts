@@ -16,4 +16,7 @@ export const DRAWER_ICONS = {
   sourceExternal: 'arrow.up.right',
   sourceOther: 'ellipsis.circle',
   unpin: 'bookmark.slash',
+  markRead: 'envelope.open',
+  markUnread: 'envelope.badge',
+  unread: 'bubble.left.fill',
 } as const satisfies Record<string, SFSymbol>;

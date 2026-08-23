@@ -73,7 +73,9 @@ The mobile implementation lives under `src/features/connection`, `src/features/s
   on a longer timeout than a REST read, because both are model work rather than lookups, and
   full-text search, which covers message content only (the gateway does not index titles).
   A turn that is streaming keeps its RPC channel registered so mid-turn agent prompts can be
-  answered on the socket bound to its live session, and a delete is refused while that channel
+  answered on the socket bound to its live session — a reattached turn registers its resume
+  socket the same way and replays the prompt the gateway still reports as blocking it — and a
+  delete is refused while that channel
   or the gateway's own `session.active_list` reports `starting`, `working`, or `waiting` (with a
   defensive legacy running alias) — the gateway accepts a mid-turn delete and lets the
   conversation reappear, so Wave enforces the contract itself. The public gateway version is a

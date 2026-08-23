@@ -11,7 +11,10 @@ security, and WebRTC documents; this roadmap tracks only work that remains.
 
 [Hermes Agent v0.20.1](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.13) also adds
 clause-streamed speech and conversation capabilities Wave can adopt without becoming a Hermes
-administration console.
+administration console; Wave now tracks the
+[v0.20.5](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.19) gateway contract
+(batched clarify, pending-prompt replay on reattach, conversation read state, compacted history
+reads), with its live device pass still owed.
 
 ### Validate streamed gateway speech on device
 

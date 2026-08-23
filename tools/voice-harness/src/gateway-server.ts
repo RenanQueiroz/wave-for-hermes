@@ -1,9 +1,10 @@
 /**
  * The fake Hermes gateway: HTTP + WebSocket on one listener, protocol pinned
- * to the Hermes Agent `v2026.8.13` / `0.20.1` baseline as consumed by Wave's
+ * to the Hermes Agent `v2026.8.19` / `0.20.5` baseline as consumed by Wave's
  * `src/services/gateway` (cookie auth with rotation on every response,
  * single-use WS tickets, JSON-RPC turns on `/api/ws`, clause-streamed speech
- * on `/api/audio/speak-stream`).
+ * on `/api/audio/speak-stream`, read-state PATCHes, batch clarify locks, and
+ * pending-prompt replay on `session.resume`).
  *
  * It plays scripts, journals what it observed, and never performs inference,
  * networking, or audio capture. Test double only.
@@ -226,7 +227,7 @@ export async function startGatewayServer(
       return;
     }
     if (method === 'GET' && path === '/api/status') {
-      reply(200, { release_date: 'harness', version: '0.20.1' }, false);
+      reply(200, { release_date: 'harness', version: '0.20.5' }, false);
       return;
     }
     if (method === 'POST' && path === '/auth/password-login') {
@@ -361,6 +362,14 @@ export async function startGatewayServer(
           reply(400, { error: 'invalid pagination order' }, true);
           return;
         }
+        // include_compacted (v0.20.5) widens the read to rows preserved by
+        // in-place compaction; the harness never compacts, so it is accepted
+        // and journaled but changes nothing.
+        journal.record('session.messages', {
+          includeCompacted:
+            url.searchParams.get('include_compacted') === 'true',
+          sessionId: session.storedId,
+        });
         const latest =
           order === 'latest' ||
           (order === null && !url.searchParams.has('limit'));
@@ -397,8 +406,29 @@ export async function startGatewayServer(
         const body = await readJsonBody(request);
         if (typeof body?.title === 'string') session.title = body.title;
         if (typeof body?.pinned === 'boolean') session.pinned = body.pinned;
-        journal.record('session.patch', { sessionId: session.storedId });
-        reply(200, { ok: true }, true);
+        // v0.20.5 read watermark: `unread: false` reads up to now, `true`
+        // marks it explicitly unread (any later activity keeps it unread).
+        if (typeof body?.unread === 'boolean') {
+          session.lastReadAt = body.unread ? 0 : Date.now() / 1_000;
+        }
+        journal.record('session.patch', {
+          sessionId: session.storedId,
+          ...(typeof body?.unread === 'boolean' ? { unread: body.unread } : {}),
+        });
+        reply(
+          200,
+          {
+            ok: true,
+            title: session.title,
+            ...(typeof body?.pinned === 'boolean'
+              ? { pinned: body.pinned }
+              : {}),
+            ...(typeof body?.unread === 'boolean'
+              ? { unread: body.unread }
+              : {}),
+          },
+          true,
+        );
         return;
       }
       if (!sessionMatch[2] && method === 'DELETE') {
@@ -424,6 +454,11 @@ export async function startGatewayServer(
       source: session.source,
       status: activeTurns.has(session.storedId) ? 'working' : 'idle',
       title: session.title,
+      // Derived exactly like SessionDB.session_unread: a never-tracked
+      // watermark is read; otherwise activity past the watermark is unread.
+      unread:
+        session.lastReadAt !== undefined &&
+        (last?.timestamp ?? 0) > session.lastReadAt,
       ...(lastUser ? { preview: lastUser.content } : {}),
       ...(last ? { last_active: last.timestamp } : {}),
     };
@@ -440,10 +475,41 @@ export async function startGatewayServer(
 
   // ---- /api/ws JSON-RPC ---------------------------------------------------
 
+  /** Batch clarify locks by request id, mirroring the gateway's registry. */
+  const clarifyBatches = new Map<
+    string,
+    { answers: Map<string, string>; questionIds: string[] }
+  >();
+
+  function registerClarifyBatch(payload: Record<string, unknown>): void {
+    const requestId =
+      typeof payload.request_id === 'string' ? payload.request_id : '';
+    if (!requestId || !Array.isArray(payload.questions)) return;
+    const questionIds = payload.questions.flatMap((question) => {
+      const qid =
+        typeof question === 'object' && question !== null
+          ? (question as { qid?: unknown }).qid
+          : undefined;
+      return typeof qid === 'string' && qid ? [qid] : [];
+    });
+    if (questionIds.length === 0) return;
+    clarifyBatches.set(requestId, { answers: new Map(), questionIds });
+  }
+
+  function settlePendingPrompt(
+    sessionId: string,
+    kind: 'approval' | 'clarify',
+  ): void {
+    const session = state.resolveSession(sessionId);
+    const turn = session ? activeTurns.get(session.storedId) : undefined;
+    if (turn?.pendingPrompt?.kind === kind) turn.pendingPrompt = undefined;
+  }
+
   function handleRpcSocket(ws: WebSocket): void {
     const sink: FrameSink = {
       isOpen: () => ws.readyState === WebSocket.OPEN,
       sendEvent: (type, sessionId, payload) => {
+        if (type === 'clarify.request') registerClarifyBatch(payload);
         ws.send(
           JSON.stringify({
             jsonrpc: '2.0',
@@ -516,7 +582,33 @@ export async function startGatewayServer(
       if (typeof params.source === 'string' && params.source) {
         session.source = params.source;
       }
-      respond({ resumed: true, session_id: session.liveId });
+      // Like the real gateway, resuming rebinds the live session to THIS
+      // socket: the rest of a running turn streams here, and a prompt it is
+      // blocked on is replayed in the payload (v0.20.5 pending_approval /
+      // pending_clarify) so a reconnecting client can still answer it.
+      const turn = activeTurns.get(session.storedId);
+      if (turn) turn.rebind(sink);
+      const pending = turn?.pendingPrompt;
+      respond({
+        resumed: true,
+        running: Boolean(turn),
+        session_id: session.liveId,
+        ...(turn
+          ? {
+              inflight: {
+                assistant: turn.streamedText,
+                streaming: true,
+                user: turn.text,
+              },
+            }
+          : {}),
+        ...(pending?.kind === 'approval'
+          ? { pending_approval: pending.payload }
+          : {}),
+        ...(pending?.kind === 'clarify'
+          ? { pending_clarify: pending.payload }
+          : {}),
+      });
       return;
     }
 
@@ -622,13 +714,56 @@ export async function startGatewayServer(
       return;
     }
 
-    if (
-      method === 'approval.respond' ||
-      method === 'clarify.respond' ||
-      method === 'secret.respond' ||
-      method === 'sudo.respond'
-    ) {
-      respond({ ok: true });
+    if (method === 'approval.respond') {
+      // v0.20.5 resolves a specific request by `request_id`; without one the
+      // gateway resolves the session's oldest pending approval.
+      journal.record('approval.respond', {
+        choice: typeof params.choice === 'string' ? params.choice : '',
+        requestId:
+          typeof params.request_id === 'string' ? params.request_id : '',
+      });
+      settlePendingPrompt(sessionParam, 'approval');
+      respond({ resolved: 1 });
+      return;
+    }
+
+    if (method === 'clarify.respond') {
+      const requestId =
+        typeof params.request_id === 'string' ? params.request_id : '';
+      const questionId =
+        typeof params.question_id === 'string' ? params.question_id : '';
+      const answer = typeof params.answer === 'string' ? params.answer : '';
+      journal.record('clarify.respond', { answer, questionId, requestId });
+      if (questionId) {
+        // Batch lock: the request resolves once every question id is locked.
+        const batch = clarifyBatches.get(requestId);
+        if (!batch) {
+          respondError(4009, 'no pending clarify request');
+          return;
+        }
+        if (!batch.questionIds.includes(questionId)) {
+          respondError(4002, `unknown question_id ${questionId}`);
+          return;
+        }
+        batch.answers.set(questionId, answer);
+        const remaining = batch.questionIds.filter(
+          (id) => !batch.answers.has(id),
+        );
+        if (remaining.length === 0) {
+          clarifyBatches.delete(requestId);
+          settlePendingPrompt(sessionParam, 'clarify');
+        }
+        respond({ remaining, status: 'ok' });
+        return;
+      }
+      clarifyBatches.delete(requestId);
+      settlePendingPrompt(sessionParam, 'clarify');
+      respond({ status: 'ok' });
+      return;
+    }
+
+    if (method === 'secret.respond' || method === 'sudo.respond') {
+      respond({ status: 'ok' });
       return;
     }
 

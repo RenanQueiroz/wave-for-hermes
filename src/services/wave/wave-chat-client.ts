@@ -104,6 +104,14 @@ export interface WaveChatClient {
   ): Promise<
     WaveSessionResponse | { session: { id: string; pinned: boolean } }
   >;
+  /** Move the conversation's server-owned read watermark (mark read/unread). */
+  setSessionUnread(
+    sessionId: string,
+    unread: boolean,
+    signal?: AbortSignal,
+  ): Promise<
+    WaveSessionResponse | { session: { id: string; unread: boolean } }
+  >;
   redirectTurn(
     sessionId: string,
     text: string,

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState, ScrollView, View } from 'react-native';
 
 import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
+import { promptResponseInput } from '@/features/chat/prompt-response';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import { refreshWaveSessionTimeline } from '@/features/sessions/refresh-session-timeline';
 import {
@@ -67,22 +68,8 @@ export function GatewayVoiceScreen({
     (response: PromptCardResponse) => {
       const prompt = voice.state.prompt;
       if (!prompt) return;
-      const input =
-        response.kind === 'approval'
-          ? { choice: response.choice, kind: 'approval' as const }
-          : response.kind === 'clarify'
-            ? {
-                answer: response.answer,
-                kind: 'clarify' as const,
-                promptId: prompt.promptId,
-              }
-            : {
-                kind:
-                  prompt.kind === 'sudo'
-                    ? ('sudo' as const)
-                    : ('secret' as const),
-                promptId: prompt.promptId,
-              };
+      const input = promptResponseInput(prompt, response);
+      if (!input) return;
       setPromptStatus({ busy: true, promptId: prompt.promptId });
       void respondToPrompt(input).catch(() => {
         setPromptStatus({

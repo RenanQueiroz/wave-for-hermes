@@ -7,12 +7,15 @@ protocol shapes never leave it, and screens consume only normalized Wave contrac
 
 ## Current compatibility baseline
 
-The current implementation baseline is the tagged Hermes Agent `v0.20.1` / `v2026.8.13`
-gateway contract, validated live on 2026-08-14 from the Radon-managed iOS development runtime.
-The compatibility floor remains the sanitized `0.19.0` protocol fixture and the behavior Wave
-already shipped against that release. Wave does not branch product behavior on a version string:
-optional methods and fields are attempted only by features that need them and must degrade safely
-when absent or malformed.
+The current implementation baseline is the tagged Hermes Agent `v0.20.5` / `v2026.8.19`
+gateway contract, adopted on 2026-08-22 from the upstream `tui_gateway`, `web_routers`, and
+Hermes Desktop sources between `v2026.8.13` and `v2026.8.19` and proven against the protocol
+harness and sanitized fixtures; the last live device validation was the `v0.20.1` baseline on
+2026-08-14, so the v0.20.5-only paths below (batched clarify, pending-prompt replay, read state,
+compacted reads) still owe a live pass. The compatibility floor remains the sanitized `0.19.0`
+protocol fixture and the behavior Wave already shipped against that release. Wave does not branch
+product behavior on a version string: optional methods and fields are attempted only by features
+that need them and must degrade safely when absent or malformed.
 
 - **Sign-in**: `POST /auth/password-login` with `{provider: 'basic', username, password}`. The
   response carries an access/refresh token pair. Tokens rotate: responses can carry a refreshed
@@ -38,6 +41,14 @@ when absent or malformed.
 - **Resilience**: an in-flight turn runs to completion through a disconnect and can be
   reattached by session with full history; only idle sessions are reaped (about 20 seconds).
   Reattaching is a read of the same execution — the prompt itself is never re-sent.
+  `session.resume` rebinds the live session to the new socket and reports `running` plus an
+  `inflight` snapshot (the user text and the assistant text streamed so far; v0.20.5 also
+  carries `correction_offsets`, which Wave ignores because corrections live in its own
+  journal). Wave keeps that socket open as the turn's channel: it seeds the snapshot text,
+  replays any prompt the gateway still reports as blocking the turn (`pending_approval` /
+  `pending_clarify`, v0.20.5 — the latter with the batch answers already locked), streams the
+  remaining frames, and still reconciles from the refreshed timeline when the turn ends. An
+  idle session yields nothing.
 - **Live state**: `session.active_list` can report `starting`, `working`, `waiting`, or `idle`.
   Wave treats all but `idle` as active for conflict checks; a legacy `running: true` or `running`
   status remains a defensive alias. The normalized response also carries bounded `lastActiveAt`
@@ -59,7 +70,11 @@ when absent or malformed.
   session count or bounded probes. Network/auth/timeout failures never masquerade as an
   unsupported capability. v0.20 caps session pages at 100 rows and message pages at 500; Wave
   uses the shared 100-row session limit and keeps its 200-row timeline window bounded across all
-  supported releases.
+  supported releases. Every `/messages` read passes `include_compacted=true` (v0.20.5): after
+  in-place context compaction only the summary and protected tail stay active, and the earlier
+  transcript survives as compacted rows that a user-visible history must keep — the gateway
+  dedupes the generations before paging, Hermes Desktop passes the same flag on every read, and
+  older gateways ignore the parameter.
 - **Deletes are not guarded upstream**: the gateway accepts deleting a session with a running
   turn and lets the conversation reappear. Wave refuses the delete client-side while the turn's
   RPC channel is registered or `session.active_list` reports any known active phase.
@@ -82,7 +97,18 @@ when absent or malformed.
   to an unpinned idle chat, and unknown future values remain reachable in the Other sources
   filter (everything the Chats filter excludes). The legacy
   list `is_active` heuristic means "recent and not ended", so Wave does not misreport it as a
-  running turn; only an exact reviewed phase becomes list liveness.
+  running turn; only an exact reviewed phase becomes list liveness. Sessions flagged `hidden`
+  (v0.20.5 plugin-owned chats) never reach the list: the gateway excludes them server-side.
+- **Read state (v0.20.5)**: list rows carry a derived `unread` boolean — activity postdating the
+  conversation's `last_read_at` watermark, or an explicit mark; a never-tracked row is read and a
+  missing field normalizes to read. `PATCH /api/sessions/{id} {unread}` moves the watermark
+  (`false` reads up to now, `true` marks it explicitly unread) for the whole compression lineage,
+  the same one-shot non-retrying metadata PATCH as pinning, projected optimistically with rollback.
+  Wave shows an unread glyph on idle drawer rows (live status wins; the open conversation never
+  flashes its own mark), offers Mark as read/unread in the row menu, and clears the watermark when
+  a conversation is read — once per newer activity the cached list reports, including a reply that
+  lands while the conversation is open. A later reply flips a read conversation back to unread
+  with no write on the message path.
 - **Reasoning**: live turns may carry `reasoning.delta` frames (emission gated by the server's
   `show_reasoning` setting), and stored assistant rows may carry plain-text `reasoning`,
   `reasoning_content`, or a string `reasoning_details` — normalized with Hermes Desktop's
@@ -103,8 +129,12 @@ when absent or malformed.
   negative ids remain presentation keys at most and never become rewind authority.
 - **v0.20 activity frames**: `message.interim` seals the current assistant segment; a previewed
   final can replace that segment once without duplicating it. `tool.progress` updates the existing
-  named tool row with one bounded preview. Only reviewed compaction, goal, process, and ready
-  states cross from `status.update` into ephemeral Wave-owned labels. Unknown fields and statuses
+  named tool row with one bounded preview. Only reviewed compaction, goal, process, loop
+  (v0.20.5 `/loop` wakeups narrate with `kind: 'loop'`), and ready states cross from
+  `status.update` into ephemeral Wave-owned labels. The v0.20.5 mid-turn `session.usage` ticks
+  and `session.resume_progress` frames have no transcript projection and are ignored. Stored
+  user rows with `display_kind: 'hidden'` (off-screen widget sends) are dropped at
+  normalization, as Hermes Desktop drops their content. Unknown fields and statuses
   remain ignored. These projections update only the active chat tail and are never persisted as
   assistant speech. Sanitized fixtures contain synthetic shapes only.
 - **Per-chat model (v0.20)**: the picker reads RPC `model.options
@@ -147,10 +177,29 @@ when absent or malformed.
   the server's full survivor list, clearing missing ids instead of retaining stale authority.
   The authoritative post-turn timeline refetch still reconciles everything. Branch and
   regenerate are both one-shot, never retried, and refused client-side while a turn runs.
+  v0.20.5 refuses an ordinal-only rewind of durable history outright (`4004`, "include
+  `truncate_before_row_id`"), accepts a client ordinal that counts the compressed ancestor prefix
+  (`msg_ordinal + prefix_user_count`), and attaches structured `data` (`user_turn_count`,
+  `ordinal`, `segment_ordinal`, `prefix_user_count`) to a `4018` stale-target refusal, where
+  `segment_ordinal < 0` means the target only survives in the summarized prefix. Wave maps
+  `4004`, `4018`, and `4030` to non-retryable input errors, with Wave-owned copy for the
+  ordinal-only and summarized-away cases, and never resyncs-and-retries the mutation the way
+  Desktop does — the refetch restores the rows and the user decides.
 - **Mid-turn prompts**: the agent can pause a running turn to ask for tool approval or a
   clarifying answer. Wave renders these inline in the turn, answers them on the socket bound to
   that turn's live session, and clears them when anything proves them settled (an answer from
-  another client, or server-side expiry). `secret`/`sudo` prompts are declined with copy that
+  another client, or server-side expiry). `approval.request` carries a gateway `request_id` from
+  v0.20.5 on, which Wave passes back in `approval.respond` so exactly that approval resolves;
+  older frames keep a Wave-minted local id and resolve the session's oldest pending approval as
+  before. `clarify.request` is either one question (`question`, `choices`, and the v0.20.1
+  `multi_select` hint, honored only alongside choices) or the v0.20.5 batch
+  `questions: [{qid, question, choices, multi_select}]`. Wave normalizes a batch into at most 16
+  bounded questions keyed by id and answers them together — one `clarify.respond {request_id,
+question_id, answer}` per question, sequentially in order, because the last lock is what
+  resolves the blocked tool — while a single answer keeps the `{request_id, answer}` shape. A
+  multi-select answer is a JSON list of the chosen choice strings (Desktop's encoding; the tool
+  also accepts comma-separated text) and an empty answer without a question id is the gateway's
+  own skip/cancel. `secret`/`sudo` prompts are declined with copy that
   says why; Wave never collects credentials on the phone. `source: 'wave'` prevents the
   Desktop-only `setup_mcp` tool from being advertised. As defense in depth, an unexpected bounded
   `mcp.setup.request` becomes a decline-only prompt and Wave sends exactly one
@@ -243,10 +292,13 @@ npm test
 ```
 
 `test/mobile/gateway-protocol.test.ts` covers sign-in, token rotation, framing, normalization,
-reattachment, cancellation, active-state handling, newest-order detection/fallback, truncation
-consent, durable row rebinding, Wave source tagging, live titles, MCP refusal, and error mapping
-against sanitized v0.19, v0.20, and v0.20.1 protocol shapes. A gateway compatibility change is
-incomplete until the fixtures, live behavior, and this document agree.
+reattachment (including v0.20.5 pending-prompt replay and inflight streaming), cancellation,
+active-state handling, newest-order detection/fallback, compacted reads, truncation consent,
+durable row rebinding, the v0.20.5 refusal mapping, Wave source tagging, live titles, read
+state, batched and multi-select clarify, approval ids, MCP refusal, and error mapping against
+sanitized v0.19, v0.20, v0.20.1, and v0.20.5 protocol shapes; `tools/voice-harness` exercises
+the same v0.20.5 wire shapes end to end. A gateway compatibility change is incomplete until
+the fixtures, the harness, live behavior, and this document agree.
 
 For the two Radon runtimes, bind the mobile doctor to each platform's own Metro server rather than
 letting target discovery choose between them:

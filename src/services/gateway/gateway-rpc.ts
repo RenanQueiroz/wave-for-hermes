@@ -21,11 +21,14 @@ export type GatewayRpcResult = Record<string, unknown>;
 
 export class GatewayRpcError extends Error {
   readonly code: number;
+  /** Structured `error.data` from the gateway (v0.20.5 truncation refusals). */
+  readonly data?: Record<string, unknown>;
 
-  constructor(message: string, code: number) {
+  constructor(message: string, code: number, data?: Record<string, unknown>) {
     super(message);
     this.name = 'GatewayRpcError';
     this.code = code;
+    if (data) this.data = data;
   }
 }
 
@@ -125,11 +128,14 @@ export class GatewayRpc {
     this.settle(id);
     const error = message.error;
     if (typeof error === 'object' && error !== null) {
-      const { code, message: text } = error as Record<string, unknown>;
+      const { code, data, message: text } = error as Record<string, unknown>;
       call.reject(
         new GatewayRpcError(
           typeof text === 'string' ? text : 'Gateway rejected the request.',
           typeof code === 'number' ? code : -32603,
+          typeof data === 'object' && data !== null && !Array.isArray(data)
+            ? (data as Record<string, unknown>)
+            : undefined,
         ),
       );
       return;

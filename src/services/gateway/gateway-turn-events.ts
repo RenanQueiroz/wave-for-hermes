@@ -24,12 +24,35 @@ const MAX_PROMPT_DESCRIPTION_CHARS = 300;
 const MAX_PROMPT_QUESTION_CHARS = 2_000;
 const MAX_PROMPT_CHOICES = 8;
 const MAX_PROMPT_CHOICE_CHARS = 100;
+const MAX_PROMPT_QUESTIONS = 16;
+const MAX_PROMPT_ANSWER_CHARS = 2_000;
+const MAX_PROMPT_ID_CHARS = 128;
 const MAX_MCP_SERVER_CHARS = 200;
 const MAX_SESSION_ID_CHARS = 256;
 const MAX_SESSION_TITLE_CHARS = 300;
 
 /** The gateway's canonical approval responses when a frame omits them. */
 const DEFAULT_APPROVAL_CHOICES = ['once', 'session', 'always', 'deny'];
+
+/**
+ * Prefix of the prompt ids Wave mints itself for approval frames that carry
+ * no gateway `request_id` (pre-v0.20.5 gateways). A gateway request id is a
+ * hex uuid and can never start with this, so the response path can tell the
+ * two apart without a second identity field on the event.
+ */
+export const LOCAL_APPROVAL_PROMPT_PREFIX = 'wave-approval-';
+
+export function isLocalPromptId(promptId: string): boolean {
+  return promptId.startsWith(LOCAL_APPROVAL_PROMPT_PREFIX);
+}
+
+type WavePromptRequestEvent = Extract<
+  WaveTurnEvent,
+  { type: 'prompt.request' }
+>;
+type WavePromptQuestion = NonNullable<
+  WavePromptRequestEvent['questions']
+>[number];
 
 export interface GatewayTurnFrame {
   payload: Record<string, unknown>;
@@ -46,6 +69,12 @@ export interface GatewayTurnTranslatorOptions {
 function stringField(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function boundedIdentifier(value: unknown, max = MAX_SESSION_ID_CHARS) {
@@ -213,54 +242,53 @@ export class GatewayTurnTranslator {
       }
       case 'approval.request': {
         // {command, pattern_key(s), description, allow_permanent, choices}
-        // (verified live). No request_id: approval.respond resolves the
-        // session's oldest pending approval, so the prompt id is local.
+        // (verified live), plus `request_id` from v0.20.5 on. Older gateways
+        // omit the id: approval.respond then resolves the session's oldest
+        // pending approval, so the prompt id is local.
         const events = this.resolvePendingPrompt();
-        const promptId = `approval-${this.turnId}-${this.sequence + 1}`;
-        this.pendingPromptId = promptId;
-        const command = toToolDetail(stringField(frame.payload, 'command'));
-        const description = stringField(frame.payload, 'description');
-        events.push({
-          ...this.base('prompt.request'),
-          allowsFreeText: false,
-          choices: this.promptChoices(frame.payload, DEFAULT_APPROVAL_CHOICES),
-          ...(command ? { command } : {}),
-          ...(description
-            ? {
-                description: description.slice(0, MAX_PROMPT_DESCRIPTION_CHARS),
-              }
-            : {}),
-          kind: 'approval',
-          messageId: this.messageId,
-          promptId,
-          type: 'prompt.request',
-        } as WaveTurnEvent);
+        const prompt = this.approvalPrompt(frame.payload);
+        this.pendingPromptId = prompt.promptId;
+        events.push(prompt);
         return events;
       }
-      case 'clarify.request':
+      case 'clarify.request': {
+        // {question, choices, request_id} (verified live) with the v0.20.1
+        // `multi_select` hint, or the v0.20.5 batch form {questions:[{qid,
+        // question, choices, multi_select}], request_id}. Without the
+        // request_id no response can be correlated, so such a frame is noise.
+        if (!boundedIdentifier(frame.payload.request_id, MAX_PROMPT_ID_CHARS)) {
+          return [];
+        }
+        // Settle the previous prompt before the new one registers itself.
+        const events = this.resolvePendingPrompt();
+        const prompt = this.clarifyPrompt(frame.payload);
+        if (prompt) {
+          this.pendingPromptId = prompt.promptId;
+          events.push(prompt);
+        }
+        return events;
+      }
       case 'secret.request':
       case 'sudo.request': {
-        // clarify: {question, choices, request_id} (verified live);
-        // secret/sudo: same _block mechanism, request_id-keyed. Without the
-        // request_id no response can be correlated, so such a frame is noise.
-        const requestId = stringField(frame.payload, 'request_id');
+        // Same _block mechanism as clarify, request_id-keyed.
+        const requestId = boundedIdentifier(
+          frame.payload.request_id,
+          MAX_PROMPT_ID_CHARS,
+        );
         if (!requestId) return [];
         const events = this.resolvePendingPrompt();
         this.pendingPromptId = requestId;
         const kind =
-          frame.type === 'clarify.request'
-            ? ('clarify' as const)
-            : frame.type === 'secret.request'
-              ? ('secret' as const)
-              : ('sudo' as const);
+          frame.type === 'secret.request'
+            ? ('secret' as const)
+            : ('sudo' as const);
         const question =
           stringField(frame.payload, 'question') ??
           stringField(frame.payload, 'prompt');
         events.push({
           ...this.base('prompt.request'),
-          allowsFreeText: kind === 'clarify',
-          choices:
-            kind === 'clarify' ? this.promptChoices(frame.payload, []) : [],
+          allowsFreeText: false,
+          choices: [],
           kind,
           messageId: this.messageId,
           promptId: requestId,
@@ -386,10 +414,135 @@ export class GatewayTurnTranslator {
         ];
       }
       default:
-        // session.info (including tools/skills) and future frames have no
-        // transcript projection.
+        // session.info (including tools/skills), the v0.20.5 mid-turn
+        // session.usage ticks, session.resume_progress, and future frames
+        // have no transcript projection.
         return [];
     }
+  }
+
+  /**
+   * Prompts the gateway reports as still blocking a reattached turn. A
+   * `clarify.request`/`approval.request` emitted while this client was
+   * detached is otherwise lost until its server-side timeout; v0.20.5
+   * replays them in the `session.resume` result as `pending_approval` and
+   * `pending_clarify` (the latter carrying any batch answers already locked).
+   */
+  replayPendingPrompts(resumeResult: Record<string, unknown>): WaveTurnEvent[] {
+    if (this.completed) return [];
+    const events: WaveTurnEvent[] = [];
+    const approval = asRecord(resumeResult.pending_approval);
+    if (approval) {
+      events.push(...this.resolvePendingPrompt());
+      const prompt = this.approvalPrompt(approval);
+      this.pendingPromptId = prompt.promptId;
+      events.push(prompt);
+    }
+    const clarify = asRecord(resumeResult.pending_clarify);
+    const clarifyPrompt = clarify ? this.clarifyPrompt(clarify) : undefined;
+    if (clarifyPrompt) {
+      events.push(...this.resolvePendingPrompt());
+      this.pendingPromptId = clarifyPrompt.promptId;
+      events.push(clarifyPrompt);
+    }
+    return events;
+  }
+
+  private approvalPrompt(
+    payload: Record<string, unknown>,
+  ): WavePromptRequestEvent {
+    const requestId = boundedIdentifier(
+      payload.request_id,
+      MAX_PROMPT_ID_CHARS,
+    );
+    const promptId =
+      requestId ??
+      `${LOCAL_APPROVAL_PROMPT_PREFIX}${this.turnId}-${this.sequence + 1}`;
+    const command = toToolDetail(stringField(payload, 'command'));
+    const description = stringField(payload, 'description');
+    return {
+      ...this.base('prompt.request'),
+      allowsFreeText: false,
+      choices: this.promptChoices(payload, DEFAULT_APPROVAL_CHOICES),
+      ...(command ? { command } : {}),
+      ...(description
+        ? { description: description.slice(0, MAX_PROMPT_DESCRIPTION_CHARS) }
+        : {}),
+      kind: 'approval',
+      messageId: this.messageId,
+      promptId,
+      type: 'prompt.request',
+    } as WavePromptRequestEvent;
+  }
+
+  private clarifyPrompt(
+    payload: Record<string, unknown>,
+  ): WavePromptRequestEvent | undefined {
+    const requestId = boundedIdentifier(
+      payload.request_id,
+      MAX_PROMPT_ID_CHARS,
+    );
+    if (!requestId) return undefined;
+    const questions = this.promptQuestions(payload);
+    const question = questions
+      ? undefined
+      : (stringField(payload, 'question') ?? stringField(payload, 'prompt'));
+    const choices = questions ? [] : this.promptChoices(payload, []);
+    // `multi_select` is a pass-through hint honored only alongside choices,
+    // exactly as Hermes Desktop treats it; a bare flag stays single-select.
+    const multiSelect =
+      !questions && payload.multi_select === true && choices.length > 0;
+    return {
+      ...this.base('prompt.request'),
+      allowsFreeText: true,
+      choices,
+      kind: 'clarify',
+      messageId: this.messageId,
+      ...(multiSelect ? { multiSelect: true } : {}),
+      promptId: requestId,
+      ...(question
+        ? { question: question.slice(0, MAX_PROMPT_QUESTION_CHARS) }
+        : {}),
+      ...(questions ? { questions } : {}),
+      type: 'prompt.request',
+    } as WavePromptRequestEvent;
+  }
+
+  /**
+   * The v0.20.5 batch form. Entries without a usable id or question are
+   * dropped, duplicate ids keep their first occurrence, and per-question
+   * `multi_select` is honored only alongside surviving choices. `answers`
+   * rides along only on reconnect replay, carrying the answers the gateway
+   * has already locked for this request.
+   */
+  private promptQuestions(
+    payload: Record<string, unknown>,
+  ): WavePromptQuestion[] | undefined {
+    if (!Array.isArray(payload.questions)) return undefined;
+    const answers = asRecord(payload.answers);
+    const seen = new Set<string>();
+    const questions: WavePromptQuestion[] = [];
+    for (const entry of payload.questions) {
+      if (questions.length >= MAX_PROMPT_QUESTIONS) break;
+      const record = asRecord(entry);
+      if (!record) continue;
+      const questionId = boundedIdentifier(record.qid, MAX_PROMPT_ID_CHARS);
+      const question = stringField(record, 'question')?.trim();
+      if (!questionId || !question || seen.has(questionId)) continue;
+      seen.add(questionId);
+      const choices = this.promptChoices(record, []);
+      const answer = answers?.[questionId];
+      questions.push({
+        ...(typeof answer === 'string'
+          ? { answer: answer.slice(0, MAX_PROMPT_ANSWER_CHARS) }
+          : {}),
+        choices,
+        multiSelect: record.multi_select === true && choices.length > 0,
+        question: question.slice(0, MAX_PROMPT_QUESTION_CHARS),
+        questionId,
+      });
+    }
+    return questions.length > 0 ? questions : undefined;
   }
 
   /**
@@ -486,6 +639,8 @@ function waveActivityStatus(
   const text = stringField(payload, 'text')?.trim();
   if (kind === 'compacting') return 'compacting';
   if (kind === 'compacted') return 'ready';
+  // v0.20.5 `/loop` wakeups narrate their tick lifecycle on this channel.
+  if (kind === 'loop' && text) return 'loop-running';
   if (kind === 'process' && text) return 'process-updated';
   if (kind === 'goal' && text) {
     if (text.startsWith('✓')) return 'goal-complete';

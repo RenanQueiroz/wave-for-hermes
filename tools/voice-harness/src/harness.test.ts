@@ -685,3 +685,204 @@ test('control: reset clears sessions, journal, and scenario', async () => {
     await harness.close();
   }
 });
+
+test('v0.20.5: resume replays a pending batch clarify, locks answer by question id', async () => {
+  const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
+  try {
+    const jar = await signIn(harness);
+    await loadScenario(harness, {
+      turns: [
+        {
+          frames: [
+            { type: 'message.start' },
+            { payload: { text: 'Before I start: ' }, type: 'message.delta' },
+            {
+              payload: {
+                questions: [
+                  {
+                    choices: ['alpha', 'beta'],
+                    multi_select: true,
+                    qid: 'q0',
+                    question: 'Which flavors?',
+                  },
+                  { choices: [], qid: 'q1', question: 'Any constraints?' },
+                ],
+                request_id: 'req-batch-1',
+              },
+              type: 'clarify.request',
+            },
+            // The turn stays parked on the question for longer than the
+            // test needs; the interrupt at the end releases it.
+            {
+              delayMs: 30_000,
+              type: 'message.complete',
+              payload: { text: 'x' },
+            },
+          ],
+        },
+      ],
+    });
+    const first = await openRpc(harness, jar);
+    const created = await first.call('session.create', { source: 'wave' });
+    await first.call('prompt.submit', {
+      session_id: created.session_id,
+      text: 'plan the trip',
+    });
+    const pending = await first.waitForEvent('clarify.request');
+    assert.equal(pending.request_id, 'req-batch-1');
+    // The client drops its socket mid-prompt...
+    first.close();
+
+    // ...and a reconnect learns about the running turn and its prompt from
+    // the resume payload instead of the lost event.
+    const second = await openRpc(harness, jar);
+    const resumed = await second.call('session.resume', {
+      session_id: created.stored_session_id,
+      source: 'wave',
+    });
+    assert.equal(resumed.running, true);
+    assert.deepEqual(resumed.inflight, {
+      assistant: 'Before I start: ',
+      streaming: true,
+      user: 'plan the trip',
+    });
+    assert.deepEqual(
+      (resumed.pending_clarify as { request_id?: unknown }).request_id,
+      'req-batch-1',
+    );
+    assert.equal(resumed.pending_approval, undefined);
+
+    // Batch locks resolve by question id, in order; the last lock settles it.
+    const lockOne = await second.call('clarify.respond', {
+      answer: '["alpha","beta"]',
+      question_id: 'q0',
+      request_id: 'req-batch-1',
+      session_id: created.session_id,
+    });
+    assert.deepEqual(lockOne, { remaining: ['q1'], status: 'ok' });
+    const unknown = await second.callError('clarify.respond', {
+      answer: 'x',
+      question_id: 'q9',
+      request_id: 'req-batch-1',
+      session_id: created.session_id,
+    });
+    assert.equal(unknown.code, 4002);
+    const lockTwo = await second.call('clarify.respond', {
+      answer: '',
+      question_id: 'q1',
+      request_id: 'req-batch-1',
+      session_id: created.session_id,
+    });
+    assert.deepEqual(lockTwo, { remaining: [], status: 'ok' });
+    const settled = await second.call('session.resume', {
+      session_id: created.stored_session_id,
+      source: 'wave',
+    });
+    assert.equal(settled.pending_clarify, undefined);
+    assert.equal(settled.running, true);
+
+    // Approvals answer by request id too.
+    const resolved = await second.call('approval.respond', {
+      choice: 'once',
+      request_id: 'deadbeef',
+      session_id: created.session_id,
+    });
+    assert.deepEqual(resolved, { resolved: 1 });
+
+    await second.call('session.interrupt', { session_id: created.session_id });
+    await second.waitForEvent('turn.interrupted');
+    second.close();
+
+    const journal = (await (
+      await fetch(`${harness.controlUrl}/control/journal`)
+    ).json()) as {
+      entries: { detail: Record<string, unknown>; kind: string }[];
+    };
+    const locks = journal.entries.filter(
+      (entry) => entry.kind === 'clarify.respond',
+    );
+    assert.deepEqual(
+      locks.map((entry) => entry.detail.questionId),
+      ['q0', 'q9', 'q1'],
+    );
+    assert.ok(
+      journal.entries.some(
+        (entry) =>
+          entry.kind === 'approval.respond' &&
+          entry.detail.requestId === 'deadbeef',
+      ),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test('v0.20.5: read watermark PATCH, derived unread rows, usage ticks, compacted reads', async () => {
+  const harness = await startVoiceHarness({ controlPort: 0, gatewayPort: 0 });
+  try {
+    const jar = await signIn(harness);
+    const rpc = await openRpc(harness, jar);
+    const created = await rpc.call('session.create', { source: 'wave' });
+    await rpc.call('prompt.submit', {
+      session_id: created.session_id,
+      text: 'hello',
+    });
+    // The default reply script now includes a mid-turn session.usage tick
+    // before the terminal frame.
+    await rpc.waitForEvent('message.complete');
+    assert.ok(rpc.events.some((event) => event.type === 'session.usage'));
+    const storedId = String(created.stored_session_id);
+    const row = async () => {
+      const list = (await (
+        await api(harness, jar, '/api/sessions')
+      ).json()) as { sessions: { id: string; unread: boolean }[] };
+      return list.sessions.find((session) => session.id === storedId);
+    };
+    // Never tracked = read, exactly like SessionDB.session_unread.
+    assert.equal((await row())?.unread, false);
+    const marked = await api(harness, jar, `/api/sessions/${storedId}`, {
+      body: JSON.stringify({ unread: true }),
+      method: 'PATCH',
+    });
+    assert.deepEqual(await marked.json(), {
+      ok: true,
+      title: 'Harness conversation 1',
+      unread: true,
+    });
+    assert.equal((await row())?.unread, true);
+    await api(harness, jar, `/api/sessions/${storedId}`, {
+      body: JSON.stringify({ unread: false }),
+      method: 'PATCH',
+    });
+    assert.equal((await row())?.unread, false);
+    // A later reply flips a read conversation back to unread with no write.
+    await rpc.call('prompt.submit', {
+      session_id: created.session_id,
+      text: 'again',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal((await row())?.unread, true);
+
+    const messages = await api(
+      harness,
+      jar,
+      `/api/sessions/${storedId}/messages?limit=10&offset=0&order=latest&include_compacted=true`,
+    );
+    assert.equal(messages.status, 200);
+    const journal = (await (
+      await fetch(`${harness.controlUrl}/control/journal`)
+    ).json()) as {
+      entries: { detail: Record<string, unknown>; kind: string }[];
+    };
+    assert.ok(
+      journal.entries.some(
+        (entry) =>
+          entry.kind === 'session.messages' &&
+          entry.detail.includeCompacted === true,
+      ),
+    );
+    rpc.close();
+  } finally {
+    await harness.close();
+  }
+});

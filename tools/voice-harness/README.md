@@ -7,9 +7,14 @@ buffered and clause-streamed speech — and plays scripted scenarios while
 journaling everything it observed. It is a test double: no inference, no
 outbound networking, no audio capture.
 
-Protocol baseline: Hermes Agent `v2026.8.13` / `0.20.1`, as
-consumed by Wave. A Hermes upgrade that changes wire shapes must update this
-package together with `src/services/gateway`.
+Protocol baseline: Hermes Agent `v2026.8.19` / `0.20.5`, as
+consumed by Wave — including the v0.20.5 additions Wave depends on: `session.resume` rebinding
+a running turn to the new socket and replaying `inflight` plus `pending_approval` /
+`pending_clarify`, batched `clarify.request` with per-question `clarify.respond` locks
+(`question_id`, `remaining`), `approval.respond` by `request_id`, the `unread` read watermark
+on list rows and `PATCH {unread}`, `include_compacted` on `/messages`, and mid-turn
+`session.usage` ticks in the default reply script. A Hermes upgrade that changes wire shapes
+must update this package together with `src/services/gateway`.
 
 The same listener also serves a **scripted OpenAI-Realtime fake** (`/v1/realtime*`): the SDP
 call exchange, hangup, and the sideband socket — `session.update` echoed as a structurally

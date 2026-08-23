@@ -57,6 +57,7 @@ import {
 import { GatewayRpc, GatewayRpcError } from './gateway-rpc.ts';
 import {
   GatewayTurnTranslator,
+  isLocalPromptId,
   type GatewayTurnFrame,
 } from './gateway-turn-events.ts';
 import {
@@ -607,8 +608,14 @@ export class GatewayClient {
     signal?: AbortSignal,
   ): Promise<GatewayMessagePage> {
     if (limit <= 0) return { rows: [] };
+    // include_compacted (v0.20.5): after in-place context compaction the
+    // active rows are only the summary and the protected tail; the earlier
+    // transcript survives as compacted rows. A user-visible history read must
+    // keep them (Hermes Desktop passes the flag on every read); the gateway
+    // dedupes the generations server-side before paging, and older gateways
+    // ignore the parameter.
     const body = await this.request(
-      `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}${order ? `&order=${order}` : ''}`,
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}${order ? `&order=${order}` : ''}&include_compacted=true`,
       { signal },
     );
     const response = body as {
@@ -734,6 +741,7 @@ export class GatewayClient {
         liveStatus: 'idle',
         pinned: false,
         source: 'chat',
+        unread: false,
       },
     };
   }
@@ -757,6 +765,7 @@ export class GatewayClient {
         pinned: false,
         source: 'chat',
         title: input.title,
+        unread: false,
       },
     };
   }
@@ -787,6 +796,39 @@ export class GatewayClient {
     return {
       apiVersion: 'v1',
       session: { id: sessionId, pinned },
+    };
+  }
+
+  /**
+   * Mark a conversation read or unread. The gateway keeps one read watermark
+   * per conversation lineage (`last_read_at`, v0.20.5 `PATCH {unread}`): a
+   * later reply flips it back to unread without any further write.
+   */
+  async setSessionUnread(
+    sessionId: string,
+    unread: boolean,
+    signal?: AbortSignal,
+  ): Promise<{
+    apiVersion: 'v1';
+    session: { id: string; unread: boolean };
+  }> {
+    sessionId = this.resolveSessionId(sessionId);
+    if (isPendingSessionId(sessionId)) {
+      throw new WaveBackendError(
+        'Send a message before marking this conversation.',
+        { kind: 'bad_request' },
+      );
+    }
+    // Sent exactly once, like every other metadata PATCH; an ambiguous
+    // network failure is reconciled by the next list refresh, never retried.
+    await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      body: { unread },
+      method: 'PATCH',
+      signal,
+    });
+    return {
+      apiVersion: 'v1',
+      session: { id: sessionId, unread },
     };
   }
 
@@ -1000,16 +1042,24 @@ export class GatewayClient {
 
   /**
    * Answer the mid-turn prompt currently blocking this session's streaming
-   * turn. Approvals resolve the session's oldest pending request (the
-   * gateway keys them FIFO, verified live); clarify/secret/sudo correlate by
-   * the prompt id the request carried. Secret and sudo are always declined —
-   * Wave never collects credentials on the phone.
+   * turn. Approvals carry the gateway's `request_id` when the request had one
+   * (v0.20.5); older frames resolve the session's oldest pending approval
+   * (the gateway keys them FIFO, verified live). Clarify/secret/sudo correlate
+   * by the prompt id the request carried; a batched clarify locks each
+   * answer by question id, in order, because the last lock is what resolves
+   * the blocked tool. An empty clarify answer is a skip. Secret and sudo are
+   * always declined — Wave never collects credentials on the phone.
    */
   async respondToPrompt(
     sessionId: string,
     input:
-      | { choice: string; kind: 'approval' }
+      | { choice: string; kind: 'approval'; promptId?: string }
       | { answer: string; kind: 'clarify'; promptId: string }
+      | {
+          answers: readonly { answer: string; questionId: string }[];
+          kind: 'clarify-batch';
+          promptId: string;
+        }
       | { kind: 'mcp-setup'; promptId: string; server: string }
       | { kind: 'secret' | 'sudo'; promptId: string },
   ): Promise<void> {
@@ -1024,6 +1074,9 @@ export class GatewayClient {
       if (input.kind === 'approval') {
         await active.rpc.call('approval.respond', {
           choice: input.choice,
+          ...(input.promptId && !isLocalPromptId(input.promptId)
+            ? { request_id: input.promptId }
+            : {}),
           session_id: active.liveSessionId,
         });
       } else if (input.kind === 'clarify') {
@@ -1032,6 +1085,18 @@ export class GatewayClient {
           request_id: input.promptId,
           session_id: active.liveSessionId,
         });
+      } else if (input.kind === 'clarify-batch') {
+        // Sequential, never concurrent: the gateway completes the batch when
+        // every question id is locked, so a reordered burst could resolve the
+        // tool with an answer still in flight.
+        for (const entry of input.answers) {
+          await active.rpc.call('clarify.respond', {
+            answer: entry.answer,
+            question_id: entry.questionId,
+            request_id: input.promptId,
+            session_id: active.liveSessionId,
+          });
+        }
       } else if (input.kind === 'mcp-setup') {
         await active.rpc.call('mcp.setup.respond', {
           request_id: input.promptId,
@@ -1117,27 +1182,78 @@ export class GatewayClient {
 
   /**
    * Reattach to a turn that was running when the socket dropped. The gateway
-   * has no frame replay, so this resumes the session and returns nothing —
-   * the caller reconciles from the refreshed timeline.
+   * has no frame replay: `session.resume` rebinds the live session to this
+   * socket, reports whether its turn is still running, and (v0.20.5) replays
+   * any prompt still blocking it as `pending_approval`/`pending_clarify`.
+   * The rest of the turn then streams here exactly as a fresh turn would —
+   * including the prompt channel, so a replayed question can be answered —
+   * and the caller still reconciles from the refreshed timeline when the
+   * turn ends. An idle session yields nothing; the prompt itself is never
+   * re-sent.
    */
   async *resumeTurnStream(
     sessionId: string,
-    _turnId: string,
+    turnId: string,
     _after: number,
     signal?: AbortSignal,
   ): AsyncGenerator<WaveTurnEvent> {
-    void _turnId;
     void _after;
+    sessionId = this.resolveSessionId(sessionId);
     const connection = await this.openSocket(signal);
+    const { events, rpc, close } = connection;
+    let attached = false;
     try {
-      await connection.rpc.call('session.resume', {
-        session_id: sessionId,
-        source: WAVE_GATEWAY_SESSION_SOURCE,
+      let resumed: Record<string, unknown>;
+      try {
+        resumed = await rpc.call('session.resume', {
+          session_id: sessionId,
+          source: WAVE_GATEWAY_SESSION_SOURCE,
+        });
+      } catch (error) {
+        throw toWaveError(error);
+      }
+      const liveSessionId =
+        typeof resumed.session_id === 'string' && resumed.session_id
+          ? resumed.session_id
+          : undefined;
+      const inflight =
+        typeof resumed.inflight === 'object' && resumed.inflight !== null
+          ? (resumed.inflight as Record<string, unknown>)
+          : undefined;
+      // A retained failed turn also reports an `inflight` snapshot (with its
+      // error); only a live one has frames still to come.
+      const running =
+        resumed.running === true ||
+        (inflight?.streaming === true && inflight.error === undefined);
+      if (!liveSessionId || !running) return;
+      this.liveSessions.set(sessionId, liveSessionId);
+      this.activeTurns.set(sessionId, { liveSessionId, rpc });
+      attached = true;
+      const resumeTurnId = `${turnId}-resume-${Date.now()}`;
+      const translator = new GatewayTurnTranslator({
+        messageId: `${resumeTurnId}-assistant`,
+        sessionId,
+        turnId: resumeTurnId,
       });
-    } catch (error) {
-      throw toWaveError(error);
+      yield translator.start();
+      // The text streamed before the disconnect: the snapshot is bounded by
+      // the translator exactly like live deltas, and the terminal frame's
+      // full text still replaces it.
+      const streamed =
+        typeof inflight?.assistant === 'string' ? inflight.assistant : '';
+      if (streamed) {
+        yield* translator.translate({
+          payload: { text: streamed },
+          type: 'message.delta',
+        });
+      }
+      yield* translator.replayPendingPrompts(resumed);
+      yield* this.pump(events, translator, signal);
     } finally {
-      connection.close();
+      if (attached && this.activeTurns.get(sessionId)?.rpc === rpc) {
+        this.activeTurns.delete(sessionId);
+      }
+      close();
     }
   }
 
@@ -2172,8 +2288,35 @@ function splitSetCookie(value: string | null): string[] {
 
 /** Gateway app-level error codes for a session id it does not know. */
 const RPC_NOT_FOUND_CODES = new Set([4001, 4007]);
-/** Attachment rejections: empty/invalid/unsupported/oversized input. */
-const RPC_BAD_REQUEST_CODES = new Set([4015, 4016, 4017, 4018]);
+/**
+ * Caller-input rejections: invalid parameters (4004), attachment limits
+ * (4015–4017), a regenerate target no longer in history (4018), and a stale
+ * ordinal alongside a resolved durable target (4030).
+ */
+const RPC_BAD_REQUEST_CODES = new Set([4004, 4015, 4016, 4017, 4018, 4030]);
+/** The gateway's 4018 refusal for a regenerate target. */
+const RPC_STALE_TRUNCATION_TARGET = 4018;
+
+/**
+ * Wave-owned copy for the regenerate refusals whose gateway messages name
+ * protocol internals. v0.20.5 refuses an ordinal-only rewind of durable
+ * history (4004, `truncate_before_row_id` required) and reports a target that
+ * only survives in the compressed ancestor prefix through structured
+ * `data.segment_ordinal < 0` on 4018.
+ */
+function regenerateRefusalMessage(error: GatewayRpcError): string | undefined {
+  if (
+    error.code === RPC_STALE_TRUNCATION_TARGET &&
+    typeof error.data?.segment_ordinal === 'number' &&
+    error.data.segment_ordinal < 0
+  ) {
+    return 'That message was summarized out of this conversation, so it can no longer be regenerated.';
+  }
+  if (error.code === 4004 && /truncat/i.test(error.message)) {
+    return 'Hermes could not place that message in its history. Refresh the conversation and try again.';
+  }
+  return undefined;
+}
 
 function toWaveError(error: unknown): WaveBackendError {
   if (error instanceof WaveBackendError) return error;
@@ -2184,7 +2327,10 @@ function toWaveError(error: unknown): WaveBackendError {
     if (RPC_BAD_REQUEST_CODES.has(error.code)) {
       // The caller's input is the problem; retrying the same input cannot
       // succeed, and the gateway's message names the actual limit.
-      return new WaveBackendError(error.message, { kind: 'bad_request' });
+      return new WaveBackendError(
+        regenerateRefusalMessage(error) ?? error.message,
+        { kind: 'bad_request' },
+      );
     }
     return new WaveBackendError(error.message, {
       kind: 'upstream_unavailable',

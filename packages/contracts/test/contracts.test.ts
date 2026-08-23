@@ -34,6 +34,7 @@ test('session summaries own strict source, pin, and live-status fields', () => {
     liveStatus: 'idle',
     pinned: false,
     source: 'chat',
+    unread: false,
   });
   assert.equal(
     WaveSessionSummarySchema.safeParse({
@@ -593,4 +594,114 @@ test('accepts only small structured ask_hermes results', () => {
     }).ok,
     false,
   );
+});
+
+test('clarify prompts may batch questions or allow multi-select, nothing else may', () => {
+  const base = {
+    apiVersion: WAVE_API_VERSION,
+    eventId: 'event-batch',
+    sequence: 4,
+    sessionId: 'session-1',
+    timestamp: '2026-08-19T00:00:00.000Z',
+    turnId: 'turn-1',
+  };
+  const batch = WaveTurnEventSchema.parse({
+    ...base,
+    allowsFreeText: true,
+    choices: [],
+    kind: 'clarify',
+    promptId: 'req-batch',
+    questions: [
+      {
+        choices: ['alpha', 'beta'],
+        multiSelect: true,
+        question: 'Which flavors?',
+        questionId: 'q0',
+      },
+      {
+        answer: 'already locked',
+        choices: [],
+        multiSelect: false,
+        question: 'Anything else?',
+        questionId: 'q1',
+      },
+    ],
+    type: 'prompt.request',
+  });
+  assert.equal(batch.type, 'prompt.request');
+  assert.equal(
+    WaveTurnEventSchema.parse({
+      ...base,
+      allowsFreeText: true,
+      choices: ['alpha', 'beta'],
+      kind: 'clarify',
+      multiSelect: true,
+      promptId: 'req-multi',
+      question: 'Which flavors?',
+      type: 'prompt.request',
+    }).type,
+    'prompt.request',
+  );
+  const invalid = [
+    // A batch replaces the single question and choices.
+    {
+      allowsFreeText: true,
+      choices: ['x'],
+      kind: 'clarify',
+      promptId: 'req',
+      questions: [
+        { choices: [], multiSelect: false, question: 'Q', questionId: 'q0' },
+      ],
+      type: 'prompt.request',
+    },
+    // Question ids are unique within a batch.
+    {
+      allowsFreeText: true,
+      choices: [],
+      kind: 'clarify',
+      promptId: 'req',
+      questions: [
+        { choices: [], multiSelect: false, question: 'Q', questionId: 'q0' },
+        { choices: [], multiSelect: false, question: 'R', questionId: 'q0' },
+      ],
+      type: 'prompt.request',
+    },
+    // Multi-select needs choices, on the prompt and on each question.
+    {
+      allowsFreeText: true,
+      choices: [],
+      kind: 'clarify',
+      multiSelect: true,
+      promptId: 'req',
+      question: 'Q',
+      type: 'prompt.request',
+    },
+    {
+      allowsFreeText: true,
+      choices: [],
+      kind: 'clarify',
+      promptId: 'req',
+      questions: [
+        { choices: [], multiSelect: true, question: 'Q', questionId: 'q0' },
+      ],
+      type: 'prompt.request',
+    },
+    // Only clarify prompts batch.
+    {
+      allowsFreeText: false,
+      choices: ['once', 'deny'],
+      kind: 'approval',
+      promptId: 'req',
+      questions: [
+        { choices: [], multiSelect: false, question: 'Q', questionId: 'q0' },
+      ],
+      type: 'prompt.request',
+    },
+  ];
+  for (const event of invalid) {
+    assert.equal(
+      WaveTurnEventSchema.safeParse({ ...base, ...event }).success,
+      false,
+    );
+  }
 });

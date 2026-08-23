@@ -485,6 +485,19 @@ export function replyFrames(
       type: 'message.delta',
       ...step,
     })),
+    // v0.20.5 pushes live usage snapshots mid-turn; clients without a status
+    // bar must ignore them without disturbing the transcript.
+    {
+      payload: {
+        usage: {
+          calls: 1,
+          input: 64,
+          output: reply.length,
+          total: 64 + reply.length,
+        },
+      },
+      type: 'session.usage',
+    },
     { payload: { status: 'complete', text: reply }, type: 'message.complete' },
   ];
 }

@@ -31,6 +31,7 @@ export interface GatewaySessionRow {
   source?: unknown;
   is_active?: unknown;
   status?: unknown;
+  unread?: unknown;
 }
 
 /** Message row from `GET /api/sessions/{id}/messages`. */
@@ -178,6 +179,9 @@ export function normalizeSessionRow(
     ...(startedAt ? { startedAt } : {}),
     ...(title ? { title } : {}),
     ...(toolCallCount === undefined ? {} : { toolCallCount }),
+    // The read watermark is server-derived (`last_read_at` vs `last_active`);
+    // a missing field is "never tracked", which the gateway defines as read.
+    unread: row.unread === true,
   };
 }
 
@@ -291,6 +295,10 @@ export function normalizeMessageRow(
   row: GatewayMessageRow,
 ): WaveConversationMessage | undefined {
   const role = normalizeRole(row.role);
+  // `display_kind: 'hidden'` rows are model-facing scaffolding the gateway
+  // persists for off-screen sends (v0.20.5 widget intents); no client renders
+  // them as a bubble, and Hermes Desktop drops their content the same way.
+  if (row.display_kind === 'hidden') return undefined;
   const rawContent = typeof row.content === 'string' ? row.content : '';
   let content =
     rawContent.length > MAX_CONTENT_CHARS

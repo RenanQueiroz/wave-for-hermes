@@ -81,6 +81,7 @@ export function mergeSessionSearchResults({
         liveStatus: 'idle',
         pinned: false,
         source: 'chat',
+        unread: false,
       },
       ...(match.snippet ? { snippet: match.snippet } : {}),
     });

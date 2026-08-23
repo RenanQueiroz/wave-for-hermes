@@ -14,4 +14,7 @@ export const DRAWER_ICONS = {
   sourceExternal: require('@expo/material-symbols/arrow_outward.xml'),
   sourceOther: require('@expo/material-symbols/pending.xml'),
   unpin: require('@expo/material-symbols/bookmark_remove.xml'),
+  markRead: require('@expo/material-symbols/mark_chat_read.xml'),
+  markUnread: require('@expo/material-symbols/mark_chat_unread.xml'),
+  unread: require('@expo/material-symbols/mark_chat_unread.xml'),
 } as const;

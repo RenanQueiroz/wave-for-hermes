@@ -459,12 +459,21 @@ documentation before implementing UI.
   it enters transcript state. A phrase that merely contains a stop word remains user intent, and
   speech barge-in still interrupts Wave playback rather than active Hermes work.
 - Build mobile conversation history from the paginated unified timeline, not by joining text in
-  the client, and refresh that timeline before returning from live voice.
+  the client, and refresh that timeline before returning from live voice. History reads keep
+  `include_compacted=true` so rows preserved by in-place compaction stay visible, and rows the
+  gateway marks `display_kind: 'hidden'` never render.
 - Do not silently broaden a chat tool into arbitrary administration access.
 - Hermes can pause a running turn to ask the user something. Render approval and clarify
   prompts inline in the turn they belong to, answer them on the socket bound to that turn's
   live session, and clear the prompt as soon as anything proves it settled — including an
-  answer from another client or a server-side expiry. Never collect secrets or passwords on
+  answer from another client or a server-side expiry. A clarify may be one question (with an
+  optional multi-select hint) or a v0.20.5 batch of id-keyed questions answered together: lock
+  batch answers sequentially by `question_id` (the last lock resolves the tool), send a
+  multi-select answer as a JSON list of choice strings, treat an empty answer as the gateway's
+  skip, and pass a gateway approval `request_id` back when the request carried one. Reattaching
+  to a running turn keeps the resume socket as the turn's channel and replays the prompt the
+  gateway reports as still blocking it (`pending_approval`/`pending_clarify`) instead of waiting
+  for its timeout. Never collect secrets or passwords on
   the phone: decline `secret`/`sudo` requests with copy that says why.
 - Gateway sign-in authorizes the user's Hermes account; it does not create per-device copies or
   allowlists of Hermes sessions. Session IDs must still be validated and resolved by Hermes, and
@@ -475,7 +484,10 @@ documentation before implementing UI.
 - Keep conversation listing paginated. Rename and delete through the typed client; deleting a
   session with an active turn or Realtime call must fail explicitly — and where the backend does
   not enforce that itself, the client does, using the backend's own liveness signal rather than
-  local state alone.
+  local state alone. Read state is server-owned (the v0.20.5 `unread` watermark): normalize the
+  list's `unread` flag, move it only through the typed client's one-shot `PATCH {unread}` with
+  optimistic projection and rollback, clear it when a conversation is read, and never derive it
+  from local activity alone.
 - Keep server-owned pins and source organization behind the typed client and normalized Wave
   contracts. Raw Hermes source identifiers never reach screens: map reviewed identifiers to
   `chat`, `automation`, or `external`, preserve `other` as the future-compatible reachable

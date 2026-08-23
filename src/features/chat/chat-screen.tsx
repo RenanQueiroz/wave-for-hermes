@@ -43,6 +43,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { Animated, Platform, Pressable, View } from 'react-native';
@@ -53,6 +54,7 @@ import { useCSSVariable } from 'uniwind';
 import { ConversationScroller } from '@/components/conversation-scroller';
 import { OfflineNotice } from '@/components/offline-notice';
 import { PromptCard, type PromptCardResponse } from '@/components/prompt-card';
+import { promptResponseInput } from '@/features/chat/prompt-response';
 import { registerMobileAgentStateProvider } from '@/dev/mobile-agent-state';
 import {
   isWaveChatActivityStale,
@@ -92,7 +94,11 @@ import {
   flattenWaveSessions,
   useWaveSessions,
 } from '@/features/sessions/use-wave-sessions';
-import { setWaveSessionTitleInPages } from '@/features/sessions/session-page-cache';
+import {
+  setWaveSessionTitleInPages,
+  setWaveSessionUnreadInPages,
+  waveSessionUnreadInPages,
+} from '@/features/sessions/session-page-cache';
 import {
   waveSessionQueryKey,
   waveTimelineQueryKey,
@@ -221,6 +227,42 @@ function ConnectedChatScreen({
     queryFn: ({ pageParam, signal }) => loadTimelinePage(pageParam, signal),
     queryKey: timelineKey,
   });
+  // Reading a conversation clears its server-owned unread watermark: once per
+  // newer activity the cached list reports, projected optimistically, sent
+  // exactly once, rolled back on failure, and left to the next list refresh
+  // to reconcile. Subscribing to the list cache (without fetching it) is what
+  // lets a reply that lands while this screen is open clear itself too.
+  const sessionsKey = useMemo(
+    () => waveSessionQueryKey(connectionId, baseUrl),
+    [baseUrl, connectionId],
+  );
+  const sessionList = useWaveSessions({
+    baseUrl,
+    client,
+    connectionId,
+    enabled: false,
+  });
+  const unreadRow = waveSessionUnreadInPages(sessionList.data, sessionId);
+  const unreadClearedRef = useRef<string | undefined>(undefined);
+  const unreadActivityKey = unreadRow?.unread
+    ? `${sessionId}:${unreadRow.lastActiveAt ?? ''}`
+    : undefined;
+  useEffect(() => {
+    if (!unreadActivityKey || unreadClearedRef.current === unreadActivityKey) {
+      return;
+    }
+    unreadClearedRef.current = unreadActivityKey;
+    queryClient.setQueryData<InfiniteData<WaveSessionPage>>(
+      sessionsKey,
+      (data) => setWaveSessionUnreadInPages(data, sessionId, false) ?? data,
+    );
+    client.setSessionUnread(sessionId, false).catch(() => {
+      queryClient.setQueryData<InfiniteData<WaveSessionPage>>(
+        sessionsKey,
+        (data) => setWaveSessionUnreadInPages(data, sessionId, true) ?? data,
+      );
+    });
+  }, [client, queryClient, sessionId, sessionsKey, unreadActivityKey]);
   const reconcileTimeline = useCallback(async () => {
     const result = await refreshWaveSessionTimeline({
       baseUrl,
@@ -522,31 +564,7 @@ function ConnectedChatScreen({
     (response: PromptCardResponse) => {
       const prompt = chat.state.activePrompt;
       if (!prompt || !gatewayClient) return;
-      const input = (() => {
-        if (response.kind === 'approval') {
-          return { choice: response.choice, kind: 'approval' as const };
-        }
-        if (response.kind === 'clarify') {
-          return {
-            answer: response.answer,
-            kind: 'clarify' as const,
-            promptId: prompt.promptId,
-          };
-        }
-        if (prompt.kind === 'mcp-setup') {
-          if (!prompt.server) return undefined;
-          return {
-            kind: 'mcp-setup' as const,
-            promptId: prompt.promptId,
-            server: prompt.server,
-          };
-        }
-        return {
-          kind:
-            prompt.kind === 'sudo' ? ('sudo' as const) : ('secret' as const),
-          promptId: prompt.promptId,
-        };
-      })();
+      const input = promptResponseInput(prompt, response);
       if (!input) return;
       setPromptStatus({ busy: true, promptId: prompt.promptId });
       void gatewayClient

@@ -58,6 +58,9 @@ function glyphSource(glyph: DrawerRowGlyph): ImageSourcePropType | undefined {
     } as const;
     return bySource[glyph.source] as ImageSourcePropType;
   }
+  if (glyph.kind === 'unread') {
+    return DRAWER_ICONS.unread as ImageSourcePropType;
+  }
   return undefined;
 }
 
@@ -138,11 +141,14 @@ export function DrawerSessionRow({
   onOpen,
   onPin,
   onRename,
+  onToggleUnread,
   pinDisabled,
   pinned,
+  readStateLabel,
   selected,
   sessionId,
   title,
+  unread,
 }: {
   colors: DrawerColors;
   glyph: DrawerRowGlyph;
@@ -152,11 +158,14 @@ export function DrawerSessionRow({
   onOpen(): void;
   onPin(): void;
   onRename(): void;
+  onToggleUnread(): void;
   pinDisabled: boolean;
   pinned: boolean;
+  readStateLabel: string;
   selected: boolean;
   sessionId: string;
   title: string;
+  unread: boolean;
 }) {
   const glyphIcon = glyphSource(glyph);
   return (
@@ -202,7 +211,8 @@ export function DrawerSessionRow({
                 size={glyph.kind === 'live' ? 12 : 16}
                 source={glyphIcon}
                 tint={
-                  glyph.kind === 'live' && glyph.status !== 'waiting'
+                  (glyph.kind === 'live' && glyph.status !== 'waiting') ||
+                  glyph.kind === 'unread'
                     ? colors.primary
                     : colors.mutedForeground
                 }
@@ -287,6 +297,31 @@ export function DrawerSessionRow({
                   <Text color={colors.foreground}>
                     {pinned ? 'Unpin' : 'Pin'}
                   </Text>
+                </DropdownMenuItem.Text>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                elementColors={{ textColor: colors.foreground }}
+                modifiers={[
+                  testIDModifier(`drawer-session-read-state-${sessionId}`),
+                ]}
+                onClick={() => {
+                  onMenuOpenChange(false);
+                  onToggleUnread();
+                }}>
+                <DropdownMenuItem.LeadingIcon>
+                  <Icon
+                    contentDescription=""
+                    size={18}
+                    source={
+                      (unread
+                        ? DRAWER_ICONS.markRead
+                        : DRAWER_ICONS.markUnread) as ImageSourcePropType
+                    }
+                    tint={colors.mutedForeground}
+                  />
+                </DropdownMenuItem.LeadingIcon>
+                <DropdownMenuItem.Text>
+                  <Text color={colors.foreground}>{readStateLabel}</Text>
                 </DropdownMenuItem.Text>
               </DropdownMenuItem>
               <DropdownMenuItem

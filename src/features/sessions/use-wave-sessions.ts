@@ -15,10 +15,18 @@ export function useWaveSessions({
   baseUrl,
   client,
   connectionId,
+  enabled = true,
 }: {
   baseUrl: string;
   client: WaveChatClient;
   connectionId: string;
+  /**
+   * `false` subscribes to the cached list without fetching it — for screens
+   * that react to list state (read marks) but must not drive list loads.
+   * Every observer shares these exact options, so a paged refetch triggered
+   * elsewhere keeps chaining pages the same way.
+   */
+  enabled?: boolean;
 }) {
   return useInfiniteQuery<
     WaveSessionPage,
@@ -27,6 +35,7 @@ export function useWaveSessions({
     ReturnType<typeof waveSessionQueryKey>,
     number
   >({
+    enabled,
     getNextPageParam: nextWaveSessionPageOffset,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>

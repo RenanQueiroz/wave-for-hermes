@@ -22,6 +22,8 @@ export interface HarnessMessageRow {
 }
 
 export interface HarnessSession {
+  /** Read watermark (epoch seconds); undefined = never tracked = read. */
+  lastReadAt?: number;
   liveId: string;
   messages: HarnessMessageRow[];
   pinned: boolean;

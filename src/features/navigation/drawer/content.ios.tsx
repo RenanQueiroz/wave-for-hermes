@@ -34,6 +34,7 @@ import { useRecyclingState } from '@legendapp/list/react-native';
 import { OfflineNotice } from '@/components/offline-notice';
 import {
   DRAWER_COPY,
+  drawerReadStateAction,
   drawerRowAccessibilityLabel,
   drawerRowGlyph,
   emptySessionFilterMessage,
@@ -115,30 +116,37 @@ function ConnectedWaveDrawerContent({
     startDelete,
     startRename,
     toggleSessionPin,
+    toggleSessionUnread,
   } = drawer;
   const renderItem = useCallback(
-    (item: DrawerSessionListItem) =>
-      item.kind === 'section' ? (
-        <SectionHeaderHost
-          colors={colors}
-          label={item.label}
-          mode={theme.mode}
-          sectionId={item.sectionId}
-        />
-      ) : (
+    (item: DrawerSessionListItem) => {
+      if (item.kind === 'section') {
+        return (
+          <SectionHeaderHost
+            colors={colors}
+            label={item.label}
+            mode={theme.mode}
+            sectionId={item.sectionId}
+          />
+        );
+      }
+      const selected = pathname.includes(item.session.id);
+      return (
         <SessionRowHost
           colors={colors}
-          glyph={drawerRowGlyph(item.session, sessionFilter)}
+          glyph={drawerRowGlyph(item.session, sessionFilter, { selected })}
           mode={theme.mode}
           pinning={pinningSessionId === item.session.id}
-          selected={pathname.includes(item.session.id)}
+          selected={selected}
           session={item.session}
           onDelete={startDelete}
           onOpen={openSession}
           onPin={toggleSessionPin}
           onRename={startRename}
+          onToggleUnread={toggleSessionUnread}
         />
-      ),
+      );
+    },
     [
       colors,
       openSession,
@@ -149,6 +157,7 @@ function ConnectedWaveDrawerContent({
       startRename,
       theme.mode,
       toggleSessionPin,
+      toggleSessionUnread,
     ],
   );
 
@@ -530,6 +539,7 @@ const SessionRowHost = memo(function SessionRowHost({
   onOpen,
   onPin,
   onRename,
+  onToggleUnread,
 }: {
   colors: DrawerColors;
   glyph: DrawerRowGlyph;
@@ -541,31 +551,35 @@ const SessionRowHost = memo(function SessionRowHost({
   onOpen(sessionId: string): Promise<void>;
   onPin(session: WaveSessionSummary): void;
   onRename(session: WaveSessionSummary): void;
+  onToggleUnread(session: WaveSessionSummary): void;
 }) {
   // Resets when the recycled row is reused for another session, so an open
   // action sheet never carries over.
   const [menuOpen, setMenuOpen] = useRecyclingState(false);
+  const readState = drawerReadStateAction(session);
   return (
     <Host
       colorScheme={mode}
       seedColor={colors.primary}
       style={{ height: DRAWER_ROW_HEIGHTS.sessionRow, width: '100%' }}>
-      {/* Keyed by session and pinned state: a mounted SwiftUI menu keeps a
-          stale action snapshot when its props change in place (labels update
-          but taps go dead — the "Unpin stops working" bug), and a recycled
-          menu must never dispatch the previous session's actions. Remounting
-          the hosted subtree is the AGENTS-documented remedy for stale hosted
-          SwiftUI in recycled Legend List cells. */}
+      {/* Keyed by session, pinned, and read state: a mounted SwiftUI menu
+          keeps a stale action snapshot when its props change in place (labels
+          update but taps go dead — the "Unpin stops working" bug), and a
+          recycled menu must never dispatch the previous session's actions.
+          Remounting the hosted subtree is the AGENTS-documented remedy for
+          stale hosted SwiftUI in recycled Legend List cells. */}
       <DrawerSessionRow
-        key={`${session.id}-${session.pinned ? 'pinned' : 'unpinned'}`}
+        key={`${session.id}-${session.pinned ? 'pinned' : 'unpinned'}-${session.unread ? 'unread' : 'read'}`}
         colors={colors}
         glyph={glyph}
         menuOpen={menuOpen}
         pinned={session.pinned}
+        readStateLabel={readState.label}
         rowAccessibilityLabel={drawerRowAccessibilityLabel(session, glyph)}
         selected={selected}
         sessionId={session.id}
         title={sessionTitle(session)}
+        unread={session.unread}
         onDelete={() => onDelete(session)}
         onMenuOpenChange={setMenuOpen}
         onOpen={() => void onOpen(session.id)}
@@ -575,6 +589,7 @@ const SessionRowHost = memo(function SessionRowHost({
           if (!pinning) onPin(session);
         }}
         onRename={() => onRename(session)}
+        onToggleUnread={() => onToggleUnread(session)}
       />
     </Host>
   );

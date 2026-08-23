@@ -892,3 +892,78 @@ test('timeline reasoning lands on the grouped assistant turn', () => {
     ['text'],
   );
 });
+
+test('carries batched and multi-select clarify prompts into the active prompt', () => {
+  const base = {
+    apiVersion: 'v1' as const,
+    eventId: 'event-batch',
+    sessionId: 'session-1',
+    timestamp: '2026-08-19T02:00:00.000Z',
+    turnId: 'turn-1',
+  };
+  const questions = [
+    {
+      choices: ['alpha', 'beta'],
+      multiSelect: true,
+      question: 'Which?',
+      questionId: 'q0',
+    },
+    {
+      answer: 'locked',
+      choices: [],
+      multiSelect: false,
+      question: 'Anything else?',
+      questionId: 'q1',
+    },
+  ];
+  let state = waveChatReducer(initialWaveChatState, {
+    assistantId: 'assistant-1',
+    input: 'plan it',
+    type: 'send',
+    userId: 'user-1',
+  });
+  state = waveChatReducer(state, {
+    event: {
+      ...base,
+      allowsFreeText: true,
+      choices: [],
+      kind: 'clarify',
+      promptId: 'req-batch',
+      questions,
+      sequence: 1,
+      type: 'prompt.request',
+    },
+    type: 'event',
+  });
+  assert.deepEqual(state.activePrompt?.questions, questions);
+  assert.equal(state.activePrompt?.multiSelect, undefined);
+  assert.equal(state.liveStatus, 'waiting');
+  state = waveChatReducer(state, {
+    event: {
+      ...base,
+      allowsFreeText: true,
+      choices: ['alpha', 'beta'],
+      kind: 'clarify',
+      multiSelect: true,
+      promptId: 'req-multi',
+      question: 'Which?',
+      sequence: 2,
+      type: 'prompt.request',
+    },
+    type: 'event',
+  });
+  assert.equal(state.activePrompt?.promptId, 'req-multi');
+  assert.equal(state.activePrompt?.multiSelect, true);
+  assert.equal(state.activePrompt?.questions, undefined);
+  // The v0.20.5 loop wakeup narrates as a reviewed activity label.
+  const looping = waveChatReducer(state, {
+    event: {
+      ...base,
+      sequence: 3,
+      status: 'loop-running',
+      type: 'activity.status',
+    },
+    type: 'event',
+  });
+  assert.equal(waveChatActivityLabel(looping), 'Running a scheduled loop…');
+});

@@ -18,9 +18,9 @@ export type DrawerSessionListItem =
   | { id: string; kind: 'session'; session: WaveSessionSummary };
 
 /**
- * The reserved leading glyph column of a single-line session row. Live status
- * wins over the source symbol; idle chats leave the column empty so titles
- * stay aligned.
+ * The trailing status glyph of a single-line session row. Live status wins,
+ * then an unread reply, then the source symbol; idle read chats show nothing
+ * so titles keep the full row.
  */
 export type DrawerRowGlyph =
   | { kind: 'live'; label: string; status: 'starting' | 'waiting' | 'working' }
@@ -29,7 +29,8 @@ export type DrawerRowGlyph =
       kind: 'source';
       label: string;
       source: 'automation' | 'external' | 'other';
-    };
+    }
+  | { kind: 'unread'; label: string };
 
 const LIVE_STATUS_LABELS = {
   starting: 'Starting',
@@ -50,6 +51,7 @@ export function sessionTitle(session: WaveSessionSummary) {
 export function drawerRowGlyph(
   session: WaveSessionSummary,
   filter: WaveSessionFilter,
+  options: { selected?: boolean } = {},
 ): DrawerRowGlyph {
   if (session.liveStatus !== 'idle') {
     return {
@@ -57,6 +59,11 @@ export function drawerRowGlyph(
       label: LIVE_STATUS_LABELS[session.liveStatus],
       status: session.liveStatus,
     };
+  }
+  // The open conversation is being read right now; the chat screen clears
+  // its server watermark, so the row never flashes an unread mark meanwhile.
+  if (session.unread && !options.selected) {
+    return { kind: 'unread', label: 'Unread reply' };
   }
   // Source symbols only make sense where sources mix; the chats filter is
   // single-source by construction so its idle rows keep an empty column.
@@ -103,6 +110,12 @@ export const SESSION_FILTERS: readonly {
     value: 'activity',
   },
 ];
+
+export function drawerReadStateAction(session: WaveSessionSummary) {
+  return session.unread
+    ? { label: 'Mark as read', unread: false }
+    : { label: 'Mark as unread', unread: true };
+}
 
 export const DRAWER_COPY = {
   deleteMessage: (session: WaveSessionSummary | undefined) =>

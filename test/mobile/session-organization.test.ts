@@ -8,6 +8,8 @@ import {
   nextWaveSessionPageOffset,
   setWaveSessionPinnedInPages,
   setWaveSessionTitleInPages,
+  setWaveSessionUnreadInPages,
+  waveSessionUnreadInPages,
 } from '../../src/features/sessions/session-page-cache.ts';
 import { organizeWaveSessions } from '../../src/features/sessions/session-organization.ts';
 import type { WaveSessionPage } from '../../src/services/wave/wave-chat-client.ts';
@@ -37,6 +39,7 @@ function session(
     liveStatus: 'idle',
     pinned: false,
     source: 'chat',
+    unread: false,
     ...input,
   };
 }
@@ -154,4 +157,24 @@ test('pagination advances by server limit, not pin-backfilled row count', () => 
     nextWaveSessionPageOffset({ ...page, hasMore: false }),
     undefined,
   );
+});
+
+test('optimistic read-state updates cached rows immutably and reads back', () => {
+  const row = session('s1', { lastActiveAt: '2026-08-19T10:00:00.000Z' });
+  const data: InfiniteData<WaveSessionPage> = {
+    pageParams: [0],
+    pages: [{ hasMore: false, limit: 50, offset: 0, sessions: [row] }],
+  };
+  assert.deepEqual(waveSessionUnreadInPages(data, 's1'), {
+    lastActiveAt: '2026-08-19T10:00:00.000Z',
+    unread: false,
+  });
+  const updated = setWaveSessionUnreadInPages(data, 's1', true);
+  assert.notEqual(updated, data);
+  assert.equal(updated?.pages[0].sessions[0].unread, true);
+  assert.equal(data.pages[0].sessions[0].unread, false);
+  assert.equal(waveSessionUnreadInPages(updated, 's1')?.unread, true);
+  assert.equal(setWaveSessionUnreadInPages(updated, 's1', true), updated);
+  assert.equal(setWaveSessionUnreadInPages(updated, 'missing', false), updated);
+  assert.equal(waveSessionUnreadInPages(updated, 'missing'), undefined);
 });

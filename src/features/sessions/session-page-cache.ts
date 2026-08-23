@@ -47,3 +47,43 @@ export function setWaveSessionTitleInPages(
   });
   return changed ? { ...data, pages } : data;
 }
+
+export function setWaveSessionUnreadInPages(
+  data: InfiniteData<WaveSessionPage> | undefined,
+  sessionId: string,
+  unread: boolean,
+): InfiniteData<WaveSessionPage> | undefined {
+  if (!data) return data;
+  let changed = false;
+  const pages = data.pages.map((page) => {
+    let pageChanged = false;
+    const sessions = page.sessions.map((session) => {
+      if (session.id !== sessionId || session.unread === unread) return session;
+      changed = true;
+      pageChanged = true;
+      return { ...session, unread };
+    });
+    return pageChanged ? { ...page, sessions } : page;
+  });
+  return changed ? { ...data, pages } : data;
+}
+
+/** The unread flag the list reports for one conversation, if it is loaded. */
+export function waveSessionUnreadInPages(
+  data: InfiniteData<WaveSessionPage> | undefined,
+  sessionId: string,
+): { lastActiveAt?: string; unread: boolean } | undefined {
+  for (const page of data?.pages ?? []) {
+    for (const session of page.sessions) {
+      if (session.id === sessionId) {
+        return {
+          ...(session.lastActiveAt
+            ? { lastActiveAt: session.lastActiveAt }
+            : {}),
+          unread: session.unread,
+        };
+      }
+    }
+  }
+  return undefined;
+}

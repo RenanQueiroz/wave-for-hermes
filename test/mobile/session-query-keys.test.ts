@@ -109,6 +109,7 @@ test('merges title matches ahead of gateway content matches', () => {
     liveStatus: 'idle',
     pinned: false,
     source: 'chat',
+    unread: false,
   });
 
   // An empty query lists everything as-is.
