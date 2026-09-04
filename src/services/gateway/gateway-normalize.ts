@@ -38,6 +38,7 @@ export interface GatewaySessionRow {
 export interface GatewayMessageRow {
   id?: unknown;
   role?: unknown;
+  display_content?: unknown;
   display_kind?: unknown;
   content?: unknown;
   timestamp?: unknown;
@@ -299,7 +300,20 @@ export function normalizeMessageRow(
   // persists for off-screen sends (v0.20.5 widget intents); no client renders
   // them as a bubble, and Hermes Desktop drops their content the same way.
   if (row.display_kind === 'hidden') return undefined;
-  const rawContent = typeof row.content === 'string' ? row.content : '';
+  // v0.21 projects context-compaction rows for display: the physical
+  // `content` keeps the model-facing scaffolding for export/inspection, and
+  // `display_content` carries what a person should actually read. Preferring
+  // it is what stops a compacted conversation rendering its own compaction
+  // wrapper as if the user had typed it. Rows the gateway could not project
+  // arrive as `display_kind: 'hidden'` and were already dropped above.
+  const projected =
+    typeof row.display_content === 'string' ? row.display_content : undefined;
+  const rawContent =
+    projected !== undefined
+      ? projected
+      : typeof row.content === 'string'
+        ? row.content
+        : '';
   let content =
     rawContent.length > MAX_CONTENT_CHARS
       ? rawContent.slice(0, MAX_CONTENT_CHARS)

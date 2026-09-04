@@ -76,7 +76,7 @@ import type { WaveToolCallDetail } from '@/features/chat/tool-detail-sheet.share
 import {
   branchCount,
   collectPrunedEntryIds,
-  rebindTimelineSurvivorRowIds,
+  rebindTimelineSurvivors,
   regenerateTarget,
 } from '@/features/chat/turn-action-targets';
 import { TurnActionRow } from '@/features/chat/turn-action-row';
@@ -103,6 +103,8 @@ import {
   waveSessionQueryKey,
   waveTimelineQueryKey,
 } from '@/features/sessions/session-query-keys';
+import { turnErrorTitle } from '@/features/chat/turn-error-copy.ts';
+import { TurnTasks } from '@/features/chat/turn-tasks.tsx';
 import { isOfflineLikeWaveError } from '@/services/query/offline-error';
 import { activeSessionStore } from '@/services/sessions/active-session-store';
 import { WaveBackendError } from '@/services/wave/wave-backend-error';
@@ -666,7 +668,7 @@ function ConnectedChatScreen({
             : data,
       );
       void chat.send(target.text, target.text, {
-        onTruncationCommitted: (survivorUserRowIds) => {
+        onTruncationCommitted: (survivors) => {
           queryClient.setQueryData<InfiniteData<WaveTimelineResponse>>(
             timelineKey,
             (data) => {
@@ -674,9 +676,9 @@ function ConnectedChatScreen({
               const displayOrdered = [...data.pages]
                 .reverse()
                 .flatMap((page) => page.entries);
-              const rebound = rebindTimelineSurvivorRowIds(
+              const rebound = rebindTimelineSurvivors(
                 displayOrdered,
-                survivorUserRowIds,
+                survivors,
               );
               const byId = new Map(rebound.map((entry) => [entry.id, entry]));
               return {
@@ -691,6 +693,14 @@ function ConnectedChatScreen({
             },
           );
         },
+        // Every durable id currently on screen, so a v0.21 gateway can map
+        // each one to its post-rewrite identity instead of Wave guessing the
+        // alignment from a paged transcript.
+        rebindRowIds: timelineEntries.flatMap((entry) =>
+          entry.type === 'message' && typeof entry.rowId === 'number'
+            ? [entry.rowId]
+            : [],
+        ),
         truncateBeforeUserOrdinal: target.ordinal,
         ...(target.rowId === undefined
           ? {}
@@ -793,12 +803,20 @@ function ConnectedChatScreen({
         </View>
       ) : null}
 
+      {chat.state.todos && chat.state.todos.items.length > 0 ? (
+        <View className="px-4 pt-3">
+          <TurnTasks todos={chat.state.todos.items} />
+        </View>
+      ) : null}
+
       {chat.state.error ? (
         <View className="px-4 pt-3">
           <Alert variant="destructive" testID="chat-turn-error">
             <Alert.Indicator />
             <Alert.Content>
-              <Alert.Title>Turn interrupted</Alert.Title>
+              <Alert.Title>
+                {turnErrorTitle(chat.state.error.layer)}
+              </Alert.Title>
               <Alert.Description>{chat.state.error.message}</Alert.Description>
             </Alert.Content>
           </Alert>

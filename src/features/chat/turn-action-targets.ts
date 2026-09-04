@@ -12,6 +12,8 @@
  */
 import type { WaveTimelineResponse } from '@wave/contracts';
 
+import type { WaveTruncationSurvivors } from '@/services/wave/wave-chat-client.ts';
+
 type WaveTimelineEntry = WaveTimelineResponse['entries'][number];
 
 function qualifiesForOrdinal(entry: WaveTimelineEntry): boolean {
@@ -69,6 +71,36 @@ export function regenerateTarget(
  * conversation, while Wave may hold only its newest pages, so alignment is
  * intentionally from the end rather than from ordinal zero.
  */
+/**
+ * Apply whichever survivor report Hermes returned.
+ *
+ * The v0.21 map is keyed by the old durable id, so it needs none of the
+ * ordinal alignment the legacy array does: a row absent from the map was
+ * outside the rewritten tip and keeps the id it already has, and an explicit
+ * `null` means the row did not survive and its cached id must be dropped.
+ */
+export function rebindTimelineSurvivors(
+  displayOrderedEntries: readonly WaveTimelineEntry[],
+  survivors: WaveTruncationSurvivors,
+): WaveTimelineEntry[] {
+  if (survivors.kind === 'ordinal') {
+    return rebindTimelineSurvivorRowIds(
+      displayOrderedEntries,
+      survivors.rowIds,
+    );
+  }
+  return displayOrderedEntries.map((entry) => {
+    if (entry.type !== 'message' || entry.rowId === undefined) return entry;
+    if (!survivors.rowIds.has(entry.rowId)) return entry;
+    const next = survivors.rowIds.get(entry.rowId);
+    if (next === entry.rowId) return entry;
+    const { rowId: _staleRowId, ...rest } = entry;
+    return next === null || next === undefined
+      ? rest
+      : { ...rest, rowId: next };
+  });
+}
+
 export function rebindTimelineSurvivorRowIds(
   displayOrderedEntries: readonly WaveTimelineEntry[],
   survivorUserRowIds: readonly (number | null)[],

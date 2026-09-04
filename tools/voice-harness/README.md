@@ -77,6 +77,13 @@ when drained.
   // store on scenario load (additive — POST /control/reset first for a clean
   // run). Sessions age in 6-hour steps so date sections vary; count ≤ 1000.
   "seedSessions": { "count": 300, "messagesPerSession": 2, "pinnedEvery": 50 },
+  // Transport shaping (v0.21). Absent means: heartbeat advertised, answered,
+  // and one stable replay epoch — the healthy gateway.
+  "suppressHeartbeat": false, // advertise no heartbeat, like a pre-v0.21 gateway
+  "dropHeartbeats": false, // stop answering gateway.ping without closing the
+  // socket — the half-open leg a phone gets on a network change
+  "replayEpochOverride": "epoch-2", // answer session.events.since under a
+  // different epoch, as a restarted gateway would
   "transcripts": ["play some jazz", "stop"], // /api/audio/transcribe FIFO
   "turns": [
     // prompt.submit FIFO
@@ -175,6 +182,19 @@ prompt (`You said: …`), redirects answer `redirected`, speech streams PCM.
   `speak_stream_ws` contract in `gateway-speech-stream.ts`.
 - An empty-text redirect fails with code 4002 before journaling, like the
   real handler.
+- The socket greets with `gateway.ready` before answering anything, carrying
+  `heartbeat` and a per-process `replay_epoch` like the real gateway. A client
+  that closes on the first frame it sees rather than on its own reply will
+  miss its response.
+- `gateway.ping` is answered inline, ahead of every other method and without
+  touching session state, matching the real gateway's WS reader thread — so a
+  busy turn can never delay a heartbeat. `dropHeartbeats` stops those replies
+  without closing the socket.
+- Every session-scoped event carries a monotonic per-session `seq` and is kept
+  in a 64-frame ring (the real gateway holds 512; the smaller ring makes the
+  `truncated` reply reachable from a scenario without emitting hundreds of
+  events). `session.events.since` replays from it and reports `latest_seq`,
+  `truncated`, and `epoch`.
 
 ## Tests
 

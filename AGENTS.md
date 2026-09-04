@@ -130,25 +130,19 @@ at https://docs.expo.dev/versions/v57.0.0/. Do not assume an API from an older S
   bundled dependency map still recommends 1.21.9, so keep the application version listed in
   `expo.install.exclude`. Re-run native builds and the validated keyboard flows after changing it,
   and remove the exclusion once Expo's supported version catches up.
-- `expo-modules-core` is pinned to 57.0.11 through the npm `overrides` entry in `package.json`
-  even though `expo` 57.0.15 asks for `~57.0.12`. 57.0.12's
-  per-turn budget on synchronous SwiftUI Host size commits (expo/expo#48059) leaves every
-  `matchContents` Host in Wave laid out at its padding-only height — the drawer header and footer
-  collapse to 9pt with their rows drawn over the status bar, the composer island overflows, and the
-  overflowing content cannot be hit-tested — reproduced on the iOS 26.5 simulator from a clean
-  Prebuild on 2026-08-22 and gone on 57.0.11 with everything else unchanged. The package is
-  consumed as Expo's prebuilt binary, so a source patch cannot carry a fix. Never add it as a
-  direct dependency (Expo Doctor rejects that); after any install, confirm the package still
-  resolves at `node_modules/expo-modules-core` rather than nested under `expo`, because every
-  other Expo module imports it from the root and Metro cannot find a nested copy. The upstream fix
-  is expo/expo#49211 ("Yoga node holding old styles after props style update"), merged to `main`
-  on 2026-08-21 and cherry-picked to `sdk-57`, but unpublished as of 2026-08-23 — the next SDK 57
-  patch of `expo-modules-core` (57.0.13 or later) should carry it. Lifting the pin is a
-  verification task, not a version bump: follow the recipe in `docs/dependency-security.md`
-  ("Lifting the expo-modules-core pin") and keep the pin if the drawer or composer Hosts regress
-  again. Every future dependency upgrade must treat a collapsed drawer header, an overflowing
-  composer island, or untappable SwiftUI content as this bug class first — a `matchContents` Host
-  measuring only its padding — before suspecting gesture-handler, keyboard-controller, or PanelUI.
+- `expo-modules-core` carries no pin. It was held at 57.0.11 while 57.0.12's per-turn budget on
+  synchronous SwiftUI Host size commits (expo/expo#48059) laid every `matchContents` Host out at
+  its padding-only height; expo/expo#49211 fixed that in 57.0.13, and 57.0.14 (measure hosted RN
+  views where SwiftUI/Compose placed them) and 57.0.15 (a `matchContents` `RNHostView` inside a
+  `matchContents` `Host` growing the layout every pass) fixed the adjacent cases. The package now
+  resolves through `expo` itself. Never add it as a direct dependency (Expo Doctor rejects that);
+  after any install, confirm it still resolves at `node_modules/expo-modules-core` rather than
+  nested under `expo`, because every other Expo module imports it from the root and Metro cannot
+  find a nested copy. It is consumed as Expo's prebuilt binary, so a source patch can never carry
+  a fix — bisect by version, not by editing `node_modules`. Every future dependency upgrade must
+  still treat a collapsed drawer header, an overflowing composer island, or untappable SwiftUI
+  content as this bug class first — a `matchContents` Host measuring only its padding — before
+  suspecting gesture-handler, keyboard-controller, or PanelUI.
 - `react-native-audio-api` 0.13.2 is the exact device-validated playback foundation. Keep the
   application version exact until an upgrade passes clean native builds and repeated physical
   listening on both platforms. Wave uses the package's stock Android output settings: the final
@@ -403,6 +397,43 @@ documentation before implementing UI.
   from tool output or another content-controlled marker.
 - Keep stream framing, ordering, timeout, cancellation, and size limits inside
   `src/services/gateway`; HTTP reads use Expo SDK 57's `expo/fetch`.
+- The socket is heartbeated. Start `gateway.ping` only after `gateway.ready` advertises
+  `heartbeat: true` (an older gateway has no handler), send it with a string id so a pong can
+  never settle a caller's numeric request, and fail the socket after the inbound deadline — a
+  phone that loses its network leaves a half-open leg that produces no close, no frames, and no
+  terminal frame, and no per-request timeout covers a stream that has merely gone quiet.
+- Reattach is lossless where the gateway supports it. Record the per-session event `seq` and the
+  `replay_epoch` from `gateway.ready` on the client (not the socket — Wave discards sockets per
+  operation while the gateway's ring is per session), and replay through `session.events.since`.
+  Replay only self-contained durable records (tool lifecycle, `todo.updated`, `session.title`):
+  the ring spans turns, the reattach rebuilds its row from `inflight.assistant`, and prompt
+  frames belong to the resume snapshot — replaying `message.*`, `reasoning.delta`, or a prompt
+  would duplicate text, resurrect an answered question, or seal a running turn. Clear a session's
+  watermark when a new turn starts so a reattach can never replay an older turn's rows. An epoch
+  change, a `truncated` ring, or an older gateway degrades to the snapshot, never to a wrong
+  transcript.
+- Carry the `/api/ws` ticket as the `hermes-gateway-v1` + `hermes-gateway-ticket.<ticket>`
+  subprotocol pair so the credential never enters a URL. Fall back to `?ticket=` only after a
+  dial that actually reached a handshake, and remember the downgrade only once the fallback
+  succeeds. `/api/audio/speak-stream` shares the credential check but does not echo a
+  subprotocol, so it stays on the query form.
+- A failed turn arrives as a terminal `message.complete` with `status: "error"`, not as
+  `turn.error`. Seal it as a failure: keep the partial text only when `partial` is set (otherwise
+  `text` is the error restated as prose), and validate the advisory `error_surface` layer against
+  Wave's own allowlist — it selects copy only, never a retry. The same fields ride the resume
+  snapshot's retained failed turn, which must rebuild as failed rather than leave the composer
+  latched.
+- Prefer a message row's `display_content` over `content`: it is the gateway's user-visible
+  projection of a compaction row whose physical content is model-facing scaffolding.
+- Rewind rebinding may request `rebind_survivor_row_ids` on the durable path and must then
+  consume `survivor_row_id_map` — asking for the map suppresses `survivor_user_row_ids`, so a
+  client that ignores it silently keeps stale row ids and gets `4018` on the next rewind. A row
+  absent from the map kept its identity; only an explicit `null` means it was dropped.
+- Pass `omit_messages: true` on every `session.resume`: Wave hydrates transcripts over REST, so
+  the socket copy is waste on a cellular link.
+- `todo.updated` is a full task-list snapshot with a monotonic `revision`, emitted regardless of
+  the session's tool-progress setting. Replace wholesale, reject an older revision, clear it when
+  the turn settles, and render it as bounded inert plain text — never Markdown, never behaviour.
 - Preserve `message.interim` as sealed assistant segments and reconcile previewed completion
   without duplicate text. `tool.progress` may update only the existing bounded tool preview, and
   `status.update` may cross the gateway boundary only through an explicitly reviewed Wave-owned

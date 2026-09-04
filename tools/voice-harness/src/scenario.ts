@@ -77,6 +77,19 @@ export interface HarnessModelScript {
 
 export interface HarnessScenario {
   audioCapabilities?: { stt: boolean; tts: boolean };
+  /**
+   * Stop answering `gateway.ping` after the socket is up, without closing it —
+   * the half-open leg a phone gets when its network changes. Exercises the
+   * client's heartbeat deadline.
+   */
+  dropHeartbeats?: boolean;
+  /**
+   * Answer `session.events.since` with a different `replay_epoch` than the one
+   * `gateway.ready` advertised, as a restarted gateway would.
+   */
+  replayEpochOverride?: string;
+  /** Advertise no heartbeat support, as a pre-v0.21 gateway does. */
+  suppressHeartbeat?: boolean;
   /** Overrides for the `model.options` catalog and `config.get` values. */
   models?: HarnessModelScript;
   /** FIFO of scripted Realtime calls (one entry per sideband connection). */

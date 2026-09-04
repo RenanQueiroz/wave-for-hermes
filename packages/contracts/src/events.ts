@@ -91,6 +91,9 @@ export const WaveAssistantCompletedEventSchema = z
   })
   .strict();
 
+/** Bounds on one `todo.updated` snapshot. Hermes sends the whole list. */
+export const WAVE_TODO_MAX_ITEMS = 64;
+export const WAVE_TODO_CONTENT_MAX_CHARS = 300;
 export const WAVE_PROMPT_MAX_CHOICES = 8;
 export const WAVE_PROMPT_MAX_QUESTIONS = 16;
 
@@ -260,11 +263,74 @@ export const WaveTurnCompletedEventSchema = z
   })
   .strict();
 
+/**
+ * Which part of the stack failed, as Hermes v0.21 reports it on a terminal
+ * error frame (`agent/error_surface.py`). Wave owns this list rather than
+ * echoing whatever string arrives: an unrecognised layer is dropped at
+ * normalization and the turn falls back to generic copy. Advisory only — it
+ * selects wording, never behaviour, and never triggers a retry.
+ */
+export const WaveErrorLayerSchema = z.enum([
+  'auth',
+  'billing',
+  'disk',
+  'endpoint',
+  'gateway',
+  'provider',
+  'runtime',
+  'streaming',
+]);
+
+export const WaveErrorSurfaceSchema = z
+  .object({
+    /** Gateway-authored, bounded, inert. Shown only as a diagnostic detail. */
+    code: z.string().trim().min(1).max(120).optional(),
+    layer: WaveErrorLayerSchema,
+    retryable: z.boolean().optional(),
+  })
+  .strict();
+
 export const WaveTurnErrorEventSchema = z
   .object({
     ...WaveTurnEventBaseShape,
     error: WaveErrorSchema,
+    surface: WaveErrorSurfaceSchema.optional(),
     type: z.literal('turn.error'),
+  })
+  .strict();
+
+/**
+ * One entry from Hermes's task list (`tools/todo_tool.py`). Content is
+ * gateway-authored untrusted text: bounded and inert, rendered as plain text,
+ * never markdown and never behaviour-driving.
+ */
+export const WaveTodoStatusSchema = z.enum([
+  'cancelled',
+  'completed',
+  'in_progress',
+  'pending',
+]);
+
+export const WaveTodoSchema = z
+  .object({
+    content: z.string().trim().min(1).max(WAVE_TODO_CONTENT_MAX_CHARS),
+    id: z.string().trim().min(1).max(64),
+    status: WaveTodoStatusSchema,
+  })
+  .strict();
+
+/**
+ * A full task-list snapshot (`todo.updated`). Hermes emits the whole list on
+ * every change and stamps a monotonic `revision`, so a client reconciles by
+ * replacing wholesale and rejecting anything older than what it holds — there
+ * is no merge and no partial update to get wrong.
+ */
+export const WaveTodoSnapshotEventSchema = z
+  .object({
+    ...WaveTurnEventBaseShape,
+    revision: z.number().int().nonnegative(),
+    todos: z.array(WaveTodoSchema).max(WAVE_TODO_MAX_ITEMS),
+    type: z.literal('todo.snapshot'),
   })
   .strict();
 
@@ -282,7 +348,12 @@ export const WaveTurnEventSchema = z.discriminatedUnion('type', [
   WaveAssistantCompletedEventSchema,
   WaveTurnCompletedEventSchema,
   WaveTurnErrorEventSchema,
+  WaveTodoSnapshotEventSchema,
 ]);
 
 export type WaveTurnEvent = z.infer<typeof WaveTurnEventSchema>;
 export type WavePromptQuestion = z.infer<typeof WavePromptQuestionSchema>;
+export type WaveErrorLayer = z.infer<typeof WaveErrorLayerSchema>;
+export type WaveTodo = z.infer<typeof WaveTodoSchema>;
+export type WaveTodoStatus = z.infer<typeof WaveTodoStatusSchema>;
+export type WaveErrorSurface = z.infer<typeof WaveErrorSurfaceSchema>;

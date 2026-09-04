@@ -14,6 +14,19 @@ export interface GatewayRpcSocket {
 
 export interface GatewayEventFrame {
   payload: Record<string, unknown>;
+  /**
+   * The gateway session the event belongs to, when the frame names one.
+   * Session-less globals (skin changes and the like) omit it and carry no
+   * replay contract.
+   */
+  sessionId?: string;
+  /**
+   * Hermes v0.21 stamps a per-session monotonic sequence on every event frame
+   * that names a session. Wave records the high-water mark so a reattach can
+   * ask `session.events.since` for exactly the frames it missed. Absent on
+   * older gateways, which simply get no replay.
+   */
+  seq?: number;
   type: string;
 }
 
@@ -39,12 +52,28 @@ interface PendingCall {
 }
 
 export interface GatewayRpcOptions {
+  /** How long inbound silence may last before the socket is declared dead. */
+  heartbeatDeadlineMs?: number;
+  /** How often `gateway.ping` is sent once the gateway advertises support. */
+  heartbeatIntervalMs?: number;
   onEvent(event: GatewayEventFrame): void;
+  /**
+   * Invoked once when the heartbeat deadline passes with no inbound frame.
+   * The owner closes the socket; this layer only reports the diagnosis.
+   */
+  onHeartbeatTimeout?(error: Error): void;
   requestTimeoutMs?: number;
   socket: GatewayRpcSocket;
 }
 
 const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+// Matches Hermes Desktop. A phone that loses its network mid-turn leaves a
+// half-open TCP leg: no close event, no further frames, and no terminal frame
+// either, so the per-request timeout never fires for a stream that has simply
+// gone quiet. `gateway.ping` is answered on the gateway's WS reader thread
+// ahead of its dispatcher, so a busy turn cannot delay the reply.
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+const DEFAULT_HEARTBEAT_DEADLINE_MS = 45_000;
 
 /**
  * Correlates requests to responses and routes event notifications. One
@@ -57,11 +86,67 @@ export class GatewayRpc {
   private readonly onEvent: (event: GatewayEventFrame) => void;
   private readonly requestTimeoutMs: number;
   private readonly socket: GatewayRpcSocket;
+  private readonly heartbeatDeadlineMs: number;
+  private readonly heartbeatIntervalMs: number;
+  private readonly onHeartbeatTimeout?: (error: Error) => void;
+  private heartbeatTimer?: ReturnType<typeof setInterval>;
+  private heartbeatSequence = 0;
+  private lastInboundAt = Date.now();
 
   constructor(options: GatewayRpcOptions) {
     this.onEvent = options.onEvent;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_RPC_TIMEOUT_MS;
     this.socket = options.socket;
+    this.heartbeatDeadlineMs =
+      options.heartbeatDeadlineMs ?? DEFAULT_HEARTBEAT_DEADLINE_MS;
+    this.heartbeatIntervalMs =
+      options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+    this.onHeartbeatTimeout = options.onHeartbeatTimeout;
+  }
+
+  /**
+   * Begin pinging. Call only once the gateway has advertised
+   * `heartbeat: true` on its `gateway.ready` frame — an older gateway has no
+   * `gateway.ping` handler and would answer every ping with a JSON-RPC error.
+   * Idempotent: a second call restarts the interval rather than stacking one.
+   */
+  startHeartbeat(): void {
+    this.stopHeartbeat();
+    if (this.heartbeatIntervalMs <= 0 || this.heartbeatDeadlineMs <= 0) return;
+    this.lastInboundAt = Date.now();
+    this.heartbeatTimer = setInterval(() => {
+      if (Date.now() - this.lastInboundAt >= this.heartbeatDeadlineMs) {
+        this.stopHeartbeat();
+        this.onHeartbeatTimeout?.(
+          new Error('Gateway heartbeat acknowledgement timed out.'),
+        );
+        return;
+      }
+      try {
+        // A string id deliberately: `handleMessage` only settles numeric ids,
+        // so the pong can never resolve or reject a caller's pending request,
+        // and a heartbeat can never surface as a user-visible RPC failure.
+        this.socket.send(
+          JSON.stringify({
+            id: `heartbeat-${++this.heartbeatSequence}`,
+            jsonrpc: '2.0',
+            method: 'gateway.ping',
+            params: {},
+          }),
+        );
+      } catch (error) {
+        this.stopHeartbeat();
+        this.onHeartbeatTimeout?.(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }, this.heartbeatIntervalMs);
+  }
+
+  stopHeartbeat(): void {
+    if (this.heartbeatTimer === undefined) return;
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = undefined;
   }
 
   call(
@@ -95,6 +180,9 @@ export class GatewayRpc {
 
   /** Feed one inbound text frame. Malformed frames are ignored, not fatal. */
   handleMessage(raw: string): void {
+    // Any inbound byte proves the socket is alive — including a frame we go
+    // on to discard, and including the pong itself.
+    this.lastInboundAt = Date.now();
     let frame: unknown;
     try {
       frame = JSON.parse(raw);
@@ -107,13 +195,24 @@ export class GatewayRpc {
     if (message.method === 'event') {
       const params = message.params;
       if (typeof params === 'object' && params !== null) {
-        const { payload, type } = params as Record<string, unknown>;
+        const {
+          payload,
+          seq,
+          session_id: sessionId,
+          type,
+        } = params as Record<string, unknown>;
         if (typeof type === 'string') {
           this.onEvent({
             payload:
               typeof payload === 'object' && payload !== null
                 ? (payload as Record<string, unknown>)
                 : {},
+            ...(typeof sessionId === 'string' && sessionId
+              ? { sessionId }
+              : {}),
+            ...(typeof seq === 'number' && Number.isInteger(seq) && seq > 0
+              ? { seq }
+              : {}),
             type,
           });
         }
@@ -150,6 +249,7 @@ export class GatewayRpc {
 
   /** Settle every in-flight call with `error` — the socket is gone. */
   fail(error: Error): void {
+    this.stopHeartbeat();
     for (const [id, call] of [...this.pending]) {
       this.settle(id);
       call.reject(error);

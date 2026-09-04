@@ -1,7 +1,9 @@
 import type {
+  WaveErrorLayer,
   WavePromptQuestion,
   WaveTimelineEntry,
   WaveTimelineHandoffEntry,
+  WaveTodo,
   WaveTurnEvent,
   WaveToolDetail,
 } from '@wave/contracts';
@@ -76,8 +78,22 @@ export interface WaveChatState {
     retryable: boolean;
   };
   error?: {
+    /**
+     * Which part of the stack failed, when Hermes said (v0.21). Selects
+     * wording only; it never drives a retry.
+     */
+    layer?: WaveErrorLayer;
     message: string;
     retryable: boolean;
+  };
+  /**
+   * The active turn's latest task-list snapshot, when Hermes is running one.
+   * Replaced wholesale by `revision` and cleared when the turn settles, so a
+   * finished turn never leaves a stale plan on screen.
+   */
+  todos?: {
+    items: WaveTodo[];
+    revision: number;
   };
   activity?: Extract<WaveTurnEvent, { type: 'activity.status' }>['status'];
   lastActivityAt?: string;
@@ -536,6 +552,15 @@ function applyEvent(
     case 'session.title.updated':
       // Metadata is consumed by `useWaveChat` before transcript dispatch.
       return state;
+    case 'todo.snapshot':
+      // Revision guard: a snapshot older than the one on screen is a late
+      // frame from a race (or a replayed one) and must not roll the plan back.
+      if (state.todos && event.revision < state.todos.revision) return state;
+      return {
+        ...state,
+        lastActivityAt: event.timestamp,
+        todos: { items: event.todos, revision: event.revision },
+      };
     case 'turn.completed':
       return {
         ...state,
@@ -546,6 +571,7 @@ function applyEvent(
         liveStatus: 'idle',
         messages: sealStreamingReasoning(state.messages),
         status: 'streaming',
+        todos: undefined,
       };
     case 'turn.error':
       if (event.error.code === 'cancelled' && state.status === 'cancelling') {
@@ -558,6 +584,7 @@ function applyEvent(
           lastActivityAt: event.timestamp,
           liveStatus: 'idle',
           status: 'cancelling',
+          todos: undefined,
         };
       }
       return {
@@ -566,12 +593,14 @@ function applyEvent(
         activeTurnId: undefined,
         activity: undefined,
         error: {
+          ...(event.surface ? { layer: event.surface.layer } : {}),
           message: event.error.message,
           retryable: event.error.retryable,
         },
         lastActivityAt: event.timestamp,
         liveStatus: 'idle',
         status: 'error',
+        todos: undefined,
       };
   }
 }

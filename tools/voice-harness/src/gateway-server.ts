@@ -57,6 +57,23 @@ export async function startGatewayServer(
   const activeTurns = new Map<string, ActiveTurn>();
   /** Texts accepted by a `queued` redirect, drained as follow-on turns. */
   const queuedTexts = new Map<string, string[]>();
+  /**
+   * v0.21 event replay. The real gateway keeps 512 frames per session; a much
+   * smaller ring here makes the `truncated` path reachable from a scenario
+   * without emitting hundreds of events first.
+   */
+  const REPLAY_RING_MAX = 64;
+  const replayEpoch = `harness-${Date.now().toString(36)}`;
+  const replaySeq = new Map<string, number>();
+  const replayRing = new Map<
+    string,
+    {
+      payload: Record<string, unknown>;
+      seq: number;
+      session_id: string;
+      type: string;
+    }[]
+  >();
 
   function startTurn(
     session: HarnessSession,
@@ -510,15 +527,43 @@ export async function startGatewayServer(
       isOpen: () => ws.readyState === WebSocket.OPEN,
       sendEvent: (type, sessionId, payload) => {
         if (type === 'clarify.request') registerClarifyBatch(payload);
+        // v0.21 stamps a per-session monotonic seq on every session-scoped
+        // event and keeps a bounded replay ring, so a reconnecting client can
+        // ask `session.events.since` for exactly what it missed.
+        const seq = (replaySeq.get(sessionId) ?? 0) + 1;
+        replaySeq.set(sessionId, seq);
+        const ring = replayRing.get(sessionId) ?? [];
+        ring.push({ payload, seq, session_id: sessionId, type });
+        while (ring.length > REPLAY_RING_MAX) ring.shift();
+        replayRing.set(sessionId, ring);
         ws.send(
           JSON.stringify({
             jsonrpc: '2.0',
             method: 'event',
-            params: { payload, session_id: sessionId, type },
+            params: { payload, seq, session_id: sessionId, type },
           }),
         );
       },
     };
+
+    // The real gateway announces its capabilities before anything else: a
+    // client only starts pinging once `heartbeat` is advertised, and only
+    // trusts its seq watermarks while `replay_epoch` is unchanged.
+    ws.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'event',
+        params: {
+          payload: {
+            change_events: true,
+            heartbeat: !state.transportScript().suppressHeartbeat,
+            replay_epoch: replayEpoch,
+            skin: {},
+          },
+          type: 'gateway.ready',
+        },
+      }),
+    );
 
     ws.on('message', (data) => {
       let frame: Record<string, unknown>;
@@ -535,6 +580,14 @@ export async function startGatewayServer(
         typeof frame.params === 'object' && frame.params !== null
           ? (frame.params as Record<string, unknown>)
           : {};
+      // Answered inline, ahead of every other method and without touching
+      // session state — the real gateway replies on its WS reader thread so a
+      // busy turn can never delay a heartbeat.
+      if (method === 'gateway.ping') {
+        if (state.transportScript().dropHeartbeats) return;
+        ws.send(JSON.stringify({ id, jsonrpc: '2.0', result: { ok: true } }));
+        return;
+      }
       if (typeof id !== 'number' || !method) return;
       journal.record('rpc.call', {
         method,
@@ -608,6 +661,25 @@ export async function startGatewayServer(
         ...(pending?.kind === 'clarify'
           ? { pending_clarify: pending.payload }
           : {}),
+      });
+      return;
+    }
+
+    if (method === 'session.events.since') {
+      const session = state.resolveSession(sessionParam);
+      const key = session?.liveId ?? String(sessionParam ?? '');
+      const lastSeen =
+        typeof params.last_seen === 'number' ? params.last_seen : 0;
+      const ring = replayRing.get(key) ?? [];
+      const events = ring.filter((event) => event.seq > lastSeen);
+      respond({
+        count: events.length,
+        epoch: state.transportScript().replayEpochOverride ?? replayEpoch,
+        events,
+        latest_seq: replaySeq.get(key) ?? 0,
+        // True when the gap predates the ring: the client must refetch
+        // history rather than trust the replay to be complete.
+        truncated: ring.length > 0 && lastSeen + 1 < (ring[0]?.seq ?? 0),
       });
       return;
     }

@@ -16,12 +16,14 @@ import {
 import {
   GatewayClient,
   isGatewaySessionActive,
+  normalizeSurvivorRowIdMap,
   normalizeSurvivorUserRowIds,
   normalizeGatewayCompatibilityStatus,
   normalizeGatewaySessionLiveState,
   TurnEventQueue,
 } from '../../src/services/gateway/gateway-client.ts';
 import { isPendingSessionId } from '../../src/services/wave/wave-chat-client.ts';
+import type { WaveTruncationSurvivors } from '../../src/services/wave/wave-chat-client.ts';
 import {
   GatewayTurnTranslator,
   isLocalPromptId,
@@ -1313,14 +1315,14 @@ test('v0.20.1 regenerate confirms truncation and targets a durable row', async (
     }
   ).latestMessageOrderSupport = 'supported';
   const created = await client.createSession();
-  let survivors: readonly (number | null)[] | undefined;
+  let survivors: WaveTruncationSurvivors | undefined;
   for await (const _event of client.streamTurn(
     created.session.id,
     'Replay this turn',
     undefined,
     {
-      onTruncationCommitted: (ids) => {
-        survivors = ids;
+      onTruncationCommitted: (reported) => {
+        survivors = reported;
       },
       truncateBeforeRowId: 777,
       truncateBeforeUserOrdinal: 4,
@@ -1335,7 +1337,74 @@ test('v0.20.1 regenerate confirms truncation and targets a durable row', async (
     text: 'Replay this turn',
     truncate_before_row_id: 777,
   });
-  assert.deepEqual(survivors, [101, null, 303]);
+  assert.deepEqual(survivors, { kind: 'ordinal', rowIds: [101, null, 303] });
+});
+
+test('a durable regenerate asks for a survivor map and rebinds from it', async () => {
+  const { calls, client } = makeTurnFixtureClient({
+    // v0.21 answers the map and deliberately omits the ordinal array.
+    submitSuccessResult: { survivor_row_id_map: { '101': 201, '202': null } },
+  });
+  (
+    client as unknown as { latestMessageOrderSupport: 'supported' }
+  ).latestMessageOrderSupport = 'supported';
+  const created = await client.createSession();
+  let survivors: WaveTruncationSurvivors | undefined;
+  for await (const _event of client.streamTurn(
+    created.session.id,
+    'Replay this turn',
+    undefined,
+    {
+      onTruncationCommitted: (reported) => {
+        survivors = reported;
+      },
+      // Duplicates and junk must not reach the wire.
+      rebindRowIds: [101, 101, 202, -5, 3.5],
+      truncateBeforeRowId: 777,
+      truncateBeforeUserOrdinal: 4,
+    },
+  )) {
+    // Drain the fixture turn.
+  }
+  const submit = calls.find((call) => call.method === 'prompt.submit');
+  assert.deepEqual(submit?.params, {
+    confirm_truncate: true,
+    rebind_survivor_row_ids: [101, 202],
+    session_id: 'live-1',
+    text: 'Replay this turn',
+    truncate_before_row_id: 777,
+  });
+  assert.equal(survivors?.kind, 'map');
+  assert.deepEqual(
+    survivors?.kind === 'map' ? [...survivors.rowIds] : undefined,
+    [
+      [101, 201],
+      [202, null],
+    ],
+  );
+});
+
+test('a legacy rewind never asks for a survivor map', async () => {
+  // No durable capability proof: the ordinal path must stay exactly as it was,
+  // so an older gateway keeps answering `survivor_user_row_ids`.
+  const { calls, client } = makeTurnFixtureClient({
+    submitSuccessResult: { survivor_user_row_ids: [101] },
+  });
+  const created = await client.createSession();
+  for await (const _event of client.streamTurn(
+    created.session.id,
+    'Replay this turn',
+    undefined,
+    {
+      rebindRowIds: [101],
+      truncateBeforeRowId: 777,
+      truncateBeforeUserOrdinal: 4,
+    },
+  )) {
+    // Drain the fixture turn.
+  }
+  const submit = calls.find((call) => call.method === 'prompt.submit');
+  assert.equal(submit?.params.rebind_survivor_row_ids, undefined);
 });
 
 test('legacy regenerate keeps ordinal targeting with explicit consent', async () => {
@@ -1364,13 +1433,25 @@ test('legacy regenerate keeps ordinal targeting with explicit consent', async ()
 
 test('normalizes survivor row ids without retaining invalid addresses', () => {
   assert.equal(normalizeSurvivorUserRowIds(undefined), undefined);
-  assert.deepEqual(normalizeSurvivorUserRowIds([1, null, '2', -3, 4.5, 6]), [
-    1,
-    null,
-    null,
-    null,
-    null,
-    6,
+  assert.deepEqual(normalizeSurvivorUserRowIds([1, null, '2', -3, 4.5, 6]), {
+    kind: 'ordinal',
+    rowIds: [1, null, null, null, null, 6],
+  });
+  // The map form: string keys, explicit nulls, and junk on both sides.
+  assert.equal(normalizeSurvivorRowIdMap(undefined), undefined);
+  assert.equal(normalizeSurvivorRowIdMap([1, 2]), undefined);
+  const mapped = normalizeSurvivorRowIdMap({
+    '-1': 5,
+    '10': 20,
+    '11': null,
+    '12': '30',
+    '13': 4.5,
+    nope: 7,
+  });
+  assert.equal(mapped?.kind, 'map');
+  assert.deepEqual(mapped?.kind === 'map' ? [...mapped.rowIds] : undefined, [
+    [10, 20],
+    [11, null],
   ]);
 });
 
@@ -1381,7 +1462,7 @@ test('tags every stored-session resume as a Wave client', async () => {
   }
   assert.deepEqual(streamed.calls[0], {
     method: 'session.resume',
-    params: { session_id: 'stored-9', source: 'wave' },
+    params: { omit_messages: true, session_id: 'stored-9', source: 'wave' },
   });
 
   const reattached = makeTurnFixtureClient({});
@@ -1394,7 +1475,7 @@ test('tags every stored-session resume as a Wave client', async () => {
   }
   assert.deepEqual(reattached.calls[0], {
     method: 'session.resume',
-    params: { session_id: 'stored-9', source: 'wave' },
+    params: { omit_messages: true, session_id: 'stored-9', source: 'wave' },
   });
 });
 
@@ -2259,7 +2340,10 @@ test('prompt responses carry gateway approval ids and lock batch answers in orde
   ]);
 });
 
-function makeResumeFixtureClient(resumeResult: Record<string, unknown>) {
+function makeResumeFixtureClient(
+  resumeResult: Record<string, unknown>,
+  eventsSinceResult?: Record<string, unknown>,
+) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   let closed = 0;
   class FakeResumeSocket {
@@ -2295,6 +2379,14 @@ function makeResumeFixtureClient(resumeResult: Record<string, unknown>) {
           });
         }, 0);
       };
+      if (frame.method === 'session.events.since') {
+        if (eventsSinceResult === undefined) {
+          reply({ error: { code: -32601, message: 'method not found' } });
+          return;
+        }
+        reply({ result: eventsSinceResult });
+        return;
+      }
       if (frame.method === 'session.resume') {
         reply({ result: resumeResult });
         if (resumeResult.running === true) {
@@ -2368,6 +2460,7 @@ test('reattaching streams the rest of a running turn and replays its pending pro
     ['session.resume'],
   );
   assert.deepEqual(calls[0].params, {
+    omit_messages: true,
     session_id: 'stored-9',
     source: 'wave',
   });
@@ -2614,4 +2707,454 @@ test('session rows carry the server read state and hidden rows never render', ()
     ),
     ['shown', 'reply'],
   );
+});
+
+test('a failed turn seals as an error, not as an assistant reply', () => {
+  // Hermes reports a returned-error turn on a terminal message.complete
+  // carrying status:"error" — not on turn.error. Without that branch the turn
+  // sealed as a healthy reply whose body was the literal string "Error: …".
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-e',
+    sessionId: 'session-1',
+    turnId: 'turn-e',
+  });
+  translator.start();
+  const events = translator.translate({
+    payload: {
+      error: 'provider refused the request',
+      error_surface: {
+        code: 'context_length',
+        layer: 'provider',
+        retryable: false,
+      },
+      recoverable: true,
+      status: 'error',
+      text: 'Error: provider refused the request',
+    },
+    type: 'message.complete',
+  });
+  // No partial flag, so `text` is the error restated as prose: it must not
+  // become a transcript bubble.
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ['turn.error'],
+  );
+  const failure = events[0] as Extract<WaveTurnEvent, { type: 'turn.error' }>;
+  assert.equal(failure.error.message, 'provider refused the request');
+  assert.equal(failure.error.retryable, false);
+  assert.deepEqual(failure.surface, {
+    code: 'context_length',
+    layer: 'provider',
+    retryable: false,
+  });
+});
+
+test('a failed turn keeps the text it did generate', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-p',
+    sessionId: 'session-1',
+    turnId: 'turn-p',
+  });
+  translator.start();
+  const events = translator.translate({
+    payload: {
+      error: 'stream dropped',
+      error_surface: { layer: 'streaming' },
+      partial: true,
+      status: 'error',
+      text: 'Half an answ',
+    },
+    type: 'message.complete',
+  });
+  const completed = events.find(
+    (event) => event.type === 'assistant.completed',
+  );
+  assert.equal(
+    completed && 'content' in completed ? completed.content : undefined,
+    'Half an answ',
+  );
+  assert.equal(events.at(-1)?.type, 'turn.error');
+});
+
+test('an unrecognised error layer degrades to no surface at all', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-u',
+    sessionId: 'session-1',
+    turnId: 'turn-u',
+  });
+  translator.start();
+  const events = translator.translate({
+    payload: {
+      error: 'something',
+      // A layer Wave does not own must never reach the UI.
+      error_surface: { layer: 'quantum', retryable: true },
+      status: 'error',
+    },
+    type: 'message.complete',
+  });
+  const failure = events.at(-1) as Extract<
+    WaveTurnEvent,
+    { type: 'turn.error' }
+  >;
+  assert.equal(failure.surface, undefined);
+  // With no trustworthy surface, `recoverable` still decides retryability.
+  assert.equal(failure.error.retryable, true);
+});
+
+test('todo snapshots are bounded, validated, and never partial', () => {
+  const translator = new GatewayTurnTranslator({
+    messageId: 'assistant-t',
+    sessionId: 'session-1',
+    turnId: 'turn-t',
+  });
+  translator.start();
+  const events = translator.translate({
+    payload: {
+      revision: 3,
+      todos: [
+        { content: 'Read the file', id: '1', status: 'completed' },
+        { content: 'Fix the bug', id: '2', status: 'in_progress' },
+        // Dropped: unknown status, empty content, missing id.
+        { content: 'Ship it', id: '3', status: 'teleported' },
+        { content: '   ', id: '4', status: 'pending' },
+        { content: 'No id', status: 'pending' },
+      ],
+    },
+    type: 'todo.updated',
+  });
+  assert.equal(events.length, 1);
+  const snapshot = events[0] as Extract<
+    WaveTurnEvent,
+    { type: 'todo.snapshot' }
+  >;
+  assert.equal(snapshot.revision, 3);
+  assert.deepEqual(snapshot.todos, [
+    { content: 'Read the file', id: '1', status: 'completed' },
+    { content: 'Fix the bug', id: '2', status: 'in_progress' },
+  ]);
+  // The unused-store snapshot carries no meaning and must not establish a
+  // revision that would then reject real ones.
+  assert.deepEqual(
+    translator.translate({
+      payload: { revision: 0, todos: [] },
+      type: 'todo.updated',
+    }),
+    [],
+  );
+  // A real clear does.
+  assert.equal(
+    translator.translate({
+      payload: { revision: 4, todos: [] },
+      type: 'todo.updated',
+    }).length,
+    1,
+  );
+});
+
+test('the heartbeat pings only when the gateway advertises it', async () => {
+  const sent: string[] = [];
+  let dead: Error | undefined;
+  const rpc = new GatewayRpc({
+    heartbeatDeadlineMs: 60,
+    heartbeatIntervalMs: 20,
+    onEvent: () => undefined,
+    onHeartbeatTimeout: (error) => {
+      dead = error;
+    },
+    socket: { close: () => undefined, send: (data) => sent.push(data) },
+  });
+
+  // Nothing is sent until the gateway says it answers gateway.ping: an older
+  // gateway would reject every one of them.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(sent.length, 0);
+
+  rpc.startHeartbeat();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const pings = sent.map(
+    (frame) => JSON.parse(frame) as { id: unknown; method: string },
+  );
+  assert.ok(pings.length >= 1);
+  assert.ok(pings.every((ping) => ping.method === 'gateway.ping'));
+  // String ids: handleMessage only settles numeric ones, so a pong can never
+  // resolve a caller's pending request.
+  assert.ok(pings.every((ping) => typeof ping.id === 'string'));
+  assert.equal(dead, undefined);
+  rpc.stopHeartbeat();
+});
+
+test('inbound silence past the deadline reports the socket dead once', async () => {
+  const sent: string[] = [];
+  const deaths: Error[] = [];
+  const rpc = new GatewayRpc({
+    heartbeatDeadlineMs: 40,
+    heartbeatIntervalMs: 10,
+    onEvent: () => undefined,
+    onHeartbeatTimeout: (error) => deaths.push(error),
+    socket: { close: () => undefined, send: (data) => sent.push(data) },
+  });
+  rpc.startHeartbeat();
+  await new Promise((resolve) => setTimeout(resolve, 90));
+  assert.equal(deaths.length, 1);
+  assert.match(deaths[0].message, /heartbeat/i);
+  rpc.stopHeartbeat();
+});
+
+test('any inbound frame re-arms the heartbeat deadline', async () => {
+  const deaths: Error[] = [];
+  const rpc = new GatewayRpc({
+    heartbeatDeadlineMs: 60,
+    heartbeatIntervalMs: 10,
+    onEvent: () => undefined,
+    onHeartbeatTimeout: (error) => deaths.push(error),
+    socket: { close: () => undefined, send: () => undefined },
+  });
+  rpc.startHeartbeat();
+  for (let tick = 0; tick < 5; tick += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    // Even a frame we discard proves the socket is alive.
+    rpc.handleMessage('not json');
+  }
+  assert.deepEqual(deaths, []);
+  rpc.stopHeartbeat();
+});
+
+test('event frames carry their session id and sequence when stamped', () => {
+  const events: {
+    payload: Record<string, unknown>;
+    seq?: number;
+    sessionId?: string;
+    type: string;
+  }[] = [];
+  const rpc = new GatewayRpc({
+    onEvent: (event) => events.push(event),
+    socket: { close: () => undefined, send: () => undefined },
+  });
+  rpc.handleMessage(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'event',
+      params: {
+        payload: { text: 'hi' },
+        seq: 7,
+        session_id: 'live-1',
+        type: 'message.delta',
+      },
+    }),
+  );
+  // An older gateway stamps neither; both stay absent rather than defaulted.
+  rpc.handleMessage(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'event',
+      params: { payload: {}, type: 'message.delta' },
+    }),
+  );
+  assert.equal(events[0].seq, 7);
+  assert.equal(events[0].sessionId, 'live-1');
+  assert.equal(events[1].seq, undefined);
+  assert.equal(events[1].sessionId, undefined);
+});
+
+test('a compacted row renders its display projection, not its scaffolding', () => {
+  // v0.21 projects context-compaction rows: the physical `content` keeps the
+  // model-facing wrapper for export, and `display_content` is what a person
+  // should read. Preferring the wrapper renders Hermes's own compaction
+  // scaffolding as if the user had typed it.
+  assert.equal(
+    normalizeMessageRow({
+      content: '<compaction-summary>internal wrapper</compaction-summary>',
+      display_content: 'Earlier conversation summarized.',
+      id: 11,
+      role: 'user',
+    })?.content,
+    'Earlier conversation summarized.',
+  );
+  // Rows the gateway could not project arrive hidden and still never render.
+  assert.equal(
+    normalizeMessageRow({
+      content: '<compaction-summary>internal</compaction-summary>',
+      display_kind: 'hidden',
+      id: 12,
+      role: 'user',
+    }),
+    undefined,
+  );
+  // A non-string projection is ignored rather than coerced.
+  assert.equal(
+    normalizeMessageRow({
+      content: 'physical',
+      display_content: { not: 'a string' },
+      id: 13,
+      role: 'user',
+    })?.content,
+    'physical',
+  );
+});
+
+test('a reattach replays the durable records it missed', async () => {
+  const { calls, client } = makeResumeFixtureClient(
+    {
+      inflight: { assistant: 'Partial reply', streaming: true, user: 'go' },
+      running: true,
+      session_id: 'live-9',
+    },
+    {
+      epoch: 'epoch-1',
+      events: [
+        // Durable records the resume snapshot has never carried.
+        {
+          payload: { name: 'terminal', tool_id: 't-missed' },
+          seq: 12,
+          type: 'tool.start',
+        },
+        {
+          payload: {
+            revision: 2,
+            todos: [{ content: 'Do it', id: '1', status: 'in_progress' }],
+          },
+          seq: 13,
+          type: 'todo.updated',
+        },
+        // Never replayed: the snapshot is authoritative for assistant text,
+        // and a stale terminal frame would seal a turn that is still running.
+        { payload: { text: 'ghost text' }, seq: 14, type: 'message.delta' },
+        { payload: { text: 'ghost' }, seq: 15, type: 'message.complete' },
+        // Prompt frames belong to replayPendingPrompts, not here.
+        {
+          payload: { question: 'stale?', request_id: 'req-old' },
+          seq: 16,
+          type: 'clarify.request',
+        },
+      ],
+      latest_seq: 16,
+      truncated: false,
+    },
+  );
+  (client as unknown as { replayEpoch: string }).replayEpoch = 'epoch-1';
+  (
+    client as unknown as { eventWatermarks: Map<string, number> }
+  ).eventWatermarks.set('live-9', 11);
+
+  const events: string[] = [];
+  for await (const event of client.resumeTurnStream(
+    'stored-9',
+    'gw-turn-1',
+    -1,
+  )) {
+    events.push(event.type);
+  }
+  const replay = calls.find((call) => call.method === 'session.events.since');
+  assert.deepEqual(replay?.params, { last_seen: 11, session_id: 'live-9' });
+  assert.ok(events.includes('tool.status'), 'the missed tool row is restored');
+  assert.ok(
+    events.includes('todo.snapshot'),
+    'the missed task list is restored',
+  );
+  // Exactly one assistant.delta: the snapshot's, never the replayed ghost.
+  assert.equal(events.filter((type) => type === 'assistant.delta').length, 2);
+  assert.ok(!events.includes('prompt.request'), 'no resurrected prompt');
+});
+
+test('a gateway restart during the gap discards the stale watermarks', async () => {
+  const { calls, client } = makeResumeFixtureClient(
+    {
+      inflight: { assistant: 'Partial', streaming: true, user: 'go' },
+      running: true,
+      session_id: 'live-9',
+    },
+    {
+      // A different epoch: the gateway restarted, its seq counters reset, and
+      // this window describes numbering that no longer exists.
+      epoch: 'epoch-2',
+      events: [
+        {
+          payload: { name: 'terminal', tool_id: 't-x' },
+          seq: 1,
+          type: 'tool.start',
+        },
+      ],
+      truncated: false,
+    },
+  );
+  (client as unknown as { replayEpoch: string }).replayEpoch = 'epoch-1';
+  (
+    client as unknown as { eventWatermarks: Map<string, number> }
+  ).eventWatermarks.set('live-9', 99);
+
+  const events: string[] = [];
+  for await (const event of client.resumeTurnStream(
+    'stored-9',
+    'gw-turn-1',
+    -1,
+  )) {
+    events.push(event.type);
+  }
+  assert.ok(calls.some((call) => call.method === 'session.events.since'));
+  assert.ok(!events.includes('tool.status'), 'nothing from the old numbering');
+  assert.deepEqual(
+    [
+      ...(client as unknown as { eventWatermarks: Map<string, number> })
+        .eventWatermarks,
+    ],
+    [],
+    'the stale watermarks are dropped',
+  );
+});
+
+test('an older gateway without replay reattaches exactly as before', async () => {
+  const { calls, client } = makeResumeFixtureClient({
+    inflight: { assistant: 'Partial reply', streaming: true, user: 'go' },
+    running: true,
+    session_id: 'live-9',
+  });
+  (
+    client as unknown as { eventWatermarks: Map<string, number> }
+  ).eventWatermarks.set('live-9', 5);
+  const events: string[] = [];
+  for await (const event of client.resumeTurnStream(
+    'stored-9',
+    'gw-turn-1',
+    -1,
+  )) {
+    events.push(event.type);
+  }
+  // The method is attempted and refused; the reattach proceeds regardless.
+  assert.ok(calls.some((call) => call.method === 'session.events.since'));
+  assert.deepEqual(events.at(-1), 'turn.completed');
+});
+
+test('a turn that failed while detached rebuilds as a failed turn', async () => {
+  // Its terminal frame died with the socket, so the resume snapshot is the
+  // only carrier. Yielding nothing here left the composer latched on Stop.
+  const { client } = makeResumeFixtureClient({
+    inflight: {
+      assistant: 'Half an answ',
+      error: 'provider refused the request',
+      error_surface: { layer: 'provider', retryable: false },
+      recoverable: true,
+      streaming: true,
+      user: 'go',
+    },
+    running: false,
+    session_id: 'live-9',
+  });
+  const events: WaveTurnEvent[] = [];
+  for await (const event of client.resumeTurnStream(
+    'stored-9',
+    'gw-turn-1',
+    -1,
+  )) {
+    events.push(event);
+  }
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ['turn.started', 'assistant.started', 'assistant.completed', 'turn.error'],
+  );
+  const failure = events.at(-1) as Extract<
+    WaveTurnEvent,
+    { type: 'turn.error' }
+  >;
+  assert.equal(failure.error.message, 'provider refused the request');
+  assert.deepEqual(failure.surface, { layer: 'provider', retryable: false });
 });

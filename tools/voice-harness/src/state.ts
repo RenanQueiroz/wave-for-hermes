@@ -220,6 +220,19 @@ export class HarnessState {
     return this.scenario.realtimeCalls?.shift() ?? {};
   }
 
+  /** Transport-shaping flags the RPC socket reads (heartbeat, replay). */
+  transportScript(): {
+    dropHeartbeats: boolean;
+    replayEpochOverride: string | undefined;
+    suppressHeartbeat: boolean;
+  } {
+    return {
+      dropHeartbeats: this.scenario.dropHeartbeats ?? false,
+      replayEpochOverride: this.scenario.replayEpochOverride,
+      suppressHeartbeat: this.scenario.suppressHeartbeat ?? false,
+    };
+  }
+
   audioCapabilities(): { stt: boolean; tts: boolean } {
     return this.scenario.audioCapabilities ?? { stt: true, tts: true };
   }

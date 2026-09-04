@@ -55,6 +55,7 @@ import {
   type SpeechSocketLike,
 } from './gateway-speech-stream.ts';
 import { GatewayRpc, GatewayRpcError } from './gateway-rpc.ts';
+import type { GatewayEventFrame, GatewayRpcResult } from './gateway-rpc.ts';
 import {
   GatewayTurnTranslator,
   isLocalPromptId,
@@ -77,12 +78,42 @@ import {
   isPendingSessionId,
   PENDING_SESSION_PREFIX,
   type WaveStreamTurnOptions,
-  type WaveTruncationSurvivorRowIds,
+  type WaveTruncationSurvivors,
 } from '../wave/wave-chat-client.ts';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const TURN_IDLE_TIMEOUT_MS = 120_000;
 const WS_CONNECT_TIMEOUT_MS = 20_000;
+/**
+ * Hermes v0.21 `/api/ws` subprotocol ticket carriage. The gateway requires
+ * both entries: the bare protocol name plus exactly one ticket entry, and it
+ * echoes the bare name back as the accepted subprotocol. Only `/api/ws`
+ * negotiates this — `/api/audio/speak-stream` shares the same credential
+ * check but accepts without echoing a subprotocol, so it stays on `?ticket=`.
+ */
+const GATEWAY_WS_PROTOCOL = 'hermes-gateway-v1';
+const GATEWAY_WS_TICKET_PROTOCOL_PREFIX = 'hermes-gateway-ticket.';
+/**
+ * Most events a replay can carry for one reattach. The gateway's ring holds
+ * 512 per session; Wave bounds independently so a compromised or buggy peer
+ * cannot make a reattach unbounded work.
+ */
+const MAX_REPLAYED_EVENTS = 512;
+/** Bound on an error body Wave inspects to classify a failure. */
+const MAX_ERROR_BODY_CHARS = 2_000;
+/**
+ * The only frames a reattach replays. See `replayMissedEvents` for why this
+ * is an allowlist of self-contained records rather than everything the ring
+ * happens to hold.
+ */
+const REPLAYABLE_EVENT_TYPES = new Set([
+  'session.title',
+  'todo.updated',
+  'tool.complete',
+  'tool.generating',
+  'tool.progress',
+  'tool.start',
+]);
 const TIMELINE_PAGE_LIMIT = 200;
 // v0.20 caps GET /api/sessions at 100 rows. Keeping Wave at the shared lower
 // bound also remains valid against v0.19, whose route accepted larger values.
@@ -141,7 +172,7 @@ export interface GatewayClientOptions {
   fetch?: typeof globalThis.fetch;
   onTokensRotated?: GatewayTokenSink;
   requestTimeoutMs?: number;
-  socketFactory?: (url: string) => WebSocket;
+  socketFactory?: (url: string, protocols?: string[]) => WebSocket;
   tokens: GatewayTokens;
 }
 
@@ -248,7 +279,10 @@ export class GatewayClient {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly onTokensRotated?: GatewayTokenSink;
   private readonly requestTimeoutMs: number;
-  private readonly socketFactory: (url: string) => WebSocket;
+  private readonly socketFactory: (
+    url: string,
+    protocols?: string[],
+  ) => WebSocket;
   private tokens: GatewayTokens;
   /**
    * Pending placeholder id → the real gateway session created for it.
@@ -276,6 +310,30 @@ export class GatewayClient {
     string,
     { liveSessionId: string; rpc: GatewayRpc }
   >();
+  /**
+   * Live gateway session id → the highest event `seq` this client has seen
+   * (Hermes v0.21). Kept on the client rather than the socket: Wave opens a
+   * fresh socket per operation, while the gateway's replay ring is per
+   * session and outlives any one of them, so a reattach on a new socket can
+   * still ask for exactly the frames the old one missed.
+   */
+  private readonly eventWatermarks = new Map<string, number>();
+  /**
+   * The gateway process identity those watermarks belong to (`replay_epoch`
+   * on `gateway.ready`). Seq counters are in-process, so a gateway restart
+   * resets them to 1 while Wave still holds high marks — without this check
+   * `session.events.since` would answer "you missed nothing" forever and the
+   * gap would be invisible.
+   */
+  private replayEpoch: string | undefined;
+  /**
+   * How the `/api/ws` ticket is presented. v0.21 accepts it as a WebSocket
+   * subprotocol, which keeps the credential out of the URL and therefore out
+   * of any proxy access log; older gateways only read `?ticket=`. Starts
+   * optimistic and latches to 'query' for the rest of the process the first
+   * time a subprotocol dial is refused.
+   */
+  private wsTicketTransport: 'query' | 'subprotocol' = 'subprotocol';
   /** Until this instant, speak-stream dials short-circuit to buffered TTS. */
   private speechStreamFallbackUntil: number | undefined;
   /**
@@ -303,7 +361,11 @@ export class GatewayClient {
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.socketFactory =
-      options.socketFactory ?? ((url: string) => new WebSocket(url));
+      options.socketFactory ??
+      ((url: string, protocols?: string[]) =>
+        protocols && protocols.length > 0
+          ? new WebSocket(url, protocols)
+          : new WebSocket(url));
     this.tokens = options.tokens;
   }
 
@@ -932,6 +994,10 @@ export class GatewayClient {
       // placeholder this call started with.
       sessionId = this.resolveSessionId(sessionId);
       this.activeTurns.set(sessionId, { liveSessionId, rpc });
+      // Scope the replay watermark to this turn. The gateway's ring spans
+      // turns, so a mark left over from an earlier one would make a reattach
+      // replay that turn's tool rows into this turn's row.
+      this.eventWatermarks.delete(liveSessionId);
       for (const attachment of attachments) {
         try {
           // Queues the image on the live session; the next prompt.submit
@@ -969,6 +1035,13 @@ export class GatewayClient {
         durableTruncateRowId === undefined
           ? options.truncateBeforeUserOrdinal
           : undefined;
+      const rebindRowIds = [
+        ...new Set(
+          (options.rebindRowIds ?? []).filter(
+            (rowId) => Number.isInteger(rowId) && rowId > 0,
+          ),
+        ),
+      ].slice(0, MAX_SURVIVOR_USER_ROW_IDS);
       void rpc
         .call('prompt.submit', {
           session_id: liveSessionId,
@@ -988,16 +1061,30 @@ export class GatewayClient {
                 ...(options.truncateBeforeUserOrdinal === 0
                   ? { confirm_empty_truncate: true }
                   : {}),
+                // v0.21: ask for an old→new map covering the rows this client
+                // actually holds. It removes the ordinal alignment guess
+                // between Wave's paged transcript and the gateway's full
+                // history — the skew a tail-only prefetch or an in-place
+                // compaction can otherwise introduce. Only on the durable
+                // path, whose capability probe already proved the gateway is
+                // new enough to be worth asking.
+                ...(durableTruncateRowId !== undefined && rebindRowIds.length
+                  ? { rebind_survivor_row_ids: rebindRowIds }
+                  : {}),
               }
             : {}),
         })
         .then((result) => {
-          const survivorUserRowIds = normalizeSurvivorUserRowIds(
-            result.survivor_user_row_ids,
-          );
-          if (!survivorUserRowIds || !options.onTruncationCommitted) return;
+          // Mutually exclusive by design: a gateway that answered the map
+          // deliberately omits the array, so consuming only the array here
+          // would silently lose the rebind and leave every cached rowId
+          // stale — the next rewind would then be refused 4018.
+          const survivors =
+            normalizeSurvivorRowIdMap(result.survivor_row_id_map) ??
+            normalizeSurvivorUserRowIds(result.survivor_user_row_ids);
+          if (!survivors || !options.onTruncationCommitted) return;
           try {
-            options.onTruncationCommitted(survivorUserRowIds);
+            options.onTruncationCommitted(survivors);
           } catch {
             // Hermes already accepted the destructive mutation. A local cache
             // update failure must not turn that success into a retryable send.
@@ -1206,6 +1293,12 @@ export class GatewayClient {
       let resumed: Record<string, unknown>;
       try {
         resumed = await rpc.call('session.resume', {
+          // Wave hydrates transcripts over authenticated REST, so the
+          // duplicate copy on this socket is pure waste — on a long
+          // conversation the gateway would serialise the whole transcript
+          // over a cellular link on every reattach. Older gateways ignore
+          // the unknown param and keep sending it, which stays harmless.
+          omit_messages: true,
           session_id: sessionId,
           source: WAVE_GATEWAY_SESSION_SOURCE,
         });
@@ -1222,10 +1315,41 @@ export class GatewayClient {
           : undefined;
       // A retained failed turn also reports an `inflight` snapshot (with its
       // error); only a live one has frames still to come.
+      const failure =
+        typeof inflight?.error === 'string' && inflight.error.trim()
+          ? inflight.error.trim()
+          : undefined;
       const running =
         resumed.running === true ||
-        (inflight?.streaming === true && inflight.error === undefined);
-      if (!liveSessionId || !running) return;
+        (inflight?.streaming === true && failure === undefined);
+      if (!liveSessionId) return;
+      if (failure !== undefined) {
+        // The turn failed while Wave was detached, so its terminal frame was
+        // lost with the socket and this snapshot is the only carrier. Rebuild
+        // it as a failed turn: yielding nothing here would leave the composer
+        // latched on Stop until the app restarts.
+        const failedTurnId = `${turnId}-resume-${Date.now()}`;
+        const failedTranslator = new GatewayTurnTranslator({
+          messageId: `${failedTurnId}-assistant`,
+          sessionId,
+          turnId: failedTurnId,
+        });
+        yield failedTranslator.start();
+        const partial =
+          typeof inflight?.assistant === 'string' ? inflight.assistant : '';
+        yield* failedTranslator.finishWithTurnError({
+          error: failure,
+          ...(partial ? { partial: true, text: partial } : {}),
+          ...(inflight?.error_surface === undefined
+            ? {}
+            : { error_surface: inflight.error_surface }),
+          ...(inflight?.recoverable === undefined
+            ? {}
+            : { recoverable: inflight.recoverable }),
+        });
+        return;
+      }
+      if (!running) return;
       this.liveSessions.set(sessionId, liveSessionId);
       this.activeTurns.set(sessionId, { liveSessionId, rpc });
       attached = true;
@@ -1246,6 +1370,13 @@ export class GatewayClient {
           payload: { text: streamed },
           type: 'message.delta',
         });
+      }
+      // Durable records emitted while the socket was down (tool rows, task
+      // snapshots, a generated title). The assistant text above already came
+      // from the authoritative snapshot; this fills in what the snapshot has
+      // never carried.
+      for (const frame of await this.replayMissedEvents(rpc, liveSessionId)) {
+        yield* translator.translate(frame);
       }
       yield* translator.replayPendingPrompts(resumed);
       yield* this.pump(events, translator, signal);
@@ -1877,6 +2008,9 @@ export class GatewayClient {
       return live;
     }
     const resumed = await rpc.call('session.resume', {
+      // This resolves the live sid only; Wave never reads the transcript off
+      // a resume, so suppress the copy (v0.21). Older gateways ignore it.
+      omit_messages: true,
       session_id: sessionId,
       source: WAVE_GATEWAY_SESSION_SOURCE,
     });
@@ -1921,19 +2055,194 @@ export class GatewayClient {
     }
   }
 
+  /**
+   * Open an authenticated `/api/ws` socket.
+   *
+   * v0.21 accepts the single-use ticket as a WebSocket subprotocol, which
+   * keeps the credential out of the URL entirely. An older gateway ignores
+   * the offered protocols, finds no credential and refuses the upgrade — so
+   * fall back once to `?ticket=`. The ticket is single-use, so the fallback
+   * mints a fresh one, and the downgrade is remembered only when it actually
+   * succeeds: a transient network failure must not permanently move this
+   * client's credential back into the URL.
+   */
   private async openSocket(signal?: AbortSignal): Promise<{
+    close(): void;
+    events: TurnEventQueue;
+    rpc: GatewayRpc;
+  }> {
+    if (this.wsTicketTransport === 'query') {
+      return this.dialSocket('query', signal);
+    }
+    // Only a failure that actually reached a handshake can mean "this gateway
+    // does not understand the subprotocol". A ticket mint that failed, a
+    // socket the platform refused to construct, or an abort says nothing
+    // about the gateway's age — retrying those would burn a second
+    // single-use ticket and double the work on every ordinary outage.
+    const probe = { reachedHandshake: false };
+    try {
+      return await this.dialSocket('subprotocol', signal, probe);
+    } catch (error) {
+      if (signal?.aborted || !probe.reachedHandshake) throw error;
+      const connection = await this.dialSocket('query', signal);
+      this.wsTicketTransport = 'query';
+      return connection;
+    }
+  }
+
+  /**
+   * Fold one inbound event into the client's replay bookkeeping.
+   *
+   * `gateway.ready` carries the gateway's heartbeat capability and its replay
+   * epoch; every session-scoped event carries the seq that drives
+   * `session.events.since`. Both are transport concerns, so they are absorbed
+   * here rather than being given a projection in the turn translator.
+   */
+  private absorbGatewayEvent(event: GatewayEventFrame, rpc: GatewayRpc): void {
+    if (event.type === 'gateway.ready') {
+      if (event.payload.heartbeat === true) rpc.startHeartbeat();
+      const epoch = event.payload.replay_epoch;
+      if (typeof epoch === 'string' && epoch) this.adoptReplayEpoch(epoch);
+      return;
+    }
+    if (event.sessionId === undefined || event.seq === undefined) return;
+    const seen = this.eventWatermarks.get(event.sessionId) ?? 0;
+    if (event.seq > seen) this.eventWatermarks.set(event.sessionId, event.seq);
+  }
+
+  /**
+   * Adopt the gateway's replay epoch. A change means the gateway restarted
+   * and its per-session seq counters went back to 1, so every watermark we
+   * hold now describes a numbering that no longer exists — keeping them would
+   * make `session.events.since` answer "nothing missed" forever.
+   */
+  private adoptReplayEpoch(epoch: string): void {
+    if (this.replayEpoch === epoch) return;
+    if (this.replayEpoch !== undefined) this.eventWatermarks.clear();
+    this.replayEpoch = epoch;
+  }
+
+  /**
+   * Replay the durable transcript records this client missed while its socket
+   * was down, for a turn it is reattaching to.
+   *
+   * Deliberately narrow. The gateway's replay ring is per session and spans
+   * turns, and a reattach rebuilds the turn row from scratch seeded by
+   * `inflight.assistant` — so only frames that are (a) self-contained records
+   * rather than accumulating content and (b) harmless if one arrives from an
+   * older turn may cross. That rules out:
+   *
+   * - `message.*` — the resume snapshot already carries the whole assistant
+   *   text from turn start; a from-watermark replay could only ever add a
+   *   fragment of it, and a stale `message.complete` would seal a turn that
+   *   is still running.
+   * - `reasoning.delta` — same fragment problem, with no snapshot to anchor
+   *   it. Reasoning arrives instead with the turn-end timeline refetch.
+   * - prompt frames — `replayPendingPrompts` answers those authoritatively
+   *   from the resume snapshot; replaying one could resurrect a question the
+   *   user already answered.
+   * - `status.update` — ephemeral labels that live frames overwrite within a
+   *   second; a stale one is flicker for no durable gain.
+   *
+   * Anything missing is reconciled by the timeline refetch the caller already
+   * performs when the turn ends, so a failed or truncated replay degrades to
+   * exactly today's behaviour rather than to a wrong transcript.
+   */
+  private async replayMissedEvents(
+    rpc: GatewayRpc,
+    liveSessionId: string,
+  ): Promise<GatewayEventFrame[]> {
+    const lastSeen = this.eventWatermarks.get(liveSessionId);
+    if (lastSeen === undefined) return [];
+    let result: GatewayRpcResult;
+    try {
+      result = await rpc.call('session.events.since', {
+        last_seen: lastSeen,
+        session_id: liveSessionId,
+      });
+    } catch {
+      // Older gateway (no such method) or a failed call. Not an error: the
+      // reattach simply proceeds without the frames it missed.
+      return [];
+    }
+    const epoch = result.epoch;
+    if (typeof epoch === 'string' && epoch && epoch !== this.replayEpoch) {
+      // The gateway restarted between our watermark and this call; its seq
+      // numbering restarted with it, so the window we just asked for is
+      // meaningless.
+      this.adoptReplayEpoch(epoch);
+      return [];
+    }
+    if (!Array.isArray(result.events)) return [];
+    const frames: GatewayEventFrame[] = [];
+    for (const entry of result.events.slice(0, MAX_REPLAYED_EVENTS)) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const { payload, seq, type } = entry as Record<string, unknown>;
+      if (typeof type !== 'string' || !REPLAYABLE_EVENT_TYPES.has(type)) {
+        continue;
+      }
+      if (typeof seq === 'number' && Number.isInteger(seq)) {
+        const seen = this.eventWatermarks.get(liveSessionId) ?? 0;
+        if (seq <= seen) continue;
+        this.eventWatermarks.set(liveSessionId, seq);
+      }
+      frames.push({
+        payload:
+          typeof payload === 'object' && payload !== null
+            ? (payload as Record<string, unknown>)
+            : {},
+        sessionId: liveSessionId,
+        type,
+      });
+    }
+    return frames;
+  }
+
+  private async dialSocket(
+    transport: 'query' | 'subprotocol',
+    signal?: AbortSignal,
+    probe?: { reachedHandshake: boolean },
+  ): Promise<{
     close(): void;
     events: TurnEventQueue;
     rpc: GatewayRpc;
   }> {
     const ticket = await this.mintTicket(signal);
     const wsBase = this.baseUrl.replace(/^http/, 'ws');
-    const socket = this.socketFactory(
-      `${wsBase}/api/ws?ticket=${encodeURIComponent(ticket)}`,
-    );
+    const socket =
+      transport === 'subprotocol'
+        ? this.socketFactory(`${wsBase}/api/ws`, [
+            GATEWAY_WS_PROTOCOL,
+            `${GATEWAY_WS_TICKET_PROTOCOL_PREFIX}${ticket}`,
+          ])
+        : this.socketFactory(
+            `${wsBase}/api/ws?ticket=${encodeURIComponent(ticket)}`,
+          );
+    if (probe) probe.reachedHandshake = true;
     const events = new TurnEventQueue();
     const rpc = new GatewayRpc({
-      onEvent: (event) => events.push(event),
+      onEvent: (event) => {
+        this.absorbGatewayEvent(event, rpc);
+        events.push(event);
+      },
+      onHeartbeatTimeout: () => {
+        // The socket is open as far as the platform is concerned but the
+        // gateway has stopped answering — a half-open leg after a network
+        // change. Tear it down so the caller's reattach path runs instead of
+        // waiting on a stream that will never produce another frame.
+        rpc.fail(
+          new WaveBackendError('Wave lost the connection to Hermes.', {
+            kind: 'network',
+            retryable: true,
+          }),
+        );
+        events.fail();
+        try {
+          socket.close();
+        } catch {
+          // Already gone; the queue and pending calls are settled regardless.
+        }
+      },
       socket: {
         close: (code, reason) => socket.close(code, reason),
         send: (data) => socket.send(data),
@@ -2103,6 +2412,25 @@ export class GatewayClient {
         statusCode: 404,
       });
     }
+    if (response.status === 503) {
+      // v0.21 classifies an unreadable session store as 503 instead of
+      // letting a damaged index miss and answer "not found". Retrying that is
+      // pointless — the store stays corrupt until someone repairs it on the
+      // host — so it must not look like an ordinary transient outage. Every
+      // other 503 (a restarting gateway behind a proxy) keeps today's
+      // retryable handling.
+      if (await responseNamesCorruptStore(response)) {
+        throw new WaveBackendError(
+          "Hermes can't read its saved conversations right now.",
+          { kind: 'upstream_unavailable', retryable: false, statusCode: 503 },
+        );
+      }
+      throw new WaveBackendError('Hermes reported a server error.', {
+        kind: 'upstream_unavailable',
+        retryable: true,
+        statusCode: 503,
+      });
+    }
     if (response.status >= 500) {
       throw new WaveBackendError('Hermes reported a server error.', {
         kind: 'upstream_unavailable',
@@ -2234,17 +2562,69 @@ function parseLatestTimelineCursor(value: string | undefined) {
   return Number.isSafeInteger(offset) ? offset : undefined;
 }
 
+/**
+ * Whether a 503 body is the gateway's corrupt-session-store report.
+ *
+ * Discriminated on the body rather than the bare status because a proxy in
+ * front of a restarting gateway answers 503 too, and that one really is
+ * retryable. The gateway's own message names a host-side repair command that
+ * means nothing on a phone, so it is matched, never shown.
+ */
+async function responseNamesCorruptStore(response: Response): Promise<boolean> {
+  try {
+    const body = (await response.text()).slice(0, MAX_ERROR_BODY_CHARS);
+    return /database disk image is malformed|store is corrupt/i.test(body);
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeSurvivorUserRowIds(
   value: unknown,
-): WaveTruncationSurvivorRowIds | undefined {
+): WaveTruncationSurvivors | undefined {
   if (!Array.isArray(value)) return undefined;
-  return value
-    .slice(0, MAX_SURVIVOR_USER_ROW_IDS)
-    .map((rowId) =>
-      typeof rowId === 'number' && Number.isInteger(rowId) && rowId > 0
-        ? rowId
-        : null,
-    );
+  return {
+    kind: 'ordinal',
+    rowIds: value
+      .slice(0, MAX_SURVIVOR_USER_ROW_IDS)
+      .map((rowId) =>
+        typeof rowId === 'number' && Number.isInteger(rowId) && rowId > 0
+          ? rowId
+          : null,
+      ),
+  };
+}
+
+/**
+ * v0.21 `survivor_row_id_map`: old durable row id → its post-rewrite id, or
+ * `null` when the row did not survive. Keys arrive as JSON object strings.
+ * A row absent from the map was outside the rewritten tip and keeps the id it
+ * already has, so absence must never be read as "dropped".
+ */
+export function normalizeSurvivorRowIdMap(
+  value: unknown,
+): WaveTruncationSurvivors | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const rowIds = new Map<number, number | null>();
+  for (const [rawOld, rawNew] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (rowIds.size >= MAX_SURVIVOR_USER_ROW_IDS) break;
+    const previous = Number(rawOld);
+    if (!Number.isInteger(previous) || previous <= 0) continue;
+    if (rawNew === null) {
+      rowIds.set(previous, null);
+    } else if (
+      typeof rawNew === 'number' &&
+      Number.isInteger(rawNew) &&
+      rawNew > 0
+    ) {
+      rowIds.set(previous, rawNew);
+    }
+  }
+  return { kind: 'map', rowIds };
 }
 
 function turnInputAttachments(input: WaveTurnInput) {

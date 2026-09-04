@@ -12,7 +12,17 @@
  * reviewed lifecycle kinds become Wave-owned activity states. Optional or
  * future gateway events must never break a turn in progress.
  */
-import type { WaveTurnEvent } from '@wave/contracts';
+import type {
+  WaveErrorLayer,
+  WaveErrorSurface,
+  WaveTodo,
+  WaveTodoStatus,
+  WaveTurnEvent,
+} from '@wave/contracts';
+import {
+  WAVE_TODO_CONTENT_MAX_CHARS,
+  WAVE_TODO_MAX_ITEMS,
+} from '@wave/contracts';
 
 import { toToolDetail } from './gateway-normalize.ts';
 
@@ -20,6 +30,23 @@ const MAX_DELTA_CHARS = 32_000;
 const MAX_CONTENT_CHARS = 1_000_000;
 const MAX_TOOL_NAME_CHARS = 100;
 const MAX_ERROR_CHARS = 300;
+const MAX_ERROR_SURFACE_CODE_CHARS = 120;
+const WAVE_TODO_STATUSES: ReadonlySet<WaveTodoStatus> = new Set([
+  'cancelled',
+  'completed',
+  'in_progress',
+  'pending',
+]);
+const WAVE_ERROR_LAYERS: ReadonlySet<WaveErrorLayer> = new Set([
+  'auth',
+  'billing',
+  'disk',
+  'endpoint',
+  'gateway',
+  'provider',
+  'runtime',
+  'streaming',
+]);
 const MAX_PROMPT_DESCRIPTION_CHARS = 300;
 const MAX_PROMPT_QUESTION_CHARS = 2_000;
 const MAX_PROMPT_CHOICES = 8;
@@ -75,6 +102,80 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+/**
+ * Validate Hermes v0.21's `{layer, code, retryable}` failure descriptor
+ * against Wave's own allowlist. An unknown layer is dropped whole rather than
+ * passed through: this selects user-facing wording, and a gateway-authored
+ * string must never reach the UI unvalidated. Advisory — absence simply means
+ * generic copy, which is what every older gateway produces.
+ */
+function normalizeErrorSurface(value: unknown): WaveErrorSurface | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const layer = record.layer;
+  if (
+    typeof layer !== 'string' ||
+    !WAVE_ERROR_LAYERS.has(layer as WaveErrorLayer)
+  ) {
+    return undefined;
+  }
+  const code =
+    typeof record.code === 'string' && record.code.trim()
+      ? record.code.trim().slice(0, MAX_ERROR_SURFACE_CODE_CHARS)
+      : undefined;
+  return {
+    ...(code ? { code } : {}),
+    layer: layer as WaveErrorLayer,
+    ...(typeof record.retryable === 'boolean'
+      ? { retryable: record.retryable }
+      : {}),
+  };
+}
+
+/**
+ * Validate one `todo.updated` payload. Every field is gateway-authored, so
+ * items with an unknown status or no content are dropped rather than coerced,
+ * and the list is bounded. An empty list at revision 0 is the todo store's
+ * "never used" snapshot and carries no meaning — Hermes suppresses it, and so
+ * do we, so a stale revision can never be established from nothing.
+ */
+function normalizeTodoSnapshot(
+  payload: Record<string, unknown>,
+): { revision: number; todos: WaveTodo[] } | undefined {
+  const rawTodos = payload.todos;
+  if (!Array.isArray(rawTodos)) return undefined;
+  const revision = payload.revision;
+  if (
+    typeof revision !== 'number' ||
+    !Number.isInteger(revision) ||
+    revision < 0
+  ) {
+    return undefined;
+  }
+  const todos: WaveTodo[] = [];
+  for (const entry of rawTodos.slice(0, WAVE_TODO_MAX_ITEMS)) {
+    const record = asRecord(entry);
+    if (!record) continue;
+    const status = record.status;
+    if (
+      typeof status !== 'string' ||
+      !WAVE_TODO_STATUSES.has(status as WaveTodoStatus)
+    ) {
+      continue;
+    }
+    const content =
+      typeof record.content === 'string'
+        ? record.content.trim().slice(0, WAVE_TODO_CONTENT_MAX_CHARS)
+        : '';
+    const id =
+      typeof record.id === 'string' ? record.id.trim().slice(0, 64) : '';
+    if (!content || !id) continue;
+    todos.push({ content, id, status: status as WaveTodoStatus });
+  }
+  if (todos.length === 0 && revision === 0) return undefined;
+  return { revision, todos };
 }
 
 function boundedIdentifier(value: unknown, max = MAX_SESSION_ID_CHARS) {
@@ -223,6 +324,20 @@ export class GatewayTurnTranslator {
         this.activeToolName = undefined;
         return events;
       }
+      case 'todo.updated': {
+        // Hermes emits the whole task list on every change, regardless of the
+        // session's tool-progress display setting, because task state is
+        // application data rather than tool chrome.
+        const snapshot = normalizeTodoSnapshot(frame.payload);
+        if (!snapshot) return [];
+        return [
+          {
+            ...this.base('todo.snapshot'),
+            revision: snapshot.revision,
+            todos: snapshot.todos,
+          } as WaveTurnEvent,
+        ];
+      }
       case 'tool.progress': {
         const events = this.resolvePendingPrompt();
         const toolName =
@@ -364,6 +479,13 @@ export class GatewayTurnTranslator {
         ];
       }
       case 'message.complete': {
+        // A returned-error turn arrives as a terminal message.complete
+        // carrying `status: "error"`, not as `turn.error`. Without this
+        // branch the turn seals as a healthy assistant reply whose body is
+        // the literal string "Error: …", complete with a turn action row.
+        if (frame.payload.status === 'error') {
+          return this.finishWithTurnError(frame.payload);
+        }
         const content = stringField(frame.payload, 'text');
         const previewWasFinalized = frame.payload.response_previewed === true;
         return this.finish({
@@ -391,6 +513,7 @@ export class GatewayTurnTranslator {
           stringField(frame.payload, 'message') ??
           stringField(frame.payload, 'error') ??
           'Hermes could not complete this turn.';
+        const surface = normalizeErrorSurface(frame.payload.error_surface);
         return [
           ...this.resolvePendingPrompt(),
           {
@@ -398,8 +521,9 @@ export class GatewayTurnTranslator {
             error: {
               code: 'upstream_unavailable',
               message: message.slice(0, MAX_ERROR_CHARS),
-              retryable: true,
+              retryable: surface?.retryable ?? true,
             },
+            ...(surface ? { surface } : {}),
           } as WaveTurnEvent,
         ];
       }
@@ -579,6 +703,46 @@ export class GatewayTurnTranslator {
   }
 
   /** Terminal events for a turn that ended without an explicit end frame. */
+  /**
+   * Seal a turn the gateway reported as failed.
+   *
+   * Hermes puts the partial assistant text in `text` when there is any (with
+   * `partial: true`), and otherwise puts a rendered `"Error: <message>"`
+   * string there. Only the former is real assistant output — the latter is
+   * the error restated as prose and must not become a transcript bubble.
+   */
+  finishWithTurnError(payload: Record<string, unknown>): WaveTurnEvent[] {
+    if (this.completed) return [];
+    this.completed = true;
+    const partial = payload.partial === true;
+    const content = partial ? (stringField(payload, 'text') ?? '') : '';
+    const message =
+      stringField(payload, 'error') ?? 'Hermes could not complete this turn.';
+    const surface = normalizeErrorSurface(payload.error_surface);
+    const events: WaveTurnEvent[] = [...this.resolvePendingPrompt()];
+    if (content) {
+      events.push(...this.ensureAssistantStarted(), {
+        ...this.base('assistant.completed'),
+        content: content.slice(0, MAX_CONTENT_CHARS),
+        interrupted: true,
+        messageId: this.messageId,
+        partial: true,
+      } as WaveTurnEvent);
+    }
+    events.push({
+      ...this.base('turn.error'),
+      error: {
+        code: 'upstream_unavailable',
+        message: message.slice(0, MAX_ERROR_CHARS),
+        // `recoverable` is the gateway's own word for "this turn may be
+        // retried"; the structured surface is preferred when it says.
+        retryable: surface?.retryable ?? payload.recoverable !== false,
+      },
+      ...(surface ? { surface } : {}),
+    } as WaveTurnEvent);
+    return events;
+  }
+
   finish(options: {
     content?: string;
     interrupted: boolean;

@@ -172,8 +172,13 @@ test(
               params: {},
             }),
           );
-          // Close once the response arrives; one request, one reply.
-          socket.addEventListener('message', () => socket.close());
+          // The gateway greets with `gateway.ready` before answering
+          // anything, so close on THIS request's reply rather than on the
+          // first frame that happens to arrive.
+          socket.addEventListener('message', (event) => {
+            const frame = JSON.parse(String(event.data)) as { id?: unknown };
+            if (frame.id === 1) socket.close();
+          });
         },
       );
 

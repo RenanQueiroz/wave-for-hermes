@@ -47,11 +47,29 @@ export interface WaveSessionPage {
 /** Fresh durable ids for user rows that survived a Hermes history rewrite. */
 export type WaveTruncationSurvivorRowIds = readonly (number | null)[];
 
+/**
+ * How Hermes reported the post-rewrite durable identities.
+ *
+ * `ordinal` is the legacy array: fresh ids for the visible user turns, in
+ * ordinal order, which the client must align against its own visible-user
+ * filter. `map` (v0.21) is keyed by the old row id, so no alignment is needed
+ * and rows outside the active tip keep their identity by simply being absent.
+ * The two are mutually exclusive — asking for the map suppresses the array —
+ * so consumers must handle both explicitly rather than sniffing shapes.
+ */
+export type WaveTruncationSurvivors =
+  | { kind: 'map'; rowIds: ReadonlyMap<number, number | null> }
+  | { kind: 'ordinal'; rowIds: WaveTruncationSurvivorRowIds };
+
 export interface WaveStreamTurnOptions {
   /** Apply fresh durable ids after Hermes rewrites the surviving prefix. */
-  onTruncationCommitted?: (
-    survivorUserRowIds: WaveTruncationSurvivorRowIds,
-  ) => void;
+  onTruncationCommitted?: (survivors: WaveTruncationSurvivors) => void;
+  /**
+   * Durable row ids this client currently holds. When present on a durable
+   * rewind, Hermes answers with an old→new map covering exactly these rows
+   * instead of the ordinal array.
+   */
+  rebindRowIds?: readonly number[];
   /** Regenerate: truncate before this visible user ordinal, then replay. */
   truncateBeforeUserOrdinal?: number;
   /** Preferred durable address for that same visible user turn. */

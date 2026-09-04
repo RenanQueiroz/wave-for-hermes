@@ -128,7 +128,6 @@ function sanitizeNotes(body: unknown): string {
   if (typeof body !== 'string' || body.length === 0) return '';
   let notes = body.replace(/\r\n?/g, '\n');
   // Strip control characters except newline and tab.
-  // eslint-disable-next-line no-control-regex
   notes = notes.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '');
   notes = notes.trim();
   if (notes.length > MAX_NOTES_CHARS) {

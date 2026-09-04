@@ -90,6 +90,17 @@ one deliberate exception to "the mobile process never holds an upstream key."
   refresh) or a rotation of the gateway's signing secret (for example a gateway restart), which
   signs out every client at once. Wave says so in the disconnect flow rather than implying a
   server-side revocation it cannot perform.
+- The `/api/ws` WebSocket credential is a single-use, 30-second ticket, and since the v0.21
+  baseline it travels as a WebSocket subprotocol (`hermes-gateway-v1` plus
+  `hermes-gateway-ticket.<ticket>`) rather than a `?ticket=` query parameter. A credential in a
+  URL survives in places a header does not — proxy access logs, crash breadcrumbs, anything that
+  records a request line — and Wave already forbids logging request URLs for exactly that reason;
+  moving it into the handshake removes the class rather than relying on that discipline. A dial
+  that reaches a handshake and is refused falls back once to the query form, and that downgrade
+  is remembered only when the fallback actually connects, so a transient outage cannot
+  permanently move the credential back into the URL. `/api/audio/speak-stream` shares the
+  credential check but never echoes a subprotocol back, so it deliberately stays on the query
+  form.
 
 Residual risk: copied session tokens carry the account's conversation authority until they
 expire or the gateway's secret rotates. Rotating the gateway secret is the operator's kill
@@ -179,6 +190,17 @@ tool harmless. Hermes tool policy and deployment isolation remain mandatory.
   phone only as the typed `clarify.respond`/`approval.respond` calls on the socket bound to the
   turn's live session; a gateway approval `request_id` is echoed back verbatim and never
   interpreted, and a Wave-minted local id is never sent to the gateway.
+- The v0.21 `error_surface` descriptor on a failed turn is gateway-authored, so its `layer` is
+  validated against Wave's own eight-value allowlist and an unrecognised value drops the whole
+  descriptor rather than reaching the UI. It selects an error heading and nothing else: it never
+  triggers a retry, and its bounded `code` is inert text.
+- The v0.21 `todo.updated` task list is gateway-authored too: bounded to 64 items and 300
+  characters each, statuses validated against a closed set, items with an unknown status or no
+  content dropped rather than coerced, and every row rendered as inert plain text — never
+  Markdown, never behaviour.
+- Replayed events from `session.events.since` cross the same validation as live frames and are
+  restricted to an allowlist of self-contained durable records, so a replay cannot resurrect an
+  already-answered prompt, seal a running turn, or inject assistant text.
 
 ### Sensitive-data disclosure
 

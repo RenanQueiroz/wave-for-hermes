@@ -7,12 +7,12 @@ protocol shapes never leave it, and screens consume only normalized Wave contrac
 
 ## Current compatibility baseline
 
-The current implementation baseline is the tagged Hermes Agent `v0.20.5` / `v2026.8.19`
-gateway contract, adopted on 2026-08-22 from the upstream `tui_gateway`, `web_routers`, and
-Hermes Desktop sources between `v2026.8.13` and `v2026.8.19` and proven against the protocol
+The current implementation baseline is the tagged Hermes Agent `v0.21.0` / `v2026.8.31`
+gateway contract, adopted on 2026-09-04 from the upstream `tui_gateway`, `web_routers`, and
+Hermes Desktop sources between `v2026.8.19` and `v2026.8.31` and proven against the protocol
 harness and sanitized fixtures; the last live device validation was the `v0.20.1` baseline on
-2026-08-14, so the v0.20.5-only paths below (batched clarify, pending-prompt replay, read state,
-compacted reads) still owe a live pass. The compatibility floor remains the sanitized `0.19.0`
+2026-08-14, so the v0.20.5 paths (batched clarify, pending-prompt replay, read state, compacted
+reads) and the v0.21 paths below still owe a live pass. The compatibility floor remains the sanitized `0.19.0`
 protocol fixture and the behavior Wave already shipped against that release. Wave does not branch
 product behavior on a version string: optional methods and fields are attempted only by features
 that need them and must degrade safely when absent or malformed.
@@ -30,8 +30,36 @@ that need them and must degrade safely when absent or malformed.
   normalized.
 - **Chat transport**: JSON-RPC over WebSocket. Each connect first redeems a single-use
   30-second ticket, then the socket carries `prompt.submit`, streamed turn frames, mid-turn
-  prompt requests, and cancellation. The v0.20 `gateway.ready` frame may include
-  `change_events: true`; Wave treats that field as optional. The client normalizes only reviewed
+  prompt requests, and cancellation. The ticket travels as the v0.21 subprotocol pair
+  (`hermes-gateway-v1` plus `hermes-gateway-ticket.<ticket>`) so the credential never enters a
+  URL; a dial that reaches a handshake and is refused falls back once to `?ticket=` and remembers
+  the downgrade only if that succeeds. `/api/audio/speak-stream` shares the credential check but
+  never echoes a subprotocol, so it stays on the query form. The v0.20 `gateway.ready` frame may
+  include `change_events: true`; Wave treats that field as optional. v0.21 adds `heartbeat: true`
+  and a `replay_epoch` to the same frame.
+- **Heartbeat (v0.21)**: once `gateway.ready` advertises `heartbeat`, Wave sends `gateway.ping`
+  every 15 s and declares the socket dead after 45 s of inbound silence. The gateway answers on
+  its WS reader thread, ahead of its dispatcher, so a busy turn cannot delay a reply; it also
+  enables TCP keepalive on its side. This exists because a phone that changes network mid-turn
+  leaves a half-open leg: no close event, no further frames, no terminal frame, and no
+  per-request timeout covers a stream that has simply gone quiet. Pings use string ids so a pong
+  can never settle a caller's numeric request. An older gateway advertises nothing and is never
+  pinged.
+- **Event replay (v0.21)**: every session-scoped event frame carries a monotonic per-session
+  `seq`, backed by a 512-frame ring. Wave records the high-water mark per live session on the
+  client (not the socket — it opens a fresh socket per operation while the ring is per session)
+  and, on reattach, calls `session.events.since {session_id, last_seen}`. Only self-contained
+  durable records cross: `tool.start`/`tool.complete`/`tool.progress`/`tool.generating`,
+  `todo.updated`, and `session.title`. `message.*` and `reasoning.delta` are excluded because the
+  resume snapshot is authoritative for assistant text and a from-watermark replay could only add
+  a fragment (and a stale `message.complete` would seal a running turn); prompt frames are
+  excluded because `pending_approval`/`pending_clarify` already replay them authoritatively and a
+  replayed one could resurrect an answered question; `status.update` is excluded as ephemeral.
+  The watermark is cleared when a new turn starts, so a reattach can never replay an older turn's
+  rows into the current one. `replay_epoch` guards a gateway restart (its in-process seq counters
+  reset while the client still holds high marks); a mismatch, a `truncated` ring, or an older
+  gateway degrades to the resume snapshot, and the end-of-turn timeline refetch reconciles the
+  rest. The client normalizes only reviewed
   frames into the strict Wave turn-event union and synthesizes the monotonic sequence numbers the
   chat reducer expects.
 - **Client identity**: every `session.create` and `session.resume` carries the open-ended source
@@ -74,7 +102,25 @@ that need them and must degrade safely when absent or malformed.
   in-place context compaction only the summary and protected tail stay active, and the earlier
   transcript survives as compacted rows that a user-visible history must keep — the gateway
   dedupes the generations before paging, Hermes Desktop passes the same flag on every read, and
-  older gateways ignore the parameter.
+  older gateways ignore the parameter. v0.21 completes that contract: the gateway projects each
+  compaction row for display, adding `display_content` (what a person should read) beside the
+  physical `content` (the model-facing wrapper it keeps for export), and marks the rows it could
+  not project `display_kind: 'hidden'`. Wave prefers `display_content` when present and still
+  drops hidden rows; without that preference a compacted conversation renders Hermes's own
+  compaction scaffolding as if the user had typed it.
+- **`session.resume` transcripts are suppressed (v0.21)**: Wave hydrates history over
+  authenticated REST, so every resume passes `omit_messages: true` and the gateway answers
+  `messages: []` with `messages_omitted: true` and an accurate `message_count`. Without it the
+  gateway serialises the whole transcript over the socket on every reattach, on a cellular link,
+  for a copy Wave never reads. Older gateways ignore the parameter and keep sending it, which
+  stays harmless.
+- **An unreadable session store is `503` (v0.21)**: a corrupt `state.db` used to miss silently
+  through the primary-key index and answer `404 Session not found`. The gateway now classifies it
+  and returns `503` with a diagnostic detail. Wave matches that body and reports it as a
+  non-retryable "can't read its saved conversations" state rather than a missing conversation or
+  an endlessly retried outage; every other `503` (a gateway restarting behind a proxy) keeps the
+  ordinary retryable handling. The gateway's own message names a host-side repair command, so it
+  is matched, never shown.
 - **Deletes are not guarded upstream**: the gateway accepts deleting a session with a running
   turn and lets the conversation reappear. Wave refuses the delete client-side while the turn's
   RPC channel is registered or `session.active_list` reports any known active phase.
@@ -137,6 +183,25 @@ that need them and must degrade safely when absent or malformed.
   normalization, as Hermes Desktop drops their content. Unknown fields and statuses
   remain ignored. These projections update only the active chat tail and are never persisted as
   assistant speech. Sanitized fixtures contain synthetic shapes only.
+- **Failed turns (v0.20 shape, v0.21 detail)**: a returned-error turn closes on a terminal
+  `message.complete` carrying `status: "error"` — not on `turn.error`. Its `text` is the partial
+  assistant output when `partial` is set, and otherwise the error restated as prose, which must
+  never become a transcript bubble. v0.21 adds an advisory `error_surface`
+  (`{layer, code, retryable}`, `agent/error_surface.py`) whose layer is one of `provider`,
+  `endpoint`, `streaming`, `auth`, `billing`, `gateway`, `runtime`, `disk`. Wave validates the
+  layer against its own allowlist, drops anything else whole, and uses it only to choose the
+  error heading — never to retry. The same fields ride `session.resume`'s retained-failed-turn
+  `inflight` snapshot, so a turn that failed while Wave was detached rebuilds as a failed turn
+  instead of leaving the composer latched on Stop.
+- **Task snapshots (v0.21)**: `todo.updated` carries the agent's whole task list
+  (`{todos: [{id, content, status}], revision}`) whenever its todo tool runs, and is emitted
+  regardless of the session's tool-progress display setting because task state is application
+  data rather than tool chrome. `session.resume` attaches the same shape as `todo_state`, derived
+  from persisted history on a cold resume. Wave replaces the list wholesale, rejects a revision
+  older than the one it holds, clears it when the turn settles, and renders it as one folded
+  bounded disclosure of inert plain text. An empty list at revision 0 is the todo store's
+  never-used snapshot and carries no meaning, so it is ignored rather than allowed to establish a
+  watermark.
 - **Per-chat model (v0.20)**: the picker reads RPC `model.options
 {explicit_only: true, session_id?}` after a `session.resume`, so the answer reflects the
   session's own scoped override; Wave normalizes it into a bounded catalog (auth internals, key
@@ -175,6 +240,13 @@ that need them and must degrade safely when absent or malformed.
   invocations for replay. A successful durable rewrite may return `survivor_user_row_ids`; Wave
   strictly normalizes those values and rebinds the loaded surviving user suffix from the end of
   the server's full survivor list, clearing missing ids instead of retaining stale authority.
+  On the durable path v0.21 offers a better report: sending `rebind_survivor_row_ids` (the ids
+  Wave currently holds) makes the gateway answer `survivor_row_id_map`, an old→new mapping that
+  needs no ordinal alignment at all. The two are mutually exclusive — asking for the map
+  suppresses the array — so Wave consumes whichever arrived; a client that asked for the map and
+  read only the array would silently keep stale ids and be refused `4018` on the next rewind. A
+  row absent from the map was outside the rewritten tip and keeps its identity; only an explicit
+  `null` means it was dropped.
   The authoritative post-turn timeline refetch still reconciles everything. Branch and
   regenerate are both one-shot, never retried, and refused client-side while a turn runs.
   v0.20.5 refuses an ordinal-only rewind of durable history outright (`4004`, "include

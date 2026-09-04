@@ -8,7 +8,7 @@ Reviewed: 2026-08-22.
 
 ## Application dependency graph
 
-`npm audit --omit=dev` reports 23 aggregate findings: 11 high, 12 moderate, and no critical
+`npm audit --omit=dev` reports 20 aggregate findings: 5 high, 15 moderate, and no critical
 findings. The aggregate count expands dependency effects into separate rows; the installed graph
 contains three underlying advisories, reviewed below.
 
@@ -21,11 +21,29 @@ image assets:
 There is no patched `image-size` release as of this review. The package is build tooling under
 Metro: it is not imported by Wave application code or included as a native runtime dependency, and
 the build processes only version-controlled, maintainer-reviewed assets rather than remote or
-user-supplied images. The 11 high audit rows are rollups from these two advisories through Metro,
+user-supplied images. The high audit rows are rollups from these two advisories through Metro,
 React Native, Uniwind, and PanelUI. Do not replace Expo's Metro graph with an unsupported override;
 take the SDK-supported patch as soon as one is available.
 
-The twelve moderate rows roll up from
+A moderate advisory,
+[`decode-uri-component` denial of service via exponential decoding of malformed percent-encoded
+input](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr), entered the graph with the SDK 57.0.19
+pass through `expo-router -> query-string@7.1.3 -> decode-uri-component@0.2.2`. Unlike the other
+two this is shipped application code — expo-router's deep-link URL parsing. It is accepted rather
+than remediated, because no remediation exists that does not break the app:
+
+- `npm audit fix --force` proposes `expo-router@5.1.11`, a multi-major downgrade incompatible with
+  SDK 57 and forbidden by the policy below.
+- An `overrides` entry cannot help: the advisory covers `<= 0.4.2`, so the only fixed release is
+  `0.5.0`, which is ESM-only (`"type": "module"`) while `query-string@7.1.3` is CommonJS and
+  `require()`s it. Forcing it would fail at runtime under Metro.
+- `expo-router@57.0.18` still depends on `query-string@^7.1.3`, so the SDK bump does not clear it.
+
+Exposure is a malformed percent-encoded deep link that the user must open; the impact is a
+client-side hang, not disclosure or code execution. Re-evaluate when expo-router moves off
+`query-string@7`.
+
+The remaining moderate rows roll up from
 [`uuid`](https://github.com/advisories/GHSA-w5hq-g745-h8pq) through Expo config plugins and
 `react-native-legal -> xcode@3.0.1`. The advisory affects caller-supplied output buffers in `v3()`,
 `v5()`, and `v6()` and explicitly excludes `v4()`. The installed `xcode` package calls only
@@ -54,13 +72,13 @@ tooling stays on ESLint 9.39.5 and TypeScript 6.0.3: `eslint-plugin-import` and
 `eslint-plugin-react` still cap their ESLint peer at 9, and `typescript-eslint` caps TypeScript
 below 6.1. The local `eas-cli` pin in the root scripts moved to 22.2.0. Zod, Zustand, Tailwind,
 Prettier, and the Expo ESLint config were already current. Clean Prebuild plus a Gradle debug
-build and an Xcode simulator build passed with the new native modules. One deliberate deviation:
-`expo-modules-core` is pinned to 57.0.11 through an npm `overrides` entry because the 57.0.12
-binary that `expo` 57.0.15 pulls breaks
-`matchContents` SwiftUI Host sizing in Wave (drawer header/footer collapse, composer overflow,
-untappable Host content — see the exception in `AGENTS.md`). The package ships as Expo's prebuilt
-xcframework, so this is a version pin rather than a source patch; lift it when an upstream
-release fixes the sizing.
+build and an Xcode simulator build passed with the new native modules. The `expo-modules-core` `overrides` pin is gone as of the SDK 57.0.19 pass: 57.0.13 shipped
+[expo/expo#49211](https://github.com/expo/expo/pull/49211), the fix for the `matchContents`
+SwiftUI Host sizing regression the pin existed for, and 57.0.14 and 57.0.15 fixed the adjacent
+hosted-view measurement and Host/`RNHostView` size-feedback cases. The package resolves through
+`expo` itself at ~57.0.15. The lift was verified visually on the iOS 26.5 simulator from a clean
+Prebuild: the drawer header Host measures 208pt and its footer 44pt (both collapsed to ~9pt under
+the bug), and the composer island, chat header, and empty-state overlay all render correctly.
 
 The production audit scoped to `@wave/contracts` reports zero findings:
 
@@ -102,48 +120,29 @@ toolchain when its upstream dependencies move to fixed releases.
 - Keep `react-native-audio-api` exact until an upgrade passes clean native builds and repeated
   physical listening on both platforms.
 
-## Lifting the expo-modules-core pin
-
-The `overrides` pin to `expo-modules-core` 57.0.11 exists only because 57.0.12 (the version `expo`
-57.0.15 pulls) breaks `matchContents` SwiftUI Host sizing; the upstream fix,
-[expo/expo#49211](https://github.com/expo/expo/pull/49211), was merged on 2026-08-21 and
-cherry-picked onto the `sdk-57` branch but had not been published as of 2026-08-23 (the newest
-`expo-modules-core` on npm was still 57.0.12, published the day before the fix merged). It should
-ship in the next SDK 57 patch publish. On the next dependency pass:
-
-1. Check whether a newer SDK 57 release exists: `npm view expo-modules-core versions --json`, and
-   confirm its `CHANGELOG.md` lists #49211 (the entry reads "Fixed `matchContents` hosts
-   sometimes being laid out at a stale size. Regression from #48059").
-2. Remove the `overrides` entry from `package.json`, run `npm install`, and confirm the package
-   resolves at `node_modules/expo-modules-core` (never nested under `expo` — a nested copy breaks
-   Metro resolution for every other Expo module). Do not add it as a direct dependency; Expo
-   Doctor rejects that.
-3. Refresh the pods, which otherwise keep the pinned binary:
-   `cd ios && pod update ExpoModulesCore ExpoModulesWorklets ExpoModulesWorkletsAdapter
---no-repo-update` (or a clean Prebuild), and rebuild both platforms.
-4. Verify on the iOS simulator before trusting the lift — the bug is visual and does not fail any
-   automated check: open the drawer (the "Wave" title, the New conversation / Search rows, and the
-   Settings footer must sit in place, with the empty state below the filter), confirm the composer
-   island contains both the input and its button row, and tap a SwiftUI control (Settings row,
-   composer send). The broken state looks like a header collapsed to ~9pt with rows drawn over the
-   status bar and SwiftUI content that ignores taps, because the content overflows a Host that
-   measured only its padding. `npx expo install --check` and Expo Doctor pass either way, so they
-   prove nothing here.
-5. If the Hosts regress again, restore the pin and record the new version in this section and the
-   `AGENTS.md` exception; if they are correct, delete this section and that exception.
-
-Note for bisecting this class of problem: on SDK 57 the iOS pod links Expo's prebuilt
-`ExpoModulesCore.xcframework` (the "added 2 script phases" CocoaPods warning is the download), so
-editing files under `node_modules/expo-modules-core/ios` changes nothing in the build. Bisect by
-version pin plus the pod update above, not by source edits.
-
 ## Accepted residual work
 
-- Lift the `expo-modules-core` pin once a published SDK 57 release carries expo/expo#49211, using
-  the checklist above.
 - Take Expo's supported Metro/`image-size` and `xcode`/`uuid` updates when they enter SDK 57 or
   during a deliberate SDK upgrade.
+- Re-evaluate `decode-uri-component` when `expo-router` moves off `query-string@7` (see below).
+- Revisit TypeScript 7 and ESLint 10 once their plugin ecosystems support them (see below).
 - Take the upstream Appium/Webdriver archive-extraction fix when it is available without a toolchain
   downgrade.
+
+### Deferred major upgrades
+
+- **TypeScript 7.** `tsc --noEmit` is already clean on both the app and `@wave/contracts` under
+  7.0.2, `moduleSuffixes` included, so the codebase is ready. The blocker is lint:
+  `@typescript-eslint/parser@8.69.0` (pulled by `eslint-config-expo`) declares
+  `typescript: ">=4.8.4 <6.1.0"` and there is no v9 line, so adopting TypeScript 7 would run
+  `expo lint` on an unsupported compiler. Re-check when typescript-eslint ships TS 7 support.
+- **ESLint 10.** `eslint-config-expo` itself allows `>=8.10`, but two of its own plugin
+  dependencies cap below 10: `eslint-plugin-import@2.32.0` peers `... || ^9` and
+  `eslint-plugin-react@7.37.5` peers `... || ^9.7`. Stay on the 9.x maintenance line.
+- **`react-native-audio-api` 0.13.3.** Not a no-op: it restructures the iOS podspec's
+  prebuilt-binary hydration into a `:before_headers` script phase, and changes `AudioParam` so
+  assigning `.value` also calls `setValueAtTime` — which lands on the gain-fade path the Pixel
+  listening runs validated. Upgrade only as its own task with a clean Prebuild on both platforms
+  and repeated physical listening.
 - Repeat application, contracts, voice-harness, and mobile-agent audits immediately before signed
   store builds.
